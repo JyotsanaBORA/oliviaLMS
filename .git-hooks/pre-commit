@@ -1,0 +1,24 @@
+#!/bin/bash
+
+###########################################
+# Pre-commit validation script
+# Ensures environment files are not committed
+###########################################
+
+echo "Running pre-commit checks..."
+
+# Check for .env files (except examples)
+if git diff --cached --name-only | grep -E "\.env$" | grep -v "\.env\.example$" | grep -v "\.env\.production$"; then
+    echo "ERROR: You are trying to commit .env files!"
+    echo "Please remove them from the commit."
+    exit 1
+fi
+
+# Check for common secrets
+if git diff --cached | grep -iE "(password|secret|api_key|private_key)" | grep -v "example"; then
+    echo "WARNING: Potential secrets detected in commit!"
+    echo "Please review your changes carefully."
+fi
+
+echo "Pre-commit checks passed!"
+exit 0

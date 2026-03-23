@@ -1,0 +1,116 @@
+_id,name,email,phone,debtCategory,debtTypes[0],debtTypes[1],totalDebtAmount,numberOfCreditors,monthlyDebtPayment,source,notes,address,city,state,zipcode,category,completionPercentage,status,qualificationStatus,lastUpdatedBy,createdBy,organization,priority,adminProcessed,isDuplicate,createdAt,updatedAt,leadId,__v,assignedAt,assignedBy,assignedTo,assignmentNotes,updatedBy,agent2LastAction,lastUpdatedAt,leadProgressStatus,followUpDate,followUpNotes,followUpTime,alternatePhone,conversionValue,duplicateOf,duplicateDetectedAt,duplicateReason,duplicateDetectedBy
+-,Wedderburn L Siomara,-,6096058506,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Alan Brown,-,-,-,-,-,-,-,LEAD00000001,-,-,Alan Brown,Newton James,Newton James,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,STEVEN ,-,2162878181,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,NQ,Hazel Anderson,-,-,-,-,-,-,-,LEAD00000002,-,-,Hazel Anderson,Newton James,Newton James,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,wayne carlton,-,2147960292,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,NQ,Paula Howard,-,-,-,-,-,-,-,LEAD00000003,-,-,Paula Howard,Dolly Fisher,Dolly Fisher,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,Nicole Russell,-,2036447339,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,NQ,Abigail Liebert,-,-,-,-,-,-,-,LEAD00000004,-,-,Abigail Liebert,Newton James,Newton James,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,Thomas I Ciara Thomas,-,3048592810,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,NQ,Abigail Liebert,-,-,-,-,-,-,-,LEAD00000005,-,-,Abigail Liebert,Newton James,Newton James,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,Jose,-,7084393309,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,NQ,Abigail Liebert,-,-,-,-,-,-,-,LEAD00000006,-,-,Abigail Liebert,Newton James,Newton James,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,Angelo Dryton,-,7188094963,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Alan Brown,-,-,-,-,-,-,-,LEAD00000007,-,-,Alan Brown,Newton James,Newton James,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,RONNIE CHACON,-,7148054592,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Rose Mcadams,-,-,-,-,-,-,-,LEAD00000008,-,-,Rose Mcadams,Jess Lively,Jess Lively,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,MICHAEL J IERACH,-,2163100690,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Rose Mcadams,-,-,-,-,-,-,-,LEAD00000009,-,-,Rose Mcadams,Newton James,Newton James,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,KRISTI PARKINSON,-,8018988398,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,NQ,Abigail Liebert,-,-,-,-,-,-,-,LEAD00000010,-,-,Abigail Liebert,Newton James,Newton James,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,Kathy Contrino ,-,7165786322,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Max Hunter,-,-,-,-,-,-,-,LEAD00000011,-,-,Max Hunter,Dolly Fisher,Dolly Fisher,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,ROLAND VICTOR ,-,6269234631,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Alan Brown,-,-,-,-,-,-,-,LEAD00000012,-,-,Alan Brown,Jess Lively,Jess Lively,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,Ivanny Joselynhenrique Bencosme ,-,8454616982,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Abigail Liebert,-,-,-,-,-,-,-,LEAD00000013,-,-,Abigail Liebert,Jess Lively,Jess Lively,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,DONNA B WOFFORD,-,8649781608,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Max Hunter,-,-,-,-,-,-,-,LEAD00000014,-,-,Max Hunter,Newton James,Newton James,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,Mustafa  Mohammed ,-,8726009778,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Hazel Anderson,-,-,-,-,-,-,-,LEAD00000015,-,-,Hazel Anderson,Dolly Fisher,Dolly Fisher,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,Devin Major,-,9142267925,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Ryan McFarland,-,-,-,-,-,-,-,LEAD00000016,-,-,Ryan McFarland,Newton James,Newton James,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,MICHAEL HUTCHISON,-,9163201345,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,NQ,Abigail Liebert,-,-,-,-,-,-,-,LEAD00000017,-,-,Abigail Liebert,Dolly Fisher,Dolly Fisher,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,KELLIE MILLER,-,9122575322,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Alan Brown,-,-,-,-,-,-,-,LEAD00000018,-,-,Alan Brown,Newton James,Newton James,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,kenneth gaskins,-,2522507567,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Hazel Anderson,-,-,-,-,-,-,-,LEAD00000019,-,-,Hazel Anderson,Dolly Fisher,Dolly Fisher,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,neena silver ,-,9783763313,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Hazel Anderson,-,-,-,-,-,-,-,LEAD00000020,-,-,Hazel Anderson,Paula Howard,Paula Howard,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,Orville Ramlal,-,9417356819,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Abigail Liebert,-,-,-,-,-,-,-,LEAD00000021,-,-,Abigail Liebert,Newton James,Newton James,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,NICHOLAS J BASALDUA,-,9802974558,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,NQ,Max Hunter,-,-,-,-,-,-,-,LEAD00000022,-,-,Max Hunter,Dolly Fisher,Dolly Fisher,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,Frank Silecchia ,-,9172937988,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,NQ,Max Hunter,-,-,-,-,-,-,-,LEAD00000023,-,-,Max Hunter,Jess Lively,Jess Lively,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,GARY J FORD,-,3039077878,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Alan Brown,-,-,-,-,-,-,-,LEAD00000024,-,-,Alan Brown,Newton James,Newton James,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,DONALD W OTTENS JR,-,2482070963,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Maxine Brown,-,-,-,-,-,-,-,LEAD00000025,-,-,Maxine Brown,Newton James,Newton James,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,Priscilla T Rasaki,-,3176984622,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Abigail Liebert,-,-,-,-,-,-,-,LEAD00000026,-,-,Abigail Liebert,Dolly Fisher,Dolly Fisher,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,BRIAN J OROURKE,-,7574786296,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Max Hunter,-,-,-,-,-,-,-,LEAD00000027,-,-,Max Hunter,Jess Lively,Jess Lively,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,KEVIN P QUINN,-,8475300310,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Luke Martin,-,-,-,-,-,-,-,LEAD00000028,-,-,Luke Martin,Jess Lively,Jess Lively,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,RUTH ROBBINS,-,9123189454,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Max Hunter,-,-,-,-,-,-,-,LEAD00000029,-,-,Max Hunter,Dolly Fisher,Dolly Fisher,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,stephanie cooper  ,-,9175326582,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Hazel Anderson,-,-,-,-,-,-,-,LEAD00000030,-,-,Hazel Anderson,Dolly Fisher,Dolly Fisher,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,Melvin Young Jr,-,8644263757,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Abigail Liebert,-,-,-,-,-,-,-,LEAD00000031,-,-,Abigail Liebert,Marcus Spencer,Marcus Spencer,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,CALEB SOUKHAMNEUT  ,-,3343096457,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Hazel Anderson,-,-,-,-,-,-,-,LEAD00000032,-,-,Hazel Anderson,Jess Lively,Jess Lively,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,DAVID DAVID,-,9257830371,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Rose Mcadams,-,-,-,-,-,-,-,LEAD00000033,-,-,Rose Mcadams,Jess Lively,Jess Lively,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,ESTELLA J JOHNSON,-,4044288141,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Ryan Mcfarland,-,-,-,-,-,-,-,LEAD00000034,-,-,Ryan Mcfarland,Dolly Fisher,Dolly Fisher,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,LENNELL J LYGHT,-,3343184746,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,NQ,Maxine Brown,-,-,-,-,-,-,-,LEAD00000035,-,-,Maxine Brown,Dolly Fisher,Dolly Fisher,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,Stephano Murguia,-,5597904503,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,NQ,Maxine Brown,-,-,-,-,-,-,-,LEAD00000036,-,-,Maxine Brown,Dolly Fisher,Dolly Fisher,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,Eric Ceccosiflio,-,4014515466,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Marcus Spencer,-,-,-,-,-,-,-,LEAD00000037,-,-,Marcus Spencer,Newton James,Newton James,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,RONNIE C BOYD,-,4055325495,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,NQ,Ryan Mcfarland,-,-,-,-,-,-,-,LEAD00000038,-,-,Ryan Mcfarland,Dolly Fisher,Dolly Fisher,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,Jesus Mendoza,-,5592171428,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Abigail Liebert,-,-,-,-,-,-,-,LEAD00000039,-,-,Abigail Liebert,Newton James,Newton James,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,HARRY STEPHENS,-,5857759185,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Paula Howard,-,-,-,-,-,-,-,LEAD00000040,-,-,Paula Howard,Jess Lively,Jess Lively,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,EDA PETERSON,-,6122367111,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Ryan Mcfarland,-,-,-,-,-,-,-,LEAD00000041,-,-,Ryan Mcfarland,Dolly Fisher,Dolly Fisher,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,KERRY WILCHER GARCIA,-,6198389655,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Abigail Liebert,-,-,-,-,-,-,-,LEAD00000042,-,-,Abigail Liebert,Dolly Fisher,Dolly Fisher,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,CHRISTOPHER MURPHY,-,7033034468,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,NQ,Paula Howard,-,-,-,-,-,-,-,LEAD00000043,-,-,Paula Howard,Newton James,Newton James,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,MICHAEL J PRINSEN,-,6362790473,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Rose Mcadams,-,-,-,-,-,-,-,LEAD00000044,-,-,Rose Mcadams,Newton James,Newton James,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,KEATH C OTTO,-,6469918239,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Max Hunter,-,-,-,-,-,-,-,LEAD00000045,-,-,Max Hunter,Jess Lively,Jess Lively,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,NATHAN GUSTAF ANDERSON,-,7012387445,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Ryan Mcfarland,-,-,-,-,-,-,-,LEAD00000046,-,-,Ryan Mcfarland,Dolly Fisher,Dolly Fisher,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,EUGENE C BENNETT,-,7062841592,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Ryan Mcfarland,-,-,-,-,-,-,-,LEAD00000047,-,-,Ryan Mcfarland,Dolly Fisher,Dolly Fisher,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,REGINALD A PLANT,-,4048492667,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Alan Brown,-,-,-,-,-,-,-,LEAD00000048,-,-,Alan Brown,Newton James,Newton James,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,OGNJEN B GOJKOVIC,-,8137676095,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Ryan Mcfarland,-,-,-,-,-,-,-,LEAD00000049,-,-,Ryan Mcfarland,Newton James,Newton James,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,JAMES L EASON,-,8702834660,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Ryan Mcfarland,-,-,-,-,-,-,-,LEAD00000050,-,-,Ryan Mcfarland,Marcus Spencer,Marcus Spencer,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,wendy wright,-,2692909552,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,NQ,Paula Howard,-,-,-,-,-,-,-,LEAD00000051,-,-,Paula Howard,Luke Martin,Luke Martin,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,Princess Henry,-,9177955891,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Alan Brown,-,-,-,-,-,-,-,LEAD00000052,-,-,Alan Brown,Marcus Spencer,Marcus Spencer,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,tawnetta williams,-,2069606160,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Rose Mcadams,-,-,-,-,-,-,-,LEAD00000053,-,-,Rose Mcadams,Dolly Fisher,Dolly Fisher,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,JUSTIN M WEIS,-,9373619469,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Rose Mcadams,-,-,-,-,-,-,-,LEAD00000054,-,-,Rose Mcadams,Newton James,Newton James,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,Thein Tun,-,3475360630,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Ryan Mcfarland,-,-,-,-,-,-,-,LEAD00000055,-,-,Ryan Mcfarland,Jess Lively,Jess Lively,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,Travis B Taylor ,-,8048920419,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Max Hunter,-,-,-,-,-,-,-,LEAD00000056,-,-,Max Hunter,Newton James,Newton James,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,TYLER J CHILSON,-,6083229271,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Rose Mcadams,-,-,-,-,-,-,-,LEAD00000057,-,-,Rose Mcadams,Jess Lively,Jess Lively,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,Joe Chapman,-,9294906758,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Hazel Anderson,-,-,-,-,-,-,-,LEAD00000058,-,-,Hazel Anderson,Marcus Spencer,Marcus Spencer,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,STEPHEN C NIPLE,-,2164084182,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Alan Brown,-,-,-,-,-,-,-,LEAD00000059,-,-,Alan Brown,Marcus Spencer,Marcus Spencer,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,LEESA D GRATKOWSKI,-,2699296423,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,NQ,Paula Howard,-,-,-,-,-,-,-,LEAD00000060,-,-,Paula Howard,Newton James,Newton James,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,ANJANEYULU KATAM,-,5852818780,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Abigail Liebert,-,-,-,-,-,-,-,LEAD00000061,-,-,Abigail Liebert,Newton James,Newton James,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,OUTHMANE AWANE,-,3173069686,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,NQ,Abigail Liebert,-,-,-,-,-,-,-,LEAD00000062,-,-,Abigail Liebert,Newton James,Newton James,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,JESUS M AQUINO,-,4014424560,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,NQ,Maxine Brown,-,-,-,-,-,-,-,LEAD00000063,-,-,Maxine Brown,Dolly Fisher,Dolly Fisher,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,Jose A Saleta Jr,-,4074862640,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Ryan Mcfarland,-,-,-,-,-,-,-,LEAD00000064,-,-,Ryan Mcfarland,Newton James,Newton James,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,RICHARD E SIEGEL SR ,-,4084311340,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Hazel Anderson,-,-,-,-,-,-,-,LEAD00000065,-,-,Hazel Anderson,Newton James,Newton James,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,Glenn G Algie,-,4088339313,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Rose Mcadams,-,-,-,-,-,-,-,LEAD00000066,-,-,Rose Mcadams,Jess Lively,Jess Lively,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,Roger J Russell ,-,3076890383,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Max Hunter,-,-,-,-,-,-,-,LEAD00000067,-,-,Max Hunter,Jess Lively,Jess Lively,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,Hawa Conde,-,4046656144,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Max Hunter,-,-,-,-,-,-,-,LEAD00000068,-,-,Max Hunter,Marcus Spencer,Marcus Spencer,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,GLORIA C CARDEN,-,4345793840,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Ryan Mcfarland,-,-,-,-,-,-,-,LEAD00000069,-,-,Ryan Mcfarland,Newton James,Newton James,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,CHADWICK SILLERS,-,5126528590,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Paula Howard,-,-,-,-,-,-,-,LEAD00000070,-,-,Paula Howard,Newton James,Newton James,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,JEFF T MILLER,-,5135717192,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Rose Mcadams,-,-,-,-,-,-,-,LEAD00000071,-,-,Rose Mcadams,Dolly Fisher,Dolly Fisher,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,SYED ANJERUL ISLAM,-,6178885074,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Abigail Liebert,-,-,-,-,-,-,-,LEAD00000072,-,-,Abigail Liebert,Dolly Fisher,Dolly Fisher,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,Paul Corona,-,7074584408,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,NQ,Abigail Liebert,-,-,-,-,-,-,-,LEAD00000073,-,-,Abigail Liebert,Newton James,Newton James,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,Matthew,-,3367404099,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Max Hunter,-,-,-,-,-,-,-,LEAD00000074,-,-,Max Hunter,Dolly Fisher,Dolly Fisher,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,JONATHAN Z WANN,-,2095665151,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Max Hunter,-,-,-,-,-,-,-,LEAD00000075,-,-,Max Hunter,Dolly Fisher,Dolly Fisher,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,GENILIA CARMINE,-,3073896950,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,NQ,Alan Brown,-,-,-,-,-,-,-,LEAD00000076,-,-,Alan Brown,Newton James,Newton James,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,ADAM D ALESSI,-,9258183583,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Rose Mcadams,-,-,-,-,-,-,-,LEAD00000077,-,-,Rose Mcadams,Dolly Fisher,Dolly Fisher,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,BRANDY L HACKER,-,5133844251,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Abigail Liebert,-,-,-,-,-,-,-,LEAD00000078,-,-,Abigail Liebert,Dolly Fisher,Dolly Fisher,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,Jeanton L  Bennett,-,4156856581,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Alan Brown,-,-,-,-,-,-,-,LEAD00000079,-,-,Alan Brown,Newton James,Newton James,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,DANIELE ARNOLD ,-,5303871675,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Hazel Anderson,-,-,-,-,-,-,-,LEAD00000080,-,-,Hazel Anderson,Jess Lively,Jess Lively,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,THOMAS C HARMER,-,6266446255,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Ryan Mcfarland,-,-,-,-,-,-,-,LEAD00000081,-,-,Ryan Mcfarland,Dolly Fisher,Dolly Fisher,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,CHRISTOPHER L DAVIS,-,3012813453,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Rose Mcadams,-,-,-,-,-,-,-,LEAD00000082,-,-,Rose Mcadams,Jess Lively,Jess Lively,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,CHARIS A CAREY,-,5044172883,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Ryan Mcfarland,-,-,-,-,-,-,-,LEAD00000083,-,-,Ryan Mcfarland,Jess Lively,Jess Lively,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,Bryan Wynne,-,9734775263,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Ryan Mcfarland,-,-,-,-,-,-,-,LEAD00000084,-,-,Ryan Mcfarland,Luke Martin,Luke Martin,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,LEONEL C CHAVEZ,-,8054331202,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,NQ,Paula Howard,-,-,-,-,-,-,-,LEAD00000085,-,-,Paula Howard,Newton James,Newton James,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,ISAAC ARSCOTT,-,8563458471,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Rose Mcadams,-,-,-,-,-,-,-,LEAD00000086,-,-,Rose Mcadams,Newton James,Newton James,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,Mae E Lee,-,8642961315,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Max Hunter,-,-,-,-,-,-,-,LEAD00000087,-,-,Max Hunter,Dolly Fisher,Dolly Fisher,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,RICARDO HERNANDEZ,-,5597138242,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Alan Brown,-,-,-,-,-,-,-,LEAD00000088,-,-,Alan Brown,Newton James,Newton James,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,BALAJI KASULA,-,3218775430,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Abigail Liebert,-,-,-,-,-,-,-,LEAD00000089,-,-,Abigail Liebert,Dolly Fisher,Dolly Fisher,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,Marek  Pekala,-,7735926373,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Alan Brown,-,-,-,-,-,-,-,LEAD00000090,-,-,Alan Brown,Jess Lively,Jess Lively,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,Gerald Love,-,7069791073,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Ryan Mcfarland,-,-,-,-,-,-,-,LEAD00000091,-,-,Ryan Mcfarland,Jess Lively,Jess Lively,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,Juan Moreno,-,8313255206,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Max Hunter,-,-,-,-,-,-,-,LEAD00000092,-,-,Max Hunter,Dolly Fisher,Dolly Fisher,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,Michelle J Dalton,-,2532662866,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Maxine Brown,-,-,-,-,-,-,-,LEAD00000093,-,-,Maxine Brown,Dolly Fisher,Dolly Fisher,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,Ricardo Pedroza,-,8302550145,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Alan Brown,-,-,-,-,-,-,-,LEAD00000094,-,-,Alan Brown,Jess Lively,Jess Lively,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,Paul B Kuehne,-,2537405015,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Maxine Brown,-,-,-,-,-,-,-,LEAD00000095,-,-,Maxine Brown,Dolly Fisher,Dolly Fisher,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,MARCUS R TAYLOR II,-,2293434310,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Abigail Liebert,-,-,-,-,-,-,-,LEAD00000096,-,-,Abigail Liebert,Marcus Spencer,Marcus Spencer,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,ROGER G REYES JR,-,3232283666,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,NQ,Paula Howard,-,-,-,-,-,-,-,LEAD00000097,-,-,Paula Howard,Dolly Fisher,Dolly Fisher,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,JUAN MILLAN ,-,5102398661,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Hazel Anderson,-,-,-,-,-,-,-,LEAD00000098,-,-,Hazel Anderson,Jess Lively,Jess Lively,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,SCOTT B TREMELLING,-,5083289537,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,NQ,Alan Brown,-,-,-,-,-,-,-,LEAD00000099,-,-,Alan Brown,Luke Martin,Luke Martin,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,KUNAL SHARMA,-,3172631132,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Ryan Mcfarland,-,-,-,-,-,-,-,LEAD00000100,-,-,Ryan Mcfarland,Newton James,Newton James,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,Stanley,-,2539888777,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Alan Brown,-,-,-,-,-,-,-,LEAD00000101,-,-,Alan Brown,Luke Martin,Luke Martin,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,Vernon Mimms,-,9728391062,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Ryan Mcfarland,-,-,-,-,-,-,-,LEAD00000102,-,-,Ryan Mcfarland,Marcus Spencer,Marcus Spencer,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,Cheri Wenger,-,9282085441,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Ryan Mcfarland,-,-,-,-,-,-,-,LEAD00000103,-,-,Ryan Mcfarland,Marcus Spencer,Marcus Spencer,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,Octavius Boone,-,9735538808,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Hazel Anderson,-,-,-,-,-,-,-,LEAD00000104,-,-,Hazel Anderson,Newton James,Newton James,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,Linda Whitcomb,-,7204199425,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Max Hunter,-,-,-,-,-,-,-,LEAD00000105,-,-,Max Hunter,Luke Martin,Luke Martin,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,Delores Jameshill,-,4752015792,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Alan Brown,-,-,-,-,-,-,-,LEAD00000106,-,-,Alan Brown,Jess Lively,Jess Lively,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,KATHRYN,-,5862015535,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Maxine Brown,-,-,-,-,-,-,-,LEAD00000107,-,-,Maxine Brown,Luke Martin,Luke Martin,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,Erma L Tisdale ,-,5854067991,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Paula Howard,-,-,-,-,-,-,-,LEAD00000108,-,-,Paula Howard,Marcus Spencer,Marcus Spencer,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,Esther M Bryant,-,6109721849,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Rose Mcadams,-,-,-,-,-,-,-,LEAD00000109,-,-,Rose Mcadams,Marcus Spencer,Marcus Spencer,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,Kelly K Bennett,-,6262012046,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,NQ,Abigail Liebert,-,-,-,-,-,-,-,LEAD00000110,-,-,Abigail Liebert,Marcus Spencer,Marcus Spencer,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,John Mcnutt,-,3302321980,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,NQ,Maxine Brown,-,-,-,-,-,-,-,LEAD00000111,-,-,Maxine Brown,Jess Lively,Jess Lively,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,Xiao Chen,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Max Hunter,-,-,-,-,-,-,-,LEAD00000112,-,-,Max Hunter,Dolly Fisher,Dolly Fisher,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,Jason Kirchmer,-,7175476186,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Ryan Mcfarland,-,-,-,-,-,-,-,LEAD00000113,-,-,Ryan Mcfarland,Newton James,Newton James,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,JUAN E PINA SR,-,6466109025,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,NQ,Paula Howard,-,-,-,-,-,-,-,LEAD00000114,-,-,Paula Howard,Newton James,Newton James,-,-,-,-,-,-,-,-,-,-,-,-,-
+-,Otis Woodall,-,7063460130,-,-,-,-,-,-,-,-,-,-,-,-,-,-,-,Qualified,Rose Mcadams,-,-,-,-,-,-,-,LEAD00000115,-,-,Rose Mcadams,Newton James,Newton James,-,-,-,-,-,-,-,-,-,-,-,-,-
