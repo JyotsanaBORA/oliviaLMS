@@ -33,6 +33,13 @@ const organizationSchema = new mongoose.Schema({
     trim: true,
     maxLength: [100, 'Website cannot exceed 100 characters']
   },
+  webhookApiKey: {
+    type: String,
+    unique: true,
+    sparse: true,
+    index: true,
+    select: false  // excluded from queries by default
+  },
   isActive: {
     type: Boolean,
     default: true

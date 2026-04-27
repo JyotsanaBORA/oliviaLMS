@@ -29,6 +29,9 @@ const authReducer = (state, action) => {
     case 'LOGIN_SUCCESS':
     case 'REGISTER_SUCCESS':
       localStorage.setItem('token', action.payload.token);
+      if (action.payload.chatToken) {
+        localStorage.setItem('chatToken', action.payload.chatToken);
+      }
       return {
         ...state,
         user: action.payload.user,
@@ -49,6 +52,7 @@ const authReducer = (state, action) => {
       };
     case 'LOGOUT':
       localStorage.removeItem('token');
+      localStorage.removeItem('chatToken');
       return {
         ...state,
         user: null,

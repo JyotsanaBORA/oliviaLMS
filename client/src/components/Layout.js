@@ -14,7 +14,8 @@ import {
   Bell,
   Settings,
   Shield,
-  Database
+  Database,
+  MessageSquare
 } from 'lucide-react';
 import LoadingSpinner from './LoadingSpinner';
 import toast from 'react-hot-toast';
@@ -26,7 +27,7 @@ const Layout = ({ onDashboardRefresh }) => {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // Prevent copying FROM the dashboard for all non-superadmin roles.
+  // Prevent copying FROM the dashboard for restricted roles.
   // Paste INTO the dashboard is intentionally allowed.
   useEffect(() => {
     const restrictedRoles = ['admin', 'agent1', 'agent2', 'restricted_admin'];
@@ -99,25 +100,33 @@ const Layout = ({ onDashboardRefresh }) => {
       return [
         { name: 'SuperAdmin', href: '/superadmin', icon: Shield },
         { name: 'Today Leads', href: '/leads', icon: Users },
+        { name: 'Chat', href: '/chat', icon: MessageSquare },
         ...baseItems
       ];
     } else if (user.role === 'admin') {
       return [
         { name: 'Dashboard', href: '/admin', icon: BarChart3 },
         { name: 'Today Leads', href: '/leads', icon: Users },
+        { name: 'Chat', href: '/chat', icon: MessageSquare },
         ...baseItems
       ];
     } else if (user.role === 'agent2') {
       return [
-        { name: 'Leads', href: '/leads', icon: Users }
+        { name: 'Leads', href: '/leads', icon: Users },
+        { name: 'Chat', href: '/chat', icon: MessageSquare },
       ];
     } else if (user.role === 'restricted_admin') {
       return [
         { name: 'Dashboard', href: '/restricted-dashboard', icon: Database }
       ];
+    } else if (user.role === 'affiliate_admin') {
+      return [
+        { name: 'Dashboard', href: '/affiliate', icon: Database }
+      ];
     } else {
       return [
         { name: 'Dashboard', href: '/dashboard', icon: Home },
+        { name: 'Chat', href: '/chat', icon: MessageSquare },
         ...baseItems
       ];
     }
@@ -127,7 +136,7 @@ const Layout = ({ onDashboardRefresh }) => {
 
   const isActive = (href) => location.pathname === href;
 
-  const isRestricted = user && ['admin', 'agent1', 'agent2'].includes(user.role);
+  const isRestricted = user && ['admin', 'agent2'].includes(user.role);
 
   return (
     <div className={`flex h-screen bg-gray-100${isRestricted ? ' select-none' : ''}`}>
@@ -173,7 +182,8 @@ const Layout = ({ onDashboardRefresh }) => {
                 {user.role === 'agent1' ? 'Lead Generator' : 
                  user.role === 'agent2' ? 'Lead Follower' : 
                  user.role === 'admin' ? 'Administrator' : 
-                 user.role === 'restricted_admin' ? 'Restricted Admin' : 'Super Administrator'}
+                 user.role === 'restricted_admin' ? 'Restricted Admin' :
+                 user.role === 'affiliate_admin' ? 'Affiliate Admin' : 'Super Administrator'}
               </p>
             </div>
           </div>

@@ -7,6 +7,8 @@ import { useAuth } from '../contexts/AuthContext';
 const CreateAgentModal = ({ isOpen, onClose, onAgentCreated, organizations = [] }) => {
   const { user } = useAuth();
   const isSuperAdmin = user?.role === 'superadmin';
+  const isReddingtonAdmin = user?.organization?.name === 'REDDINGTON GLOBAL CONSULTANCY';
+  const canPickOrg = isSuperAdmin || isReddingtonAdmin;
 
   const [formData, setFormData] = useState({
     name: '',
@@ -19,6 +21,9 @@ const CreateAgentModal = ({ isOpen, onClose, onAgentCreated, organizations = [] 
   });
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
+
+  // affiliate_admin does not belong to an organisation — derived from formData
+  const isAffiliateRole = formData.role === 'affiliate_admin';
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -49,7 +54,7 @@ const CreateAgentModal = ({ isOpen, onClose, onAgentCreated, organizations = [] 
       newErrors.email = 'Please enter a valid email';
     }
 
-    if (isSuperAdmin && !formData.organization) {
+    if (canPickOrg && !formData.organization && !isAffiliateRole) {
       newErrors.organization = 'Organization is required';
     }
 
@@ -78,17 +83,21 @@ const CreateAgentModal = ({ isOpen, onClose, onAgentCreated, organizations = [] 
 
     setLoading(true);
     try {
+      // affiliate_admin uses a dedicated endpoint; no org field
+      const isAffiliate = formData.role === 'affiliate_admin';
+      const endpoint = isAffiliate ? '/api/auth/create-affiliate-admin' : '/api/auth/create-agent';
+
       const payload = {
         name: formData.name,
         email: formData.email,
         password: formData.password,
-        role: formData.role,
-        vicidialAgentId: formData.vicidialAgentId.trim() || undefined
+        // Do NOT send role for affiliate endpoint — it is hardcoded on the backend
+        ...(isAffiliate ? {} : { role: formData.role, vicidialAgentId: formData.vicidialAgentId.trim() || undefined }),
       };
-      if (isSuperAdmin && formData.organization) {
+      if (!isAffiliate && canPickOrg && formData.organization) {
         payload.organization = formData.organization;
       }
-      const response = await axios.post('/api/auth/create-agent', payload);
+      const response = await axios.post(endpoint, payload);
 
       toast.success(response.data.message);
       onAgentCreated(response.data.data.user);
@@ -120,7 +129,9 @@ const CreateAgentModal = ({ isOpen, onClose, onAgentCreated, organizations = [] 
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg p-6 w-full max-w-md">
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xl font-semibold text-gray-800">Create Agent Account</h2>
+        <h2 className="text-xl font-semibold text-gray-800">
+            {isAffiliateRole ? 'Create Affiliate Admin Account' : 'Create Agent Account'}
+          </h2>
           <button
             onClick={onClose}
             className="text-gray-400 hover:text-gray-600"
@@ -172,8 +183,8 @@ const CreateAgentModal = ({ isOpen, onClose, onAgentCreated, organizations = [] 
             {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email}</p>}
           </div>
 
-          {/* Organization Field — SuperAdmin only */}
-          {isSuperAdmin && (
+          {/* Organization Field — SuperAdmin and Reddington admin (hidden for affiliate_admin) */}
+          {canPickOrg && !isAffiliateRole && (
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Organization <span className="text-red-500">*</span>
@@ -201,7 +212,7 @@ const CreateAgentModal = ({ isOpen, onClose, onAgentCreated, organizations = [] 
           {/* Role Field */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Agent Role
+              {isAffiliateRole ? 'Role' : 'Agent Role'}
             </label>
             <div className="relative">
               <Shield className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
@@ -211,13 +222,17 @@ const CreateAgentModal = ({ isOpen, onClose, onAgentCreated, organizations = [] 
                 onChange={handleChange}
                 className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               >
-                <option value="agent1">Agent 1 (Lead Generation & Qualification)</option>
-                <option value="agent2">Agent 2 (Follow-up & Conversion)</option>
+                <option value="agent1">Agent 1 (Lead Generation &amp; Qualification)</option>
+                <option value="agent2">Agent 2 (Follow-up &amp; Conversion)</option>
+                {isSuperAdmin && (
+                  <option value="affiliate_admin">Affiliate Admin (Campaign Dashboard)</option>
+                )}
               </select>
             </div>
           </div>
 
-          {/* Vicidial Agent ID Field */}
+          {/* Vicidial Agent ID Field — not shown for affiliate_admin */}
+          {!isAffiliateRole && (
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Vicidial Agent ID <span className="text-gray-400 font-normal">(optional)</span>
@@ -235,6 +250,7 @@ const CreateAgentModal = ({ isOpen, onClose, onAgentCreated, organizations = [] 
             </div>
             <p className="text-xs text-gray-500 mt-1">Maps this agent to a Vicidial agent for real-time call data</p>
           </div>
+          )}
 
           {/* Password Field */}
           <div>
@@ -292,7 +308,7 @@ const CreateAgentModal = ({ isOpen, onClose, onAgentCreated, organizations = [] 
               disabled={loading}
               className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
             >
-              {loading ? 'Creating...' : 'Create Agent'}
+              {loading ? 'Creating...' : isAffiliateRole ? 'Create Affiliate Admin' : 'Create Agent'}
             </button>
           </div>
         </form>

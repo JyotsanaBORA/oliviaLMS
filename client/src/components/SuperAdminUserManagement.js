@@ -275,6 +275,8 @@ const SuperAdminUserManagement = () => {
         return 'bg-purple-100 text-purple-800';
       case 'restricted_admin':
         return 'bg-orange-100 text-orange-800';
+      case 'affiliate_admin':
+        return 'bg-indigo-100 text-indigo-800';
       default:
         return 'bg-gray-100 text-gray-800';
     }
@@ -290,6 +292,8 @@ const SuperAdminUserManagement = () => {
         return 'System Administration';
       case 'restricted_admin':
         return 'Restricted Data Access';
+      case 'affiliate_admin':
+        return 'Affiliate Campaign Dashboard';
       default:
         return 'Unknown Role';
     }
@@ -392,6 +396,16 @@ const SuperAdminUserManagement = () => {
               }`}
             >
               Restricted Admin ({users.filter(u => u.role === 'restricted_admin').length})
+            </button>
+            <button
+              onClick={() => setRoleFilter('affiliate_admin')}
+              className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
+                roleFilter === 'affiliate_admin'
+                  ? 'bg-indigo-100 text-indigo-700 border border-indigo-300'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              Affiliate Admin ({users.filter(u => u.role === 'affiliate_admin').length})
             </button>
           </div>
         </div>

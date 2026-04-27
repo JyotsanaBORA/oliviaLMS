@@ -14,6 +14,7 @@ const {
   getEasternEndOfDay 
 } = require('../utils/timeFilters');
 const { sendGTIPostback, syncLeadWithInboundCall } = require('../utils/gtiPostbackService');
+const cache = require('../utils/cache');
 
 const EASTERN_TIMEZONE = 'America/New_York';
 
@@ -697,7 +698,6 @@ router.get('/export', [
     if (req.user.role === 'agent1') {
       filter.createdBy = req.user._id;
       filter.adminProcessed = { $ne: true }; // Hide admin-processed leads
-      console.log('Agent1 export filter applied:', filter);
     } else if (req.user.role === 'agent2') {
       // Agent2 can see:
       // 1. Leads assigned to them
@@ -724,19 +724,13 @@ router.get('/export', [
           adminProcessed: { $ne: true }
         }
       ];
-      console.log('Agent2 export filter applied:', filter);
     } else if (req.user.role === 'admin') {
       // Admin organization filtering is now handled at the top of filter building
       // No additional filtering needed here - organization filter already applied
-      console.log('Admin export filter applied: organization already set at top of filter chain');
     } else if (req.user.role === 'superadmin') {
       // SuperAdmin can see all leads including duplicates from all organizations
       // No additional filters needed beyond query parameters
-      console.log('SuperAdmin export filter applied: No restrictions');
     }
-
-    console.log('Final export filter:', JSON.stringify(filter, null, 2));
-    console.log('User role:', req.user.role, 'User ID:', req.user._id);
 
     // Get all matching leads (no pagination for export) - EXACT same query as main route
     const leads = await Lead.find(filter)
@@ -1073,7 +1067,6 @@ router.get('/', protect, [
         // Other organization admins can ONLY see leads from their own organization
         // This restriction is applied FIRST and cannot be overridden by query params
         filter.organization = req.user.organization;
-        console.log('Non-REDDINGTON Admin: Restricting to organization', req.user.organization);
       }
     } else if (req.user.role === 'superadmin' && req.query.organization) {
       // SuperAdmin can filter by organization if specified
@@ -1165,8 +1158,6 @@ router.get('/', protect, [
             startDate = new Date(req.query.startDate + 'T00:00:00Z');
             endDate = new Date(req.query.endDate + 'T23:59:59.999Z');
             
-            console.log(`Main API Custom date filter: ${req.query.startDate} to ${req.query.endDate}`);
-            console.log(`Main API Converted to UTC: ${startDate.toISOString()} to ${endDate.toISOString()}`);
           }
           break;
       }
@@ -1184,12 +1175,10 @@ router.get('/', protect, [
       if (req.query.startDate) {
         const startDate = new Date(req.query.startDate + 'T00:00:00Z');
         dateFilter.$gte = startDate;
-        console.log(`Main API Individual startDate filter: ${startDate.toISOString()}`);
       }
       if (req.query.endDate) {
         const endDate = new Date(req.query.endDate + 'T23:59:59.999Z');
         dateFilter.$lte = endDate;
-        console.log(`Main API Individual endDate filter: ${endDate.toISOString()}`);
       }
       filter.createdAt = dateFilter;
     }
@@ -1201,7 +1190,6 @@ router.get('/', protect, [
     if (req.user.role === 'agent1') {
       filter.createdBy = req.user._id;
       filter.adminProcessed = { $ne: true }; // Hide admin-processed leads
-      console.log('Agent1 filter applied:', filter);
     } else if (req.user.role === 'agent2') {
       // Agent2 can see:
       // 1. Leads assigned to them
@@ -1228,19 +1216,7 @@ router.get('/', protect, [
           adminProcessed: { $ne: true }
         }
       ];
-      console.log('Agent2 filter applied:', filter);
-    } else if (req.user.role === 'admin') {
-      // Admin organization filtering is now handled at the top of filter building
-      // No additional filtering needed here - organization filter already applied
-      console.log('Admin filter applied: organization already set at top of filter chain');
-    } else if (req.user.role === 'superadmin') {
-      // SuperAdmin can see all leads including duplicates from all organizations
-      // No additional filters needed beyond query parameters
-      console.log('SuperAdmin filter applied: No restrictions');
     }
-
-    console.log('Final filter:', filter);
-    console.log('User role:', req.user.role, 'User ID:', req.user._id);
 
     // List-view projection — only fields needed for the table (not editing/detail views)
     const listProjection = {
@@ -1257,7 +1233,7 @@ router.get('/', protect, [
       assignedAt: 1, assignmentNotes: 1,
       createdBy: 1, updatedBy: 1, assignedTo: 1, assignedBy: 1,
       organization: 1, disposedBy: 1, duplicateDetectedBy: 1,
-      gtiCallUuid: 1, gtiPrimaryPhone: 1,
+      gtiCallUuid: 1, gtiPrimaryPhone: 1, vicidialDid: 1,
       clientId: 1, conversionValue: 1, convertedAt: 1,
       lastUpdatedBy: 1, lastUpdatedAt: 1,
       createdAt: 1, updatedAt: 1
@@ -1280,8 +1256,6 @@ router.get('/', protect, [
         .lean(),
       Lead.countDocuments(filter)
     ]);
-
-    console.log('Found leads:', leads.length, 'Total count:', total);
 
     res.status(200).json({
       success: true,
@@ -1367,6 +1341,13 @@ router.get('/available-agents', protect, async (req, res) => {
 // @access  Private (Admin, SuperAdmin)
 router.get('/today-stats', protect, authorize('admin', 'superadmin'), async (req, res) => {
   try {
+    const { role } = req.user;
+    const statsCacheKey = `today_stats:${role}:${req.user.organization || 'all'}`;
+    const cachedStats = cache.get(statsCacheKey);
+    if (cachedStats) {
+      return res.json({ success: true, data: cachedStats });
+    }
+
     const todayStart = getEasternStartOfDay();
     const todayEnd = getEasternEndOfDay();
     const dateFilter = { createdAt: { $gte: todayStart, $lte: todayEnd } };
@@ -1391,12 +1372,126 @@ router.get('/today-stats', protect, authorize('admin', 'superadmin'), async (req
       ? parseFloat(((qualified / (qualified + notQualified)) * 100).toFixed(1))
       : 0;
 
+    const result = { total, qualified, notQualified, pending, sale, qualificationRate };
+    cache.set(statsCacheKey, result, 20);
     res.json({
       success: true,
-      data: { total, qualified, notQualified, pending, sale, qualificationRate }
+      data: result
     });
   } catch (error) {
     console.error('Error fetching today stats:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// @desc    Get inbound/outbound call report for a date range with optional DID search
+// @route   GET /api/leads/call-report
+// @access  Private (Admin, SuperAdmin)
+router.get('/call-report', protect, authorize('admin', 'superadmin'), async (req, res) => {
+  try {
+    const { date, did } = req.query;
+
+    // Build org scope
+    let orgFilter = {};
+    if (req.user.role === 'admin') {
+      const adminOrg = await Organization.findById(req.user.organization).select('name').lean();
+      const isReddington = adminOrg && adminOrg.name === 'REDDINGTON GLOBAL CONSULTANCY';
+      if (!isReddington) {
+        orgFilter = { organization: req.user.organization };
+      }
+    }
+
+    // Date range — default to today (Eastern)
+    const targetDate = date ? new Date(date) : getEasternNow();
+    const startOfDay = new Date(targetDate);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(targetDate);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    const dateFilter = { createdAt: { $gte: startOfDay, $lte: endOfDay } };
+
+    // Inbound leads = leads with a vicidialDid (DID present means call came in on that number)
+    // Outbound leads = all others, computed as grandTotal - inbound to avoid $not index issues
+    const baseFilter = { ...orgFilter, ...dateFilter };
+    const allInboundFilter = { ...baseFilter, vicidialDid: { $exists: true, $ne: '' } };
+
+    // inboundFilter may be further narrowed by optional DID search
+    const inboundFilter = { ...allInboundFilter };
+    if (did && did.trim()) {
+      inboundFilter.vicidialDid = { $regex: did.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' };
+    }
+
+    // When no DID filter, inbound === allGTI so skip duplicate allGTI queries
+    const hasDid = !!(did && did.trim());
+
+    const [
+      inboundTotal,
+      inboundDisposed,
+      inboundTransferred,
+      inboundSale,
+      grandTotal,
+      grandDisposed,
+      grandTransferred,
+      grandSale,
+      allInboundTotal,
+      allInboundDisposed,
+      allInboundTransferred,
+      allInboundSale,
+      topDids,
+    ] = await Promise.all([
+      Lead.countDocuments(inboundFilter),
+      Lead.countDocuments({ ...inboundFilter, isDisposed: true }),
+      Lead.countDocuments({ ...inboundFilter, assignedTo: { $exists: true, $ne: null } }),
+      Lead.countDocuments({ ...inboundFilter, leadProgressStatus: { $in: ['SALE', 'Immediate Enrollment', 'Sale Long Play'] } }),
+      Lead.countDocuments(baseFilter),
+      Lead.countDocuments({ ...baseFilter, isDisposed: true }),
+      Lead.countDocuments({ ...baseFilter, assignedTo: { $exists: true, $ne: null } }),
+      Lead.countDocuments({ ...baseFilter, leadProgressStatus: { $in: ['SALE', 'Immediate Enrollment', 'Sale Long Play'] } }),
+      hasDid ? Lead.countDocuments(allInboundFilter) : Promise.resolve(null),
+      hasDid ? Lead.countDocuments({ ...allInboundFilter, isDisposed: true }) : Promise.resolve(null),
+      hasDid ? Lead.countDocuments({ ...allInboundFilter, assignedTo: { $exists: true, $ne: null } }) : Promise.resolve(null),
+      hasDid ? Lead.countDocuments({ ...allInboundFilter, leadProgressStatus: { $in: ['SALE', 'Immediate Enrollment', 'Sale Long Play'] } }) : Promise.resolve(null),
+      // Top DIDs for the day (inbound only — grouped by vicidialDid)
+      Lead.aggregate([
+        { $match: { ...orgFilter, ...dateFilter, vicidialDid: { $exists: true, $ne: '' } } },
+        { $group: { _id: '$vicidialDid', count: { $sum: 1 }, disposed: { $sum: { $cond: ['$isDisposed', 1, 0] } } } },
+        { $sort: { count: -1 } },
+        { $limit: 10 },
+      ]),
+    ]);
+
+    // Outbound = grand total - all inbound (not the DID-filtered subset)
+    const allInbTotal = allInboundTotal !== null ? allInboundTotal : inboundTotal;
+    const allInbDisposed = allInboundDisposed !== null ? allInboundDisposed : inboundDisposed;
+    const allInbTransferred = allInboundTransferred !== null ? allInboundTransferred : inboundTransferred;
+    const allInbSale = allInboundSale !== null ? allInboundSale : inboundSale;
+
+    const outboundTotal = grandTotal - allInbTotal;
+    const outboundDisposed = grandDisposed - allInbDisposed;
+    const outboundTransferred = grandTransferred - allInbTransferred;
+    const outboundSale = grandSale - allInbSale;
+
+    res.status(200).json({
+      success: true,
+      data: {
+        date: startOfDay.toISOString().split('T')[0],
+        inbound: {
+          total: inboundTotal,
+          disposed: inboundDisposed,
+          transferred: inboundTransferred,
+          sale: inboundSale,
+        },
+        outbound: {
+          total: outboundTotal,
+          disposed: outboundDisposed,
+          transferred: outboundTransferred,
+          sale: outboundSale,
+        },
+        topDids,
+      },
+    });
+  } catch (error) {
+    console.error('Call report error:', error);
     res.status(500).json({ success: false, message: 'Server error' });
   }
 });
@@ -2223,9 +2318,20 @@ router.post('/:id/unassign', protect, async (req, res) => {
 router.get('/dashboard/stats', protect, async (req, res) => {
   try {
     const { role, _id: userId } = req.user;
-    
+
+    // Short-lived cache to absorb the 30s polling from all users
+    const statsCacheKey = role === 'superadmin'
+      ? 'dash_stats:superadmin'
+      : role === 'admin'
+        ? `dash_stats:admin:${req.user.organization || 'all'}`
+        : `dash_stats:${role}:${userId}`;
+    const cachedDashStats = cache.get(statsCacheKey);
+    if (cachedDashStats) {
+      return res.status(200).json({ success: true, data: cachedDashStats });
+    }
+
     let filter = {};
-    
+
     // Apply filters based on user role
     if (role === 'agent1') {
       filter = { assignedAgent: userId, status: { $in: ['new', 'contacted', 'qualified'] } };
@@ -2387,6 +2493,7 @@ router.get('/dashboard/stats', protect, async (req, res) => {
       lastUpdated: formatEasternTime(getEasternNow())
     };
 
+    cache.set(statsCacheKey, response, 20);
     res.status(200).json({
       success: true,
       data: response

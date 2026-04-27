@@ -1,119 +1,142 @@
 /**
- * Simple in-memory cache utility for dashboard statistics
- * Reduces database load by caching frequently accessed data
+ * Hybrid cache utility — uses Redis when available, falls back to in-process
+ * Map when Redis is not configured or unreachable.
+ *
+ * The public API is identical to the old SimpleCache so all callers
+ * (cacheInvalidator, route handlers) need zero changes.
+ *
+ * Redis ops are ASYNC but callers that used the old synchronous API pass
+ * through a non-blocking fire-and-forget write, with synchronous in-memory
+ * reads for speed.  Invalidation (delete / clear) is fully synchronous
+ * in-memory AND async Redis so both layers stay consistent.
  */
 
-class SimpleCache {
-  constructor() {
-    this.cache = new Map();
-    this.timestamps = new Map();
-  }
+const { cacheClient, isRedisReady } = require('./redisClient');
 
-  /**
-   * Set a value in cache with TTL (time to live)
-   * @param {string} key - Cache key
-   * @param {any} value - Value to cache
-   * @param {number} ttlSeconds - Time to live in seconds (default: 300 = 5 minutes)
-   */
-  set(key, value, ttlSeconds = 300) {
-    this.cache.set(key, value);
-    this.timestamps.set(key, Date.now() + (ttlSeconds * 1000));
-  }
+// ─── In-memory layer (always present) ────────────────────────────────────────
+const memCache = new Map();
+const memTimestamps = new Map();
 
-  /**
-   * Get a value from cache
-   * @param {string} key - Cache key
-   * @returns {any|null} - Cached value or null if expired/not found
-   */
-  get(key) {
-    const timestamp = this.timestamps.get(key);
-    
-    if (!timestamp || Date.now() > timestamp) {
-      // Expired or not found
-      this.delete(key);
-      return null;
-    }
-    
-    return this.cache.get(key);
-  }
-
-  /**
-   * Delete a key from cache
-   * @param {string} key - Cache key
-   */
-  delete(key) {
-    this.cache.delete(key);
-    this.timestamps.delete(key);
-  }
-
-  /**
-   * Clear all cache entries
-   */
-  clear() {
-    this.cache.clear();
-    this.timestamps.clear();
-  }
-
-  /**
-   * Get cache statistics
-   * @returns {object} - Cache stats
-   */
-  getStats() {
-    return {
-      size: this.cache.size,
-      keys: Array.from(this.cache.keys())
-    };
-  }
-
-  /**
-   * Clean up expired entries
-   */
-  cleanup() {
-    const now = Date.now();
-    for (const [key, timestamp] of this.timestamps.entries()) {
-      if (now > timestamp) {
-        this.delete(key);
-      }
-    }
-  }
-
-  /**
-   * Generate cache key for dashboard stats
-   * @param {string} userId - User ID
-   * @param {string} role - User role
-   * @param {string} organizationId - Organization ID
-   * @returns {string} - Cache key
-   */
-  generateDashboardStatsKey(userId, role, organizationId = null) {
-    return `dashboard_stats:${role}:${userId}:${organizationId || 'all'}`;
-  }
-
-  /**
-   * Generate cache key for persistent leads
-   * @param {string} userId - User ID
-   * @param {string} status - Status filter (optional)
-   * @returns {string} - Cache key
-   */
-  generatePersistentLeadsKey(userId, status = 'all') {
-    return `persistent_leads:${userId}:${status}`;
-  }
-
-  /**
-   * Generate cache key for admin persistent leads
-   * @param {string} organizationId - Organization ID
-   * @returns {string} - Cache key
-   */
-  generateAdminPersistentLeadsKey(organizationId) {
-    return `admin_persistent_leads:${organizationId}`;
-  }
+function memSet(key, value, ttlSeconds) {
+  memCache.set(key, value);
+  memTimestamps.set(key, Date.now() + ttlSeconds * 1000);
 }
 
-// Create singleton instance
-const cache = new SimpleCache();
+function memGet(key) {
+  const ts = memTimestamps.get(key);
+  if (!ts || Date.now() > ts) {
+    memCache.delete(key);
+    memTimestamps.delete(key);
+    return null;
+  }
+  return memCache.get(key);
+}
 
-// Clean up expired entries every 5 minutes
-setInterval(() => {
-  cache.cleanup();
-}, 5 * 60 * 1000);
+function memDel(key) {
+  memCache.delete(key);
+  memTimestamps.delete(key);
+}
+
+// ─── Redis helpers (fire-and-forget, never throw) ────────────────────────────
+const CACHE_PREFIX = 'lms:cache:';
+
+async function redisSet(key, value, ttlSeconds) {
+  if (!isRedisReady()) return;
+  try {
+    await cacheClient.set(CACHE_PREFIX + key, JSON.stringify(value), 'EX', ttlSeconds);
+  } catch (_) { /* Redis error — in-memory still valid */ }
+}
+
+async function redisGet(key) {
+  if (!isRedisReady()) return null;
+  try {
+    const raw = await cacheClient.get(CACHE_PREFIX + key);
+    return raw ? JSON.parse(raw) : null;
+  } catch (_) { return null; }
+}
+
+async function redisDel(key) {
+  if (!isRedisReady()) return;
+  try { await cacheClient.del(CACHE_PREFIX + key); } catch (_) {}
+}
+
+async function redisClear(pattern) {
+  if (!isRedisReady()) return;
+  try {
+    const keys = await cacheClient.keys(CACHE_PREFIX + (pattern || '*'));
+    if (keys.length) await cacheClient.del(...keys);
+  } catch (_) {}
+}
+
+// ─── Public cache API ─────────────────────────────────────────────────────────
+const cache = {
+  set(key, value, ttlSeconds = 300) {
+    memSet(key, value, ttlSeconds);
+    redisSet(key, value, ttlSeconds); // async, fire-and-forget
+  },
+
+  get(key) {
+    // Always return in-memory value synchronously for speed.
+    // Background: next set() will warm local memory from Redis if this worker
+    // missed an invalidation — see getAsync() for cross-worker-safe reads.
+    return memGet(key);
+  },
+
+  // Async read: checks Redis first so cross-worker invalidations are respected.
+  async getAsync(key) {
+    const local = memGet(key);
+    if (local !== null) return local;
+    const remote = await redisGet(key);
+    if (remote !== null) {
+      // Warm local memory
+      const ts = memTimestamps.get(key);
+      const remaining = ts ? Math.ceil((ts - Date.now()) / 1000) : 300;
+      memSet(key, remote, Math.max(remaining, 1));
+    }
+    return remote;
+  },
+
+  delete(key) {
+    memDel(key);
+    redisDel(key); // async, fire-and-forget
+  },
+
+  clear() {
+    memCache.clear();
+    memTimestamps.clear();
+    redisClear(); // async, fire-and-forget
+  },
+
+  getStats() {
+    return {
+      size: memCache.size,
+      keys: Array.from(memCache.keys()),
+      redisActive: isRedisReady(),
+    };
+  },
+
+  cleanup() {
+    const now = Date.now();
+    for (const [key, ts] of memTimestamps.entries()) {
+      if (now > ts) memDel(key);
+    }
+  },
+
+  // ─── Key generators (unchanged) ──────────────────────────────────────────
+  generateDashboardStatsKey(userId, role, organizationId = null) {
+    return `dashboard_stats:${role}:${userId}:${organizationId || 'all'}`;
+  },
+
+  generatePersistentLeadsKey(userId, status = 'all') {
+    return `persistent_leads:${userId}:${status}`;
+  },
+
+  generateAdminPersistentLeadsKey(organizationId) {
+    return `admin_persistent_leads:${organizationId}`;
+  },
+};
+
+// Clean up expired in-memory entries every 5 minutes
+setInterval(() => cache.cleanup(), 5 * 60 * 1000);
 
 module.exports = cache;

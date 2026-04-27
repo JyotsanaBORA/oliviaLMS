@@ -3,21 +3,18 @@ import axios from 'axios';
 // Resolve a safe API base URL
 const resolveApiBaseUrl = () => {
   const envUrl = process.env.REACT_APP_API_URL;
-  const fallback = 'http://localhost:5000';
 
-  if (!envUrl || envUrl.trim() === '') return fallback;
+  if (!envUrl || envUrl.trim() === '') return '';
 
-  // If starts with ':' or missing protocol/host, use fallback
   const trimmed = envUrl.trim();
-  const looksInvalid = trimmed.startsWith(':') || !/^https?:\/\//i.test(trimmed);
-  if (looksInvalid) return fallback;
+  // Relative URL (starts with / or empty) — use as-is for proxy
+  if (!trimmed.startsWith('http')) return trimmed;
 
   try {
-    // Validate URL parsing
     const u = new URL(trimmed);
     return `${u.protocol}//${u.host}`;
   } catch (_) {
-    return fallback;
+    return '';
   }
 };
 

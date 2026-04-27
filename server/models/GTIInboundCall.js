@@ -22,6 +22,11 @@ const gtiInboundCallSchema = new mongoose.Schema({
     required: true,
     index: true,
   },
+  did: {
+    type: String,
+    trim: true,
+    index: true,
+  },
   receivedAt: {
     type: Date,
     default: Date.now,
@@ -44,21 +49,28 @@ const gtiInboundCallSchema = new mongoose.Schema({
 
 gtiInboundCallSchema.index({ receivedAt: 1 }, { expireAfterSeconds: ttlSeconds });
 
-gtiInboundCallSchema.statics.touchArrival = function(primaryPhone, callUuid) {
+gtiInboundCallSchema.statics.touchArrival = function(primaryPhone, callUuid, did = null) {
   const now = new Date();
+  const updateData = {
+    $set: {
+      primaryPhone,
+      callUuid,
+      receivedAt: now,
+      consumed: false,
+    },
+    $setOnInsert: {
+      sendCount: 0,
+    },
+  };
+  
+  // Add DID to update if provided
+  if (did) {
+    updateData.$set.did = did;
+  }
+  
   return this.findOneAndUpdate(
     { primaryPhone },
-    {
-      $set: {
-        primaryPhone,
-        callUuid,
-        receivedAt: now,
-        consumed: false,
-      },
-      $setOnInsert: {
-        sendCount: 0,
-      },
-    },
+    updateData,
     {
       new: true,
       upsert: true,

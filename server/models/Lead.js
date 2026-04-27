@@ -74,6 +74,23 @@ const leadSchema = new mongoose.Schema({
   gtiLastPostback: {
     type: Date,
   },
+  // Vicidial DID — populated when the lead was created from an inbound Vicidial call.
+  // Presence of this field = inbound call; absence = outbound / manual.
+  vicidialDid: {
+    type: String,
+    trim: true,
+    index: true,
+  },
+
+  // Vicidial campaign name — populated from the campaignName field of the VicidialCall
+  // that triggered this lead. Used by the affiliate dashboard to filter by campaign.
+  vicidialCampaignName: {
+    type: String,
+    trim: true,
+    index: true,
+    sparse: true,
+  },
+
   gtiPostbackHistory: [{
     eventType: {
       type: String,

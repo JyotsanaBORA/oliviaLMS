@@ -317,6 +317,105 @@ router.post(
 );
 
 // ─────────────────────────────────────────────────────────────────
+// @route   GET /api/admin-uploads/stats
+// @desc    Aggregate stats: total leads, total debt, SALE count, NQ count
+// @access  restricted_admin (own data), admin/superadmin (all)
+// ─────────────────────────────────────────────────────────────────
+router.get('/stats', protect, requireRoles('restricted_admin', 'admin', 'superadmin'), async (req, res) => {
+  try {
+    const match = {};
+
+    // Role-based scoping
+    if (req.user.role === 'restricted_admin') {
+      match.sharedWith = req.user._id;
+    }
+    if (['admin', 'superadmin'].includes(req.user.role) && req.query.sharedWith) {
+      const mongoose = require('mongoose');
+      match.sharedWith = new mongoose.Types.ObjectId(req.query.sharedWith);
+    }
+
+    // Date filtering
+    const dateQuery = buildDateFilter(req.query);
+    Object.assign(match, dateQuery);
+
+    const [result] = await AdminUpload.aggregate([
+      { $match: match },
+      {
+        $group: {
+          _id: null,
+          totalLeads: { $sum: 1 },
+          enrolledDebt: {
+            $sum: {
+              $cond: [
+                { $regexMatch: { input: { $ifNull: ['$status', ''] }, regex: /^sale$/i } },
+                { $convert: { input: '$custom1', to: 'double', onError: 0, onNull: 0 } },
+                0
+              ]
+            }
+          },
+          salesClosed: {
+            $sum: {
+              $cond: [
+                { $regexMatch: { input: { $ifNull: ['$status', ''] }, regex: /^sale$/i } },
+                1, 0
+              ]
+            }
+          },
+          notQualified: {
+            $sum: {
+              $cond: [
+                { $regexMatch: { input: { $ifNull: ['$status', ''] }, regex: /^(NQ|NOT QUALIFIED|NOTQUALIFIED)$/i } },
+                1, 0
+              ]
+            }
+          },
+          dnc: {
+            $sum: {
+              $cond: [
+                { $regexMatch: { input: { $ifNull: ['$status', ''] }, regex: /^DNC$/i } },
+                1, 0
+              ]
+            }
+          },
+          wnu: {
+            $sum: {
+              $cond: [
+                { $regexMatch: { input: { $ifNull: ['$status', ''] }, regex: /^WNU$/i } },
+                1, 0
+              ]
+            }
+          },
+          lb: {
+            $sum: {
+              $cond: [
+                { $regexMatch: { input: { $ifNull: ['$status', ''] }, regex: /^LB$/i } },
+                1, 0
+              ]
+            }
+          }
+        }
+      }
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        totalLeads: result?.totalLeads || 0,
+        enrolledDebt: result?.enrolledDebt || 0,
+        salesClosed: result?.salesClosed || 0,
+        notQualified: result?.notQualified || 0,
+        dnc: result?.dnc || 0,
+        wnu: result?.wnu || 0,
+        lb: result?.lb || 0
+      }
+    });
+  } catch (err) {
+    console.error('Error fetching admin upload stats:', err);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────
 // @route   GET /api/admin-uploads
 // @desc    Get admin uploads with date filtering + pagination
 // @access  restricted_admin (own data), admin/superadmin (all)
@@ -342,6 +441,18 @@ router.get('/', protect, requireRoles('restricted_admin', 'admin', 'superadmin')
     // Date filtering
     const dateQuery = buildDateFilter(req.query);
     Object.assign(query, dateQuery);
+
+    // Status filtering
+    if (req.query.statusFilter) {
+      const sf = req.query.statusFilter;
+      if (sf === 'SALE') {
+        query.status = { $regex: /^sale$/i };
+      } else if (sf === 'NQ') {
+        query.status = { $regex: /^(NQ|NOT QUALIFIED|NOTQUALIFIED)$/i };
+      } else {
+        query.status = { $regex: new RegExp(`^${sf.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') };
+      }
+    }
 
     const [total, records] = await Promise.all([
       AdminUpload.countDocuments(query),
@@ -388,6 +499,18 @@ router.get('/export', protect, requireRoles('restricted_admin', 'admin', 'supera
 
     const dateQuery = buildDateFilter(req.query);
     Object.assign(query, dateQuery);
+
+    // Status filtering
+    if (req.query.statusFilter) {
+      const sf = req.query.statusFilter;
+      if (sf === 'SALE') {
+        query.status = { $regex: /^sale$/i };
+      } else if (sf === 'NQ') {
+        query.status = { $regex: /^(NQ|NOT QUALIFIED|NOTQUALIFIED)$/i };
+      } else {
+        query.status = { $regex: new RegExp(`^${sf.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') };
+      }
+    }
 
     const records = await AdminUpload.find(query)
       .sort({ entryDateParsed: -1, createdAt: -1 })

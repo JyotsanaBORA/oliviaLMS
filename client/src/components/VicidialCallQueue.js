@@ -75,6 +75,7 @@ const VicidialCallQueue = ({ onLoadCallData, isFormActive }) => {
         _vicidialCallId: callData._id,
         _vicidialCallType: callData.callType,
         _vicidialCampaign: callData.campaignName,
+        _vicidialDid: callData.did || '',
       };
 
       // ALWAYS auto-open when ViciDial sends data
@@ -162,6 +163,7 @@ const VicidialCallQueue = ({ onLoadCallData, isFormActive }) => {
         _vicidialCallId: call._id,
         _vicidialCallType: call.callType,
         _vicidialCampaign: call.campaignName,
+        _vicidialDid: call.did || '',
       };
 
       // Remove from local queue
@@ -251,23 +253,37 @@ const VicidialCallQueue = ({ onLoadCallData, isFormActive }) => {
               {queue.map((call) => (
                 <li
                   key={call._id}
-                  className="flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors cursor-pointer"
+                  className={`flex items-center justify-between px-4 py-3 transition-colors cursor-pointer border-l-4 ${
+                    call.callType === 'inbound' 
+                      ? 'border-l-red-500 bg-red-50 hover:bg-red-100' 
+                      : 'border-l-blue-500 bg-blue-50 hover:bg-blue-100'
+                  }`}
                   onClick={() => handleLoadCall(call)}
                 >
                   <div className="flex items-center space-x-3 min-w-0">
-                    {/* Call type icon */}
+                    {/* Call type icon with color coding */}
                     {call.callType === 'inbound' ? (
-                      <PhoneIncoming className="h-4 w-4 text-green-500 flex-shrink-0" />
+                      <div className="flex items-center space-x-1">
+                        <PhoneIncoming className="h-4 w-4 text-red-600 flex-shrink-0" />
+                        {call.did && (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-700 border border-red-300">
+                            DID
+                          </span>
+                        )}
+                      </div>
                     ) : (
-                      <PhoneOutgoing className="h-4 w-4 text-orange-500 flex-shrink-0" />
+                      <PhoneOutgoing className="h-4 w-4 text-blue-600 flex-shrink-0" />
                     )}
 
                     <div className="min-w-0">
-                      <p className="text-sm font-medium text-gray-900 truncate">
+                      <p className={`text-sm font-medium truncate ${
+                        call.callType === 'inbound' ? 'text-red-700' : 'text-blue-700'
+                      }`}>
                         {call.callerName || call.firstName || 'Unknown Caller'}
                       </p>
                       <p className="text-xs text-gray-500">
                         {call.phoneNumber || 'No phone'} 
+                        {call.did ? ` • DID: ${call.did}` : ''}
                         {call.campaignName ? ` • ${call.campaignName}` : ''}
                         {call.receivedAt ? ` • ${formatTime(call.receivedAt)}` : ''}
                       </p>

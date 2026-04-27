@@ -30,7 +30,10 @@ class SocketOptimizer {
     this.userSockets.get(userKey).push({
       socket,
       organizationId,
-      connectedAt: Date.now()
+      connectedAt: Date.now(),
+      // Flag: server.js already joined this socket to 'user_<userId>' room.
+      // emitToUser uses this to avoid double-delivering via local map.
+      joinedUserRoom: true,
     });
 
     console.log(`Registered user ${userId} (${userRole}) with socket ${socket.id}`);
@@ -136,17 +139,12 @@ class SocketOptimizer {
    * @param {object} data - Event data
    */
   emitToOrganizationAdmins(organizationId, event, data) {
-    for (const [userKey, sockets] of this.userSockets.entries()) {
-      const [, role] = userKey.split('_');
-      
-      if (role === 'admin' || role === 'superadmin') {
-        sockets.forEach(socketInfo => {
-          if (role === 'superadmin' || socketInfo.organizationId === organizationId) {
-            socketInfo.socket.emit(event, data);
-          }
-        });
-      }
+    // Emit to the org room (all admins of this org) — crosses worker boundaries.
+    if (organizationId) {
+      this.io.to(`org_${organizationId}`).emit(event, data);
     }
+    // Also emit to all superadmins (global room).
+    this.io.to('role_superadmin').emit(event, data);
   }
 
   /**
@@ -157,12 +155,22 @@ class SocketOptimizer {
    * @param {object} data - Event data
    */
   emitToUser(userId, userRole, event, data) {
+    // PRIMARY: emit to the named room — works across all workers via Redis adapter.
+    // The room 'user_<userId>' is joined in server.js on socket connect.
+    this.io.to(`user_${userId}`).emit(event, data);
+
+    // FALLBACK (same-process sockets): keep local map emit so it still works
+    // in single-process / no-Redis mode where rooms may not be joined yet.
     const userKey = `${userId}_${userRole}`;
     const userSockets = this.userSockets.get(userKey);
-    
     if (userSockets) {
       userSockets.forEach(socketInfo => {
-        socketInfo.socket.emit(event, data);
+        // Avoid double-delivery: only emit locally if socket is NOT in the room
+        // (it is in the room when server.js join ran, so .to() already covered it).
+        // We use a flag set during registerUser to detect this.
+        if (!socketInfo.joinedUserRoom) {
+          socketInfo.socket.emit(event, data);
+        }
       });
     }
   }

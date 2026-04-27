@@ -128,18 +128,21 @@ export const SocketProvider = ({ children }) => {
     if (socket.current) {
       socket.current.emit(event, data);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isConnected]);
 
   const onEvent = useCallback((event, callback) => {
     if (socket.current) {
       socket.current.on(event, callback);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isConnected]);
 
   const offEvent = useCallback((event, callback) => {
     if (socket.current) {
       socket.current.off(event, callback);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isConnected]);
 
   const value = {

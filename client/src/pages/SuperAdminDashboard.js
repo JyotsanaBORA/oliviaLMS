@@ -263,14 +263,14 @@ const SuperAdminDashboard = () => {
     if (activeTab === 'overview') {
       fetchAdmins(adminFilters);
     }
-  }, [adminFilters.search, adminFilters.organization, adminFilters.status, activeTab, fetchAdmins]);
+  }, [adminFilters.search, adminFilters.organization, adminFilters.status, activeTab, fetchAdmins]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Refetch agents when agent filters change
   useEffect(() => {
     if (activeTab === 'overview') {
       fetchAgents(agentFilters);
     }
-  }, [agentFilters.search, agentFilters.organization, agentFilters.status, activeTab, fetchAgents]);
+  }, [agentFilters.search, agentFilters.organization, agentFilters.status, activeTab, fetchAgents]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleDeleteAdmin = async (adminId, adminName) => {
     if (window.confirm(`Are you sure you want to delete admin "${adminName}"? This action cannot be undone.`)) {

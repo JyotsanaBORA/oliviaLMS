@@ -77,6 +77,10 @@ const vicidialCallSchema = new mongoose.Schema({
     type: String,
     trim: true,
   },
+  did: {
+    type: String,
+    trim: true,
+  },
   listId: {
     type: String,
   },

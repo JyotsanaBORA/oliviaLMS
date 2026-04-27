@@ -1,9 +1,19 @@
 const express = require('express');
+const crypto = require('crypto');
 const { body } = require('express-validator');
 const Organization = require('../models/Organization');
 const User = require('../models/User');
 const { protect } = require('../middleware/auth');
 const handleValidationErrors = require('../middleware/validation');
+
+// Helper — true if the requesting user is the Reddington Global Consultancy admin
+const isReddingtonAdmin = async (user) => {
+  if (user.role !== 'admin' || !user.organization) return false;
+  try {
+    const org = await Organization.findById(user.organization).lean();
+    return !!(org && org.name === 'REDDINGTON GLOBAL CONSULTANCY');
+  } catch { return false; }
+};
 
 const router = express.Router();
 
@@ -101,11 +111,12 @@ const userValidation = [
 // @access  Private (SuperAdmin only)
 router.post('/', protect, organizationCreateValidation, handleValidationErrors, async (req, res) => {
   try {
-    // Check if user is superadmin
-    if (req.user.role !== 'superadmin') {
+    // Check if user is superadmin or Reddington admin
+    const allowed = req.user.role === 'superadmin' || await isReddingtonAdmin(req.user);
+    if (!allowed) {
       return res.status(403).json({
         success: false,
-        message: 'Only superadmin can create organizations'
+        message: 'Only superadmin or Reddington admin can create organizations'
       });
     }
 
@@ -229,11 +240,12 @@ router.get('/', protect, async (req, res) => {
 // @access  Private (SuperAdmin only)
 router.get('/:id', protect, async (req, res) => {
   try {
-    // Check if user is superadmin
-    if (req.user.role !== 'superadmin') {
+    // Check if user is superadmin or Reddington admin
+    const allowed = req.user.role === 'superadmin' || await isReddingtonAdmin(req.user);
+    if (!allowed) {
       return res.status(403).json({
         success: false,
-        message: 'Only superadmin can view organization details'
+        message: 'Only superadmin or Reddington admin can view organization details'
       });
     }
 
@@ -284,11 +296,12 @@ router.get('/:id', protect, async (req, res) => {
 // @access  Private (SuperAdmin only)
 router.put('/:id', protect, organizationValidation, handleValidationErrors, async (req, res) => {
   try {
-    // Check if user is superadmin
-    if (req.user.role !== 'superadmin') {
+    // Check if user is superadmin or Reddington admin
+    const allowed = req.user.role === 'superadmin' || await isReddingtonAdmin(req.user);
+    if (!allowed) {
       return res.status(403).json({
         success: false,
-        message: 'Only superadmin can update organizations'
+        message: 'Only superadmin or Reddington admin can update organizations'
       });
     }
 
@@ -354,11 +367,12 @@ router.put('/:id', protect, organizationValidation, handleValidationErrors, asyn
 // @access  Private (SuperAdmin only)
 router.delete('/:id', protect, async (req, res) => {
   try {
-    // Check if user is superadmin
-    if (req.user.role !== 'superadmin') {
+    // Check if user is superadmin or Reddington admin
+    const allowed = req.user.role === 'superadmin' || await isReddingtonAdmin(req.user);
+    if (!allowed) {
       return res.status(403).json({
         success: false,
-        message: 'Only superadmin can delete organizations'
+        message: 'Only superadmin or Reddington admin can delete organizations'
       });
     }
 
@@ -402,11 +416,12 @@ router.delete('/:id', protect, async (req, res) => {
 // @access  Private (SuperAdmin only)
 router.post('/:id/users', protect, userValidation, handleValidationErrors, async (req, res) => {
   try {
-    // Check if user is superadmin
-    if (req.user.role !== 'superadmin') {
+    // Check if user is superadmin or Reddington admin
+    const allowed = req.user.role === 'superadmin' || await isReddingtonAdmin(req.user);
+    if (!allowed) {
       return res.status(403).json({
         success: false,
-        message: 'Only superadmin can create users in organizations'
+        message: 'Only superadmin or Reddington admin can create users in organizations'
       });
     }
 
@@ -467,11 +482,12 @@ router.post('/:id/users', protect, userValidation, handleValidationErrors, async
 // @access  Private (SuperAdmin only)
 router.get('/:id/users', protect, async (req, res) => {
   try {
-    // Check if user is superadmin
-    if (req.user.role !== 'superadmin') {
+    // Check if user is superadmin or Reddington admin
+    const allowed = req.user.role === 'superadmin' || await isReddingtonAdmin(req.user);
+    if (!allowed) {
       return res.status(403).json({
         success: false,
-        message: 'Only superadmin can view organization users'
+        message: 'Only superadmin or Reddington admin can view organization users'
       });
     }
 
@@ -604,6 +620,99 @@ router.delete('/:orgId/users/:userId', protect, async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error deleting user',
+      error: process.env.NODE_ENV === 'development' ? error.message : {}
+    });
+  }
+});
+
+// @desc    Generate a new webhook API key for an organization
+// @route   POST /api/organizations/:id/webhook-key
+// @access  Private (Admin of that org, SuperAdmin, or Reddington admin)
+router.post('/:id/webhook-key', protect, async (req, res) => {
+  try {
+    const allowed =
+      req.user.role === 'superadmin' ||
+      (await isReddingtonAdmin(req.user)) ||
+      (req.user.role === 'admin' && String(req.user.organization) === String(req.params.id));
+
+    if (!allowed) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to manage webhook keys for this organization'
+      });
+    }
+
+    const organization = await Organization.findById(req.params.id);
+    if (!organization) {
+      return res.status(404).json({ success: false, message: 'Organization not found' });
+    }
+
+    const newKey = crypto.randomBytes(32).toString('hex');
+    organization.webhookApiKey = newKey;
+    await organization.save();
+
+    return res.status(200).json({
+      success: true,
+      message: 'Webhook API key generated. Save it now — it will not be shown again in full.',
+      data: {
+        organizationId: organization._id,
+        webhookApiKey: newKey,
+        webhookUrl: `${req.protocol}://${req.get('host')}/api/webhook/leads`
+      }
+    });
+
+  } catch (error) {
+    console.error('Generate webhook key error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error generating webhook API key',
+      error: process.env.NODE_ENV === 'development' ? error.message : {}
+    });
+  }
+});
+
+// @desc    Get webhook status (masked key) for an organization
+// @route   GET /api/organizations/:id/webhook-key
+// @access  Private (Admin of that org, SuperAdmin, or Reddington admin)
+router.get('/:id/webhook-key', protect, async (req, res) => {
+  try {
+    const allowed =
+      req.user.role === 'superadmin' ||
+      (await isReddingtonAdmin(req.user)) ||
+      (req.user.role === 'admin' && String(req.user.organization) === String(req.params.id));
+
+    if (!allowed) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to view webhook key for this organization'
+      });
+    }
+
+    const organization = await Organization.findById(req.params.id).select('+webhookApiKey');
+    if (!organization) {
+      return res.status(404).json({ success: false, message: 'Organization not found' });
+    }
+
+    const hasKey = !!organization.webhookApiKey;
+    const maskedKey = hasKey
+      ? `${'*'.repeat(56)}${organization.webhookApiKey.slice(-8)}`
+      : null;
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        organizationId: organization._id,
+        hasWebhookKey: hasKey,
+        maskedKey,
+        webhookUrl: hasKey ? `${req.protocol}://${req.get('host')}/api/webhook/leads` : null
+      }
+    });
+
+  } catch (error) {
+    console.error('Get webhook key error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error fetching webhook key',
       error: process.env.NODE_ENV === 'development' ? error.message : {}
     });
   }

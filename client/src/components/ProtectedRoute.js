@@ -24,6 +24,7 @@ const ProtectedRoute = ({ children, roles = [] }) => {
                        : user.role === 'admin' ? '/admin' 
                        : user.role === 'agent2' ? '/leads'
                        : user.role === 'restricted_admin' ? '/restricted-dashboard'
+                       : user.role === 'affiliate_admin' ? '/affiliate'
                        : '/dashboard';
     return <Navigate to={redirectPath} replace />;
   }

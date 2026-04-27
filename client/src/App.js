@@ -4,6 +4,7 @@ import { Toaster } from 'react-hot-toast';
 import { AuthProvider } from './contexts/AuthContext';
 import { SocketProvider } from './contexts/SocketContext';
 import { RefreshProvider } from './contexts/RefreshContext';
+import { InboundCallProvider } from './contexts/InboundCallContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import Layout from './components/Layout';
 import Login from './pages/Login';
@@ -13,7 +14,9 @@ import Agent2Dashboard from './pages/Agent2Dashboard';
 import AdminDashboard from './pages/AdminDashboard';
 import SuperAdminDashboard from './pages/SuperAdminDashboard';
 import RestrictedAdminDashboard from './pages/RestrictedAdminDashboard';
+import AffiliateDashboard from './pages/AffiliateDashboard';
 import Profile from './pages/Profile';
+import Chat from './pages/Chat';
 
 function App() {
   return (
@@ -21,6 +24,7 @@ function App() {
       <AuthProvider>
         <RefreshProvider>
           <SocketProvider>
+          <InboundCallProvider>
           <Router>
             <Toaster
               position="top-right"
@@ -97,12 +101,25 @@ function App() {
                     <RestrictedAdminDashboard />
                   </ProtectedRoute>
                 } />
+
+                <Route path="affiliate" element={
+                  <ProtectedRoute roles={['affiliate_admin', 'superadmin']}>
+                    <AffiliateDashboard />
+                  </ProtectedRoute>
+                } />
+
+                <Route path="chat" element={
+                  <ProtectedRoute>
+                    <Chat />
+                  </ProtectedRoute>
+                } />
               </Route>
               
               {/* Catch all route */}
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </Router>
+          </InboundCallProvider>
         </SocketProvider>
         </RefreshProvider>
       </AuthProvider>

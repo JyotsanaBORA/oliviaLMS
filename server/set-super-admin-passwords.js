@@ -26,7 +26,7 @@ const setSuperAdminPasswords = async () => {
     for (const adminInfo of superAdmins) {
       try {
         // Find user including password field
-        const user = await User.findOne({ email: adminInfo.email }).select('+password');
+        const user = await User.findOne({ email: adminInfo.email }).select('+password'); 
         
         if (!user) {
           console.log(`❌ User ${adminInfo.email} not found, creating...`);

@@ -1,8 +1,23 @@
-const express = require('express');
+﻿const express = require('express');
 const { body } = require('express-validator');
 const User = require('../models/User');
+const Organization = require('../models/Organization');
 const { protect, generateToken } = require('../middleware/auth');
 const handleValidationErrors = require('../middleware/validation');
+const { notifyCheckIn, notifyCheckOut } = require('../services/hrmsAttendance');
+const { syncWithChatService } = require('../utils/chatSync');
+
+// Helper: check if a user is the main-org admin (privilege for chat service)
+// Override the org name via MAIN_ORG_NAME env var; default is 'REDDINGTON GLOBAL CONSULTANCY'
+const MAIN_ORG_NAME = (process.env.MAIN_ORG_NAME || 'REDDINGTON GLOBAL CONSULTANCY').trim().toUpperCase();
+
+const isMainOrgAdminUser = async (user) => {
+  if (user.role !== 'admin' || !user.organization) return false;
+  try {
+    const org = await Organization.findById(user.organization).lean();
+    return !!(org && org.name.trim().toUpperCase() === MAIN_ORG_NAME);
+  } catch { return false; }
+};
 
 const router = express.Router();
 
@@ -143,10 +158,16 @@ router.post('/create-agent', protect, registerValidation, handleValidationErrors
     }
 
     // For admin users, agents must be in same organization
+    // Exception: Reddington admin may specify any org (like superadmin)
     // For super admin, organization must be provided in the request body
     let organizationId = null;
     if (req.user.role === 'admin') {
-      organizationId = req.user.organization;
+      const isReddington = await isMainOrgAdminUser(req.user);
+      if (isReddington && (req.body.organization || '').toString().trim()) {
+        organizationId = (req.body.organization || '').toString().trim();
+      } else {
+        organizationId = req.user.organization;
+      }
     } else if (req.user.role === 'superadmin') {
       const orgId = (req.body.organization || '').toString().trim();
       if (!orgId) {
@@ -241,6 +262,60 @@ router.post('/create-admin', protect, registerValidation, handleValidationErrors
   }
 });
 
+// @desc    Create Affiliate Admin (SuperAdmin only)
+// @route   POST /api/auth/create-affiliate-admin
+// @access  Private (SuperAdmin only)
+router.post('/create-affiliate-admin', protect, [
+  body('name').trim().isLength({ min: 2, max: 50 }).withMessage('Name must be between 2 and 50 characters'),
+  body('email').isEmail().normalizeEmail().withMessage('Please enter a valid email'),
+  body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters long')
+    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/).withMessage('Password must contain at least one lowercase letter, one uppercase letter, and one number'),
+], handleValidationErrors, async (req, res) => {
+  try {
+    if (req.user.role !== 'superadmin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Only superadmin can create affiliate admin accounts'
+      });
+    }
+
+    const { name, email, password } = req.body;
+
+    const existingUser = await User.findByEmail(email);
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        message: 'User with this email already exists'
+      });
+    }
+
+    const user = await User.create({
+      name,
+      email,
+      password,
+      role: 'affiliate_admin',
+      createdBy: req.user._id,
+      // No organization — affiliate admins have global read-only scope
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'Affiliate admin account created successfully',
+      data: {
+        user: user.toJSON()
+      }
+    });
+
+  } catch (error) {
+    console.error('Create affiliate admin error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error creating affiliate admin account',
+      error: process.env.NODE_ENV === 'development' ? error.message : {}
+    });
+  }
+});
+
 // @desc    Login user
 // @route   POST /api/auth/login
 // @access  Public
@@ -284,12 +359,26 @@ router.post('/login', loginValidation, handleValidationErrors, async (req, res) 
     // Generate token
     const token = generateToken(user._id);
 
+    // Sync with chat service (non-blocking â€” never fails login)
+    // isMainOrgAdmin grants chat-service privilege to the Reddington org admin
+    const mainOrgAdmin = user.role === 'admin' ? await isMainOrgAdminUser(user) : false;
+    const chatToken = await syncWithChatService({
+      source: 'lms',
+      email: user.email,
+      name: user.name,
+      appUserId: user._id.toString(),
+      role: user.role,
+      isMainOrgAdmin: mainOrgAdmin,
+    });
+
+    notifyCheckIn(user.email); // HRMS check-in â€” fire-and-forget
     res.status(200).json({
       success: true,
       message: 'Login successful',
       data: {
         user: user.toJSON(),
-        token
+        token,
+        ...(chatToken ? { chatToken } : {}),
       }
     });
 
@@ -300,6 +389,36 @@ router.post('/login', loginValidation, handleValidationErrors, async (req, res) 
       message: 'Error during login',
       error: process.env.NODE_ENV === 'development' ? error.message : {}
     });
+  }
+});
+
+// @desc    Return (or refresh) chat token for the currently logged-in LMS user
+// @route   GET /api/auth/chat-token
+// @access  Private
+router.get('/chat-token', protect, async (req, res) => {
+  try {
+    const user = req.user;
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+    const mainOrgAdmin = user.role === 'admin' ? await isMainOrgAdminUser(user) : false;
+
+    const chatToken = await syncWithChatService({
+      source: 'lms',
+      email: user.email,
+      name: user.name,
+      appUserId: user._id.toString(),
+      role: user.role,
+      isMainOrgAdmin: mainOrgAdmin,
+    });
+
+    if (!chatToken) {
+      return res.status(503).json({ success: false, message: 'Chat service temporarily unavailable' });
+    }
+
+    res.status(200).json({ success: true, chatToken });
+  } catch (error) {
+    console.error('chat-token error:', error);
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 
@@ -459,6 +578,7 @@ router.put('/change-password', protect, [
 // @route   POST /api/auth/logout
 // @access  Private
 router.post('/logout', protect, (req, res) => {
+  notifyCheckOut(req.user.email); // HRMS check-out â€” fire-and-forget
   res.status(200).json({
     success: true,
     message: 'Logged out successfully'
@@ -479,10 +599,16 @@ router.get('/agents', protect, async (req, res) => {
     }
 
     let query = { role: { $in: ['agent1', 'agent2'] } };
-    
-    // If admin, only show agents from their organization
+
+    // Reddington admin sees all orgs (like superadmin); regular admin sees own org only
     if (req.user.role === 'admin') {
-      query.organization = req.user.organization;
+      const isReddington = await isMainOrgAdminUser(req.user);
+      if (isReddington) {
+        // Optionally filter by org when provided
+        if (req.query.organization) query.organization = req.query.organization;
+      } else {
+        query.organization = req.user.organization;
+      }
     }
 
     // SuperAdmin can filter by organization

@@ -16,6 +16,8 @@ require('dotenv').config();
 
 const { formatEasternTime, getEasternNow } = require('./utils/timeFilters');
 const SocketOptimizer = require('./utils/socketOptimizer');
+const { pubClient, subClient, isRedisReady } = require('./utils/redisClient');
+const { createAdapter } = require('@socket.io/redis-adapter');
 
 // Routes
 const authRoutes = require('./routes/auth');
@@ -24,6 +26,10 @@ const organizationRoutes = require('./routes/organizations');
 const gtiIncomingRoutes = require('./routes/gtiIncoming');
 const adminUploadRoutes = require('./routes/adminUploads');
 const vicidialRoutes = require('./routes/vicidial');
+const notesRoutes = require('./routes/notes');
+const webhookRoutes = require('./routes/webhook');
+const websiteLeadsRoutes = require('./routes/websiteLeads');
+const affiliateRoutes = require('./routes/affiliate');
 
 const app = express();
 const server = http.createServer(app);
@@ -115,6 +121,30 @@ const io = socketIo(server, {
   pingInterval: 25000
 });
 
+// =========================
+// Redis Adapter (multi-process / multi-server)
+// Wired immediately after io is created so the adapter is active before
+// any socket connects.  Falls back gracefully when Redis is not available.
+// =========================
+(async () => {
+  // Wait up to 3 s for Redis to be ready, then give up and continue without it.
+  let waited = 0;
+  while (!isRedisReady() && waited < 3000) {
+    await new Promise(r => setTimeout(r, 100));
+    waited += 100;
+  }
+  if (isRedisReady()) {
+    try {
+      io.adapter(createAdapter(pubClient, subClient));
+      console.log('[Socket.IO] Redis adapter active — multi-process broadcasting enabled');
+    } catch (err) {
+      console.warn('[Socket.IO] Could not attach Redis adapter, using in-memory adapter:', err.message);
+    }
+  } else {
+    console.warn('[Socket.IO] Redis not ready — using in-memory adapter (single-process mode)');
+  }
+})();
+
 const socketOptimizer = new SocketOptimizer(io);
 
 // Socket.io Connection
@@ -126,6 +156,8 @@ io.on('connection', (socket) => {
   if (userId && userRole) {
     socketOptimizer.registerUser(socket, userId, userRole, organizationId);
 
+    // Join named rooms — used for cross-process targeting via Redis adapter
+    socket.join(`user_${userId}`);
     socket.join(`role_${userRole}`);
     if (organizationId) socket.join(`org_${organizationId}`);
   }
@@ -155,6 +187,10 @@ app.use('/api/organizations', organizationRoutes);
 app.use('/api/gti', gtiIncomingRoutes);
 app.use('/api/admin-uploads', adminUploadRoutes);
 app.use('/api/vicidial', vicidialRoutes);
+app.use('/api/notes', notesRoutes);
+app.use('/api/webhook', webhookRoutes);
+app.use('/api/website-leads', websiteLeadsRoutes);
+app.use('/api/affiliate', affiliateRoutes);
 
 // =========================
 // HEALTH CHECK

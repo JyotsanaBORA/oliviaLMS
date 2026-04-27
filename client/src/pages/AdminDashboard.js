@@ -21,8 +21,11 @@ import axios from '../utils/axios';
 import toast from 'react-hot-toast';
 import LoadingSpinner from '../components/LoadingSpinner';
 import AgentManagement from '../components/AgentManagement';
+import SuperUserManagement from '../components/SuperUserManagement';
+import OrganizationManagement from './OrganizationManagement';
 import LeadReassignModal from '../components/LeadReassignModal';
 import AdminUploadShareModal from '../components/AdminUploadShareModal';
+import WebsiteLeadsModal from '../components/WebsiteLeadsModal';
 import Pagination from '../components/Pagination';
 import { useSocket } from '../contexts/SocketContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -44,8 +47,32 @@ const AdminDashboard = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(getEasternNow());
   const [showLeadsSection, setShowLeadsSection] = useState(false);
-  
-  // Pagination state
+
+  // ── People Search floating PiP panel ─────────────────────────────
+  const [showSearchPanel, setShowSearchPanel] = useState(false);
+  const [searchMinimized, setSearchMinimized] = useState(false);
+  const [panelPos, setPanelPos] = useState({ x: 24, y: 120 });
+  const dragging = useRef(false);
+  const dragOffset = useRef({ x: 0, y: 0 });
+  const handlePanelDragStart = (e) => {
+    dragging.current = true;
+    dragOffset.current = { x: e.clientX - panelPos.x, y: e.clientY - panelPos.y };
+    e.preventDefault();
+  };
+  useEffect(() => {
+    const onMove = (e) => {
+      if (!dragging.current) return;
+      setPanelPos({ x: Math.max(0, e.clientX - dragOffset.current.x), y: Math.max(0, e.clientY - dragOffset.current.y) });
+    };
+    const onUp = () => { dragging.current = false; };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+  }, []);
+  // ── Collapsible section toggles ─────────────────────────────────
+  const [userMgmtOpen, setUserMgmtOpen] = useState(false);
+  const [orgMgmtOpen, setOrgMgmtOpen] = useState(false);
+  // ───────────────────────────────────────────────────────────────
   const [pagination, setPagination] = useState({
     page: 1,
     limit: 50,
@@ -88,8 +115,38 @@ const AdminDashboard = () => {
   const [showReassignModal, setShowReassignModal] = useState(false);
   const [leadToReassign, setLeadToReassign] = useState(null);
 
+  // ── Call Report (Inbound / Outbound) ──────────────────────────────────────
+  const [callReport, setCallReport] = useState(null);
+  const [callReportLoading, setCallReportLoading] = useState(false);
+  const [callReportDate, setCallReportDate] = useState(() => {
+    // Default to today in YYYY-MM-DD
+    const d = new Date();
+    return d.toISOString().split('T')[0];
+  });
+  const [callReportDid, setCallReportDid] = useState('');
+  const [showCallReport, setShowCallReport] = useState(false);
+
+  const fetchCallReport = useCallback(async (date, did) => {
+    setCallReportLoading(true);
+    try {
+      const params = new URLSearchParams({ date });
+      if (did && did.trim()) params.append('did', did.trim());
+      const res = await axios.get(`/api/leads/call-report?${params.toString()}`);
+      if (res.data?.success) setCallReport(res.data.data);
+    } catch (err) {
+      console.error('Call report fetch error:', err);
+      toast.error('Failed to fetch call report');
+    } finally {
+      setCallReportLoading(false);
+    }
+  }, []);
+
   // Admin upload share modal
   const [showShareModal, setShowShareModal] = useState(false);
+
+  // Website leads modal (Reddington admin only)
+  const [showWebsiteLeads, setShowWebsiteLeads] = useState(false);
+  const [websiteLeadsBadge, setWebsiteLeadsBadge] = useState(0);
   
   const maskEmail = (email) => {
     if (!email) return '—';
@@ -185,9 +242,7 @@ const AdminDashboard = () => {
     }
     
     try {
-      console.log('Admin Dashboard: Fetching stats...');
       const response = await axios.get('/api/leads/dashboard/stats');
-      console.log('Stats response:', response.data);
       // Handle the nested response structure
       const statsData = response.data?.data || response.data;
       setStats(statsData);
@@ -222,7 +277,6 @@ const AdminDashboard = () => {
 
   const fetchLeads = useCallback(async (silent = false, page = null) => {
     try {
-      console.log('Admin Dashboard: Fetching leads...');
       const currentPage = page ?? paginationRef.current.page;
       const currentLimit = paginationRef.current.limit;
       const filters = filtersRef.current;
@@ -506,17 +560,12 @@ const AdminDashboard = () => {
   // Check if user is from REDDINGTON GLOBAL CONSULTANCY
   // Use useMemo instead of useCallback to calculate once per render
   const isReddingtonAdmin = useMemo(() => {
-    // Check by organization name first, then by ID as fallback
-    const isReddingtonByName = user?.organization?.name === 'REDDINGTON GLOBAL CONSULTANCY';
-    const isReddingtonById = user?.organization === '68b9c76d2c29dac1220cb81c' || user?.organization?._id === '68b9c76d2c29dac1220cb81c';
-    
-    return isReddingtonByName || isReddingtonById;
-  }, [user]);
-
-  // Check if user is from GTI organization — GTI admins cannot access Agent Management
-  const isGtiAdmin = useMemo(() => {
+    // Case-insensitive, trim-safe name check
     const orgName = (user?.organization?.name || '').trim().toUpperCase();
-    return orgName === (process.env.REACT_APP_GTI_ORG_NAME || 'GTI').trim().toUpperCase();
+    const isReddingtonByName = orgName === 'REDDINGTON GLOBAL CONSULTANCY';
+    const isReddingtonById = user?.organization === '68b9c76d2c29dac1220cb81c' || user?.organization?._id === '68b9c76d2c29dac1220cb81c';
+
+    return isReddingtonByName || isReddingtonById;
   }, [user]);
 
   // Periodic stats refresh — every 30 s ensures cards stay in sync with DB
@@ -588,9 +637,17 @@ const AdminDashboard = () => {
         debouncedRefresh();
       };
 
+      const handleNewWebsiteLead = (data) => {
+        if (isReddingtonAdmin) {
+          setWebsiteLeadsBadge(n => n + 1);
+          toast.success(`New website lead: ${data.name}`, { duration: 4000, icon: '🌐' });
+        }
+      };
+
       socket.on('leadUpdated', handleLeadUpdated);
       socket.on('leadCreated', handleLeadCreated);
       socket.on('leadDeleted', handleLeadDeleted);
+      socket.on('newWebsiteLead', handleNewWebsiteLead);
 
       // Cleanup socket listeners and timeout
       return () => {
@@ -600,6 +657,7 @@ const AdminDashboard = () => {
         socket.off('leadUpdated', handleLeadUpdated);
         socket.off('leadCreated', handleLeadCreated);
         socket.off('leadDeleted', handleLeadDeleted);
+        socket.off('newWebsiteLead', handleNewWebsiteLead);
       };
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -623,7 +681,8 @@ const AdminDashboard = () => {
         lead.email?.toLowerCase().includes(searchLower) ||
         lead._id?.toLowerCase().includes(searchLower) ||
         lead.leadId?.toLowerCase().includes(searchLower) ||
-        lead.clientId?.toLowerCase().includes(searchLower)
+        lead.clientId?.toLowerCase().includes(searchLower) ||
+        lead.gtiPrimaryPhone?.includes(term)
       );
     });
     setSearchResults(filtered);
@@ -918,6 +977,39 @@ const AdminDashboard = () => {
                   {formatEasternTimeForDisplay(lastUpdated, { includeTimezone: true })}
                 </p>
               </div>
+              {/* Website Leads button — Reddington org only */}
+              {isReddingtonAdmin && (
+                <button
+                  onClick={() => { setShowWebsiteLeads(true); setWebsiteLeadsBadge(0); }}
+                  className="relative flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold text-white transition-all duration-200 active:scale-95 shadow-md"
+                  style={{ background: 'linear-gradient(135deg,#0d9488,#0891b2)', boxShadow: '0 4px 12px rgba(8,145,178,0.4)' }}
+                  title="View website form submissions"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9" />
+                  </svg>
+                  Website Leads
+                  {websiteLeadsBadge > 0 && (
+                    <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] flex items-center justify-center bg-red-500 text-white text-[10px] font-bold rounded-full px-1">
+                      {websiteLeadsBadge > 99 ? '99+' : websiteLeadsBadge}
+                    </span>
+                  )}
+                </button>
+              )}
+              {/* People Search PiP launcher — Reddington org only */}
+              {isReddingtonAdmin && (
+                <button
+                  onClick={() => { setShowSearchPanel(true); setSearchMinimized(false); }}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold text-white transition-all duration-200 active:scale-95 shadow-md"
+                  style={{ background: 'linear-gradient(135deg,#f59e0b,#ef4444)', boxShadow: '0 4px 12px rgba(239,68,68,0.4)' }}
+                  title="Open US People Search panel"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z" />
+                  </svg>
+                  People Search
+                </button>
+              )}
               <button
                 onClick={handleRefresh}
                 disabled={refreshing}
@@ -999,6 +1091,160 @@ const AdminDashboard = () => {
               </div>
             </div>
           </div>
+        </div>
+
+        {/* ── Inbound / Outbound Call Report ────────────────────────────── */}
+        <div className="bg-white rounded-xl shadow-md border border-gray-100 overflow-hidden">
+          {/* Header / toggle */}
+          <button
+            onClick={() => {
+              const next = !showCallReport;
+              setShowCallReport(next);
+              if (next && !callReport) fetchCallReport(callReportDate, callReportDid);
+            }}
+            className="w-full flex items-center justify-between px-5 py-4 bg-gradient-to-r from-violet-50 to-purple-50 hover:from-violet-100 hover:to-purple-100 transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-gradient-to-br from-violet-500 to-purple-600 rounded-lg shadow">
+                <BarChart3 className="h-4 w-4 text-white" />
+              </div>
+              <div className="text-left">
+                <p className="text-sm font-bold text-gray-800">Inbound / Outbound Call Report</p>
+                <p className="text-xs text-gray-500">Daily breakdown — leads formed, transferred &amp; disposed</p>
+              </div>
+            </div>
+            <svg className={`h-5 w-5 text-gray-400 transition-transform duration-300 ${showCallReport ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+
+          {showCallReport && (
+            <div className="p-5 space-y-4">
+              {/* Controls */}
+              <div className="flex flex-wrap items-end gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Date</label>
+                  <input
+                    type="date"
+                    value={callReportDate}
+                    onChange={e => setCallReportDate(e.target.value)}
+                    className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Search by DID / Phone</label>
+                  <input
+                    type="text"
+                    value={callReportDid}
+                    onChange={e => setCallReportDid(e.target.value)}
+                    placeholder="e.g. 12092130555"
+                    className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-48 focus:outline-none focus:ring-2 focus:ring-violet-400"
+                  />
+                </div>
+                <button
+                  onClick={() => fetchCallReport(callReportDate, callReportDid)}
+                  disabled={callReportLoading}
+                  className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-violet-600 to-purple-600 text-white text-sm font-semibold rounded-lg hover:shadow-lg disabled:opacity-50 transition-all"
+                >
+                  <RefreshCw className={`h-4 w-4 ${callReportLoading ? 'animate-spin' : ''}`} />
+                  {callReportLoading ? 'Loading…' : 'Run Report'}
+                </button>
+              </div>
+
+              {/* Results */}
+              {callReport && (
+                <div className="space-y-4">
+                  <p className="text-xs text-gray-500 font-medium">Report for: <span className="text-gray-800 font-semibold">{callReport.date}</span></p>
+
+                  {/* Summary grid */}
+                  <div className="grid grid-cols-2 gap-4">
+                    {/* Inbound */}
+                    <div className="rounded-xl border-2 border-red-200 bg-red-50 p-4">
+                      <div className="flex items-center gap-2 mb-3">
+                        <span className="text-lg">📥</span>
+                        <span className="text-sm font-bold text-red-700">Inbound (GTI)</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="bg-white rounded-lg p-2 text-center shadow-sm">
+                          <p className="text-2xl font-bold text-red-600">{callReport.inbound.total}</p>
+                          <p className="text-xs text-gray-500 mt-0.5">Leads Formed</p>
+                        </div>
+                        <div className="bg-white rounded-lg p-2 text-center shadow-sm">
+                          <p className="text-2xl font-bold text-orange-500">{callReport.inbound.transferred}</p>
+                          <p className="text-xs text-gray-500 mt-0.5">Transferred</p>
+                        </div>
+                        <div className="bg-white rounded-lg p-2 text-center shadow-sm">
+                          <p className="text-2xl font-bold text-gray-600">{callReport.inbound.disposed}</p>
+                          <p className="text-xs text-gray-500 mt-0.5">Disposed</p>
+                        </div>
+                        <div className="bg-white rounded-lg p-2 text-center shadow-sm">
+                          <p className="text-2xl font-bold text-green-600">{callReport.inbound.sale}</p>
+                          <p className="text-xs text-gray-500 mt-0.5">Sale</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Outbound */}
+                    <div className="rounded-xl border-2 border-blue-200 bg-blue-50 p-4">
+                      <div className="flex items-center gap-2 mb-3">
+                        <span className="text-lg">📤</span>
+                        <span className="text-sm font-bold text-blue-700">Outbound / Manual</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="bg-white rounded-lg p-2 text-center shadow-sm">
+                          <p className="text-2xl font-bold text-blue-600">{callReport.outbound.total}</p>
+                          <p className="text-xs text-gray-500 mt-0.5">Leads Formed</p>
+                        </div>
+                        <div className="bg-white rounded-lg p-2 text-center shadow-sm">
+                          <p className="text-2xl font-bold text-orange-500">{callReport.outbound.transferred}</p>
+                          <p className="text-xs text-gray-500 mt-0.5">Transferred</p>
+                        </div>
+                        <div className="bg-white rounded-lg p-2 text-center shadow-sm">
+                          <p className="text-2xl font-bold text-gray-600">{callReport.outbound.disposed}</p>
+                          <p className="text-xs text-gray-500 mt-0.5">Disposed</p>
+                        </div>
+                        <div className="bg-white rounded-lg p-2 text-center shadow-sm">
+                          <p className="text-2xl font-bold text-green-600">{callReport.outbound.sale}</p>
+                          <p className="text-xs text-gray-500 mt-0.5">Sale</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Top DIDs table */}
+                  {callReport.topDids && callReport.topDids.length > 0 && (
+                    <div>
+                      <p className="text-xs font-bold text-gray-700 mb-2">Top Inbound DIDs (by volume)</p>
+                      <div className="overflow-x-auto rounded-lg border border-gray-200">
+                        <table className="min-w-full text-sm">
+                          <thead className="bg-gray-50">
+                            <tr>
+                              <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase">DID / Phone</th>
+                              <th className="px-4 py-2 text-center text-xs font-semibold text-gray-500 uppercase">Leads</th>
+                              <th className="px-4 py-2 text-center text-xs font-semibold text-gray-500 uppercase">Disposed</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-100">
+                            {callReport.topDids.map((row, i) => (
+                              <tr key={i} className="hover:bg-gray-50">
+                                <td className="px-4 py-2 font-mono text-gray-800">{row._id}</td>
+                                <td className="px-4 py-2 text-center font-bold text-red-600">{row.count}</td>
+                                <td className="px-4 py-2 text-center text-gray-600">{row.disposed}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {!callReport && !callReportLoading && (
+                <p className="text-sm text-gray-400 text-center py-4">Click "Run Report" to load data.</p>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Lead Management Toggle */}
@@ -1441,10 +1687,10 @@ const AdminDashboard = () => {
             {/* Optimized Card-Based Layout */}
             <div className="p-3 space-y-2 max-h-[70vh] overflow-y-auto custom-scrollbar">
               {displayLeads.map((lead) => (
-                <div key={lead.leadId || lead._id} className="group bg-gradient-to-r from-gray-50 to-white rounded-lg border border-gray-200 hover:border-blue-300 hover:shadow-lg transition-all duration-200">
+                <div key={lead.leadId || lead._id} className={`group rounded-lg border transition-all duration-200 hover:shadow-lg ${!!(lead.vicidialDid && lead.vicidialDid.trim()) ? 'bg-gradient-to-r from-red-50 to-white border-red-200 border-l-4 border-l-red-500 hover:border-red-300' : 'bg-gradient-to-r from-blue-50 to-white border-blue-200 border-l-4 border-l-blue-500 hover:border-blue-300'}`}>
                   <div className="p-2.5">
                     <div className="grid grid-cols-12 gap-2 items-center text-xs">
-                      {/* Lead Info - 2.5 columns */}
+                      {/* Lead Info - 2 columns */}
                       <div className="col-span-2">
                         <div className="flex items-center space-x-2">
                           <div className="h-8 w-8 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center shadow group-hover:scale-110 transition-transform duration-200">
@@ -1461,6 +1707,24 @@ const AdminDashboard = () => {
                             )}
                           </div>
                         </div>
+                      </div>
+
+                      {/* DID column - 1 column */}
+                      <div className="col-span-1">
+                        {!!(lead.vicidialDid && lead.vicidialDid.trim()) ? (
+                          <div className="space-y-0.5">
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-red-100 text-red-700 text-[10px] font-bold border border-red-300">
+                              📥 Inbound
+                            </span>
+                            <div className="font-mono text-[10px] text-red-600 truncate" title={`DID: ${lead.vicidialDid}`}>
+                              {lead.vicidialDid}
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 text-[10px] font-bold border border-blue-300" title="Outbound / Manual">
+                            📤 Outbound
+                          </span>
+                        )}
                       </div>
 
                       {/* Contact - 2 columns */}
@@ -2296,15 +2560,114 @@ const AdminDashboard = () => {
         onLeadReassigned={handleLeadReassigned}
       />
 
-      {/* Agent Management Section — hidden for GTI organisation admins */}
-      {!isGtiAdmin && <AgentManagement />}
+      {/* User Management — Reddington admin only, collapsible */}
+      {isReddingtonAdmin && (
+        <div className="bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden">
+          {/* Accordion header */}
+          <button
+            onClick={() => setUserMgmtOpen(o => !o)}
+            className="w-full flex items-center justify-between px-5 py-4 bg-gradient-to-r from-indigo-50 to-white hover:from-indigo-100 transition-colors duration-200 border-b border-gray-100"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center shadow-sm" style={{ background: 'linear-gradient(135deg,#6366f1,#8b5cf6)' }}>
+                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+              </div>
+              <div className="text-left">
+                <h2 className="text-base font-bold text-gray-900">User Management</h2>
+                <p className="text-xs text-gray-500">{isReddingtonAdmin ? 'Super control — all organisations' : 'Manage agent accounts and permissions'}</p>
+              </div>
+            </div>
+            <svg
+              className={`w-5 h-5 text-gray-400 transition-transform duration-300 ${userMgmtOpen ? 'rotate-180' : ''}`}
+              fill="none" stroke="currentColor" viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+          {/* Collapsible body */}
+          {userMgmtOpen && (
+            <div className="p-5">
+              {isReddingtonAdmin ? <SuperUserManagement /> : <AgentManagement />}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Organisation Management — Reddington admin only, collapsible */}
+      {isReddingtonAdmin && (
+        <div className="bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden">
+          {/* Accordion header */}
+          <button
+            onClick={() => setOrgMgmtOpen(o => !o)}
+            className="w-full flex items-center justify-between px-5 py-4 bg-gradient-to-r from-blue-50 to-white hover:from-blue-100 transition-colors duration-200 border-b border-gray-100"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center shadow-sm bg-blue-600">
+                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                </svg>
+              </div>
+              <div className="text-left">
+                <h2 className="text-base font-bold text-gray-900">Organisation Management</h2>
+                <p className="text-xs text-gray-500">Create, edit and manage all organisations</p>
+              </div>
+            </div>
+            <svg
+              className={`w-5 h-5 text-gray-400 transition-transform duration-300 ${orgMgmtOpen ? 'rotate-180' : ''}`}
+              fill="none" stroke="currentColor" viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+          {/* Collapsible body */}
+          {orgMgmtOpen && (
+            <div className="p-5">
+              <OrganizationManagement />
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Admin Upload Share Modal */}
       <AdminUploadShareModal
         isOpen={showShareModal}
         onClose={() => setShowShareModal(false)}
       />
+
+      {/* Website Leads Modal — Reddington admin only */}
+      {isReddingtonAdmin && showWebsiteLeads && (
+        <WebsiteLeadsModal onClose={() => setShowWebsiteLeads(false)} />
+      )}
       </div>
+
+      {/* Floating People Search PiP Panel — Reddington org only */}
+      {isReddingtonAdmin && showSearchPanel && (
+        <div className="fixed z-[9999] rounded-xl overflow-hidden shadow-2xl border border-gray-300 flex flex-col" style={{ left: panelPos.x, top: panelPos.y, width: 480, height: searchMinimized ? 'auto' : 520 }}>
+          <div onMouseDown={handlePanelDragStart} className="flex items-center justify-between px-3 py-2 text-white text-sm font-bold select-none cursor-move flex-shrink-0" style={{ background: 'linear-gradient(135deg,#f59e0b,#ef4444)' }}>
+            <div className="flex items-center gap-2">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z" /></svg>
+              US People Search
+              <span className="text-[10px] font-normal opacity-75">(drag to move)</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <button onClick={() => setSearchMinimized(p => !p)} className="w-6 h-6 flex items-center justify-center rounded hover:bg-white/20 transition-colors" title={searchMinimized ? 'Expand' : 'Minimise'}>
+                {searchMinimized ? <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8h16M4 16h16" /></svg> : <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" /></svg>}
+              </button>
+              <a href="https://uspeoplesearch.net/" target="_blank" rel="noopener noreferrer" className="w-6 h-6 flex items-center justify-center rounded hover:bg-white/20 transition-colors" title="Open in full tab">
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+              </a>
+              <button onClick={() => setShowSearchPanel(false)} className="w-6 h-6 flex items-center justify-center rounded hover:bg-white/20 transition-colors" title="Close">
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+          </div>
+          {!searchMinimized && (
+            <iframe src="https://uspeoplesearch.net/" title="US People Search" className="flex-1 w-full bg-white" style={{ border: 'none', height: 472 }} sandbox="allow-scripts allow-same-origin allow-forms allow-popups" />
+          )}
+        </div>
+      )}
     </div>
   );
 };
