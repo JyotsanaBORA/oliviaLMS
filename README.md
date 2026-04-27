@@ -61,7 +61,7 @@ npm run install-all
 cd server && npm install
 cd ../client && npm install
 ```
-
+testing 
 #### 2. Environment Configuration
 
 **Server (.env)**:
