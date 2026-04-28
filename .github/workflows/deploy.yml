@@ -14,15 +14,9 @@ jobs:
           host: ${{ secrets.VPS_HOST }}
           username: root
           password: ${{ secrets.VPS_PASSWORD }}
-          timeout: 180s
-          command_timeout: 180s
-          script: |
-            cd /root/LEADSYSTEM
-            git pull origin main
-            cd server && npm install
-            cd ..
-            pm2 reload ecosystem.config.js
-            pm2 save
+          timeout: 300s
+          command_timeout: 300s
+          script: bash /root/Olivialms/deploy.sh
             cd client && npm install
             npm run build
             mkdir -p /home/ubuntu/lms-build
