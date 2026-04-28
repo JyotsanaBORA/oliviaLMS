@@ -18,7 +18,6 @@ package-lock.json
 # Deployment & Server Config (SENSITIVE)
 # ========================
 ecosystem.config.js
-deploy.sh
 quick-fix-deploy.sh
 QUICKSTART.sh
 SERVER_DEPLOYMENT.sh
