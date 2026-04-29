@@ -137,7 +137,7 @@ const Layout = ({ onDashboardRefresh }) => {
 
   const isActive = (href) => location.pathname === href;
 
-  const isRestricted = user && ['admin', 'agent2'].includes(user.role);
+  const isRestricted = user && ['admin', 'agent2'].includes(user.role) && !user.isMainOrgAdmin;
 
   return (
     <div className={`flex h-screen bg-gray-100${isRestricted ? ' select-none' : ''}`}>
