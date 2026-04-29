@@ -29,9 +29,10 @@ const Layout = ({ onDashboardRefresh }) => {
 
   // Prevent copying FROM the dashboard for restricted roles.
   // Paste INTO the dashboard is intentionally allowed.
+  // Main org admins (isMainOrgAdmin) are exempt from copy restriction.
   useEffect(() => {
     const restrictedRoles = ['admin', 'agent1', 'agent2', 'restricted_admin'];
-    if (!user || !restrictedRoles.includes(user.role)) return;
+    if (!user || !restrictedRoles.includes(user.role) || user.isMainOrgAdmin) return;
 
     const block = (e) => e.preventDefault();
 

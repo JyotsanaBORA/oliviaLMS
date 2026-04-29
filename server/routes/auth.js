@@ -376,7 +376,7 @@ router.post('/login', loginValidation, handleValidationErrors, async (req, res) 
       success: true,
       message: 'Login successful',
       data: {
-        user: user.toJSON(),
+        user: { ...user.toJSON(), isMainOrgAdmin: mainOrgAdmin },
         token,
         ...(chatToken ? { chatToken } : {}),
       }
