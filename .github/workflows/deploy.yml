@@ -17,4 +17,5 @@ jobs:
           timeout: 300s
           command_timeout: 300s
           script: |
+            cd /root/Olivialms && git reset --hard HEAD && git pull origin main
             bash /root/Olivialms/deploy.sh
