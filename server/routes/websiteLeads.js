@@ -139,7 +139,15 @@ router.post('/:id/import', protect, async (req, res) => {
       createdBy: req.user._id,
     };
 
-    if (websiteLead.email)           leadData.email           = websiteLead.email;
+    if (websiteLead.email) {
+      // Sanitize email: trim the TLD to 2-3 chars if a typo made it longer (e.g. ".comhu" → ".com")
+      const sanitizedEmail = websiteLead.email.replace(/(\.\w{2,3})\w+$/, '$1');
+      const emailRegex = /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/;
+      if (emailRegex.test(sanitizedEmail)) {
+        leadData.email = sanitizedEmail;
+      }
+      // If still invalid after sanitization, skip email rather than failing the import
+    }
     if (websiteLead.phone)           leadData.phone           = websiteLead.phone;
     if (websiteLead.streetAddress)   leadData.address         = websiteLead.streetAddress;
     if (websiteLead.city)            leadData.city            = websiteLead.city;

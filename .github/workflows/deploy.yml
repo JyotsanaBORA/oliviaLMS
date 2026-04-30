@@ -16,13 +16,5 @@ jobs:
           password: ${{ secrets.VPS_PASSWORD }}
           timeout: 300s
           command_timeout: 300s
-          script: bash /root/Olivialms/deploy.sh
-            cd client && npm install
-            npm run build
-            mkdir -p /home/ubuntu/lms-build
-            rm -rf /home/ubuntu/lms-build/*
-            if [ -d "dist" ]; then cp -r dist/* /home/ubuntu/lms-build/; elif [ -d "build" ]; then cp -r build/* /home/ubuntu/lms-build/; fi
-            chown -R www-data:www-data /home/ubuntu/lms-build
-            chmod -R 755 /home/ubuntu/lms-build
-            nginx -t && systemctl reload nginx
-            echo "Deployed successfully!"
+          script: |
+            bash /root/Olivialms/deploy.sh

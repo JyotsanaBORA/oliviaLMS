@@ -82,7 +82,6 @@ const AdminDashboard = () => {
 
   // Search functionality
   const [searchTerm, setSearchTerm] = useState('');
-  const [searchResults, setSearchResults] = useState([]);
 
   // Edit modal states
   const [isEditing, setIsEditing] = useState(false);
@@ -264,7 +263,7 @@ const AdminDashboard = () => {
   
   // Use refs to hold current filter values to avoid recreating fetchLeads
   const paginationRef = useRef(pagination);
-  const filtersRef = useRef({ qualificationFilter, duplicateFilter, organizationFilter, dateFilter, progressFilter });
+  const filtersRef = useRef({ qualificationFilter, duplicateFilter, organizationFilter, dateFilter, progressFilter, searchTerm });
   
   // Update refs when values change
   useEffect(() => {
@@ -272,8 +271,8 @@ const AdminDashboard = () => {
   }, [pagination]);
   
   useEffect(() => {
-    filtersRef.current = { qualificationFilter, duplicateFilter, organizationFilter, dateFilter, progressFilter };
-  }, [qualificationFilter, duplicateFilter, organizationFilter, dateFilter, progressFilter]);
+    filtersRef.current = { qualificationFilter, duplicateFilter, organizationFilter, dateFilter, progressFilter, searchTerm };
+  }, [qualificationFilter, duplicateFilter, organizationFilter, dateFilter, progressFilter, searchTerm]);
 
   const fetchLeads = useCallback(async (silent = false, page = null) => {
     try {
@@ -310,6 +309,11 @@ const AdminDashboard = () => {
         if (filters.dateFilter.filterType === 'custom' && filters.dateFilter.startDate && filters.dateFilter.endDate) {
           url += `&startDate=${filters.dateFilter.startDate}&endDate=${filters.dateFilter.endDate}`;
         }
+      }
+
+      // Add search query - backend searches across all leads in the database
+      if (filters.searchTerm && filters.searchTerm.trim()) {
+        url += `&search=${encodeURIComponent(filters.searchTerm.trim())}`;
       }
       
       // Generate a unique key for this request (excluding timestamp)
@@ -546,13 +550,6 @@ const AdminDashboard = () => {
       )
     );
     
-    // Update search results if they exist
-    setSearchResults(prevResults => 
-      prevResults.map(lead => 
-        lead._id === updatedLead._id ? updatedLead : lead
-      )
-    );
-    
     // Close modal
     closeReassignModal();
   };
@@ -663,30 +660,8 @@ const AdminDashboard = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [socket, showLeadsSection, stats]);
 
-  // Search functionality with debouncing to prevent excessive filtering
+  // Search functionality with debouncing - triggers server-side search across all leads
   const searchTimeoutRef = useRef(null);
-  
-  const performSearch = useCallback((term) => {
-    if (!term.trim()) {
-      setSearchResults([]);
-      return;
-    }
-
-    const filtered = leads.filter(lead => {
-      const searchLower = term.toLowerCase();
-      return (
-        lead.name?.toLowerCase().includes(searchLower) ||
-        lead.phone?.includes(term) ||
-        lead.alternatePhone?.includes(term) ||
-        lead.email?.toLowerCase().includes(searchLower) ||
-        lead._id?.toLowerCase().includes(searchLower) ||
-        lead.leadId?.toLowerCase().includes(searchLower) ||
-        lead.clientId?.toLowerCase().includes(searchLower) ||
-        lead.gtiPrimaryPhone?.includes(term)
-      );
-    });
-    setSearchResults(filtered);
-  }, [leads]);
 
   const handleSearch = useCallback((term) => {
     setSearchTerm(term);
@@ -696,24 +671,13 @@ const AdminDashboard = () => {
       clearTimeout(searchTimeoutRef.current);
     }
     
-    // If search is empty, clear immediately
-    if (!term.trim()) {
-      setSearchResults([]);
-      return;
-    }
-    
-    // Debounce the actual search by 300ms
+    // Debounce the server-side fetch by 400ms
     searchTimeoutRef.current = setTimeout(() => {
-      performSearch(term);
-    }, 300);
-  }, [performSearch]);
-
-  // Update search results when leads change
-  useEffect(() => {
-    if (searchTerm.trim()) {
-      performSearch(searchTerm);
-    }
-  }, [leads, performSearch, searchTerm]);
+      // Reset to page 1 and fetch with the new search term from the database
+      setPagination(prev => ({ ...prev, page: 1 }));
+      fetchLeads(false, 1);
+    }, 400);
+  }, [fetchLeads]);
 
   // Lead update functionality
   const handleEditToggle = () => {
@@ -923,12 +887,8 @@ const AdminDashboard = () => {
   
   const qualificationRate = parseFloat(realTimeStats?.qualificationRate) || 0;
 
-  // Apply search filter only (backend handles date/qualification/duplicate/org filters)
-  // Search is client-side for immediate feedback as user types
-  // Memoized to prevent recalculation when props don't change
-  const displayLeads = useMemo(() => {
-    return searchTerm.trim() ? searchResults : leads;
-  }, [searchTerm, searchResults, leads]);
+  // Backend handles all filtering including search - just display current page leads
+  const displayLeads = leads;
 
   if (loading) {
     return <LoadingSpinner message="Loading admin dashboard..." />;
@@ -1303,7 +1263,8 @@ const AdminDashboard = () => {
                 <button
                   onClick={() => {
                     setSearchTerm('');
-                    setSearchResults([]);
+                    setPagination(prev => ({ ...prev, page: 1 }));
+                    fetchLeads(false, 1);
                   }}
                   className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-all duration-200"
                 >
@@ -1315,7 +1276,7 @@ const AdminDashboard = () => {
               <div className="mt-2 flex items-center gap-2">
                 <div className="h-1 w-1 rounded-full bg-blue-500"></div>
                 <p className="text-xs text-gray-600">
-                  Found <span className="font-semibold text-blue-600">{searchResults.length}</span> lead{searchResults.length !== 1 ? 's' : ''} matching <span className="font-medium">"{searchTerm}"</span>
+                  Found <span className="font-semibold text-blue-600">{pagination.total}</span> lead{pagination.total !== 1 ? 's' : ''} matching <span className="font-medium">"{searchTerm}"</span>
                 </p>
               </div>
             )}
