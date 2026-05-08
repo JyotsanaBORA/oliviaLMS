@@ -15,9 +15,11 @@
  *   META_ACCESS_TOKEN   — a Page or System User access token with leads_retrieval permission
  */
 
-const express = require('express');
-const crypto  = require('crypto');
-const https   = require('https');
+const express  = require('express');
+const crypto   = require('crypto');
+const https    = require('https');
+const { parse: parseURL } = require('url');
+const { parse: parseQS  } = require('querystring');
 
 const WebsiteLead  = require('../models/WebsiteLead');
 const Organization = require('../models/Organization');
@@ -28,13 +30,26 @@ const router = express.Router();
 // GET /api/webhook/meta — Meta verification challenge
 // ---------------------------------------------------------------------------
 router.get('/', (req, res) => {
-  const mode      = req.query['hub.mode'];
-  const token     = req.query['hub.verify_token'];
-  const challenge = req.query['hub.challenge'];
+  // express-mongo-sanitize strips query-string keys that contain dots,
+  // so hub.mode / hub.verify_token / hub.challenge are gone from req.query.
+  // Parse the raw URL query string directly to get the original Meta params.
+  const raw     = parseURL(req.url).query || '';
+  const params  = parseQS(raw);
 
-  if (mode === 'subscribe' && token === process.env.META_VERIFY_TOKEN) {
+  const mode      = params['hub.mode'];
+  const token     = params['hub.verify_token'];
+  const challenge = params['hub.challenge'];
+
+  const expected = process.env.META_VERIFY_TOKEN;
+  console.log(`[Meta Webhook] GET verify — mode="${mode}" token_match=${token === expected} env_set=${!!expected}`);
+
+  if (mode === 'subscribe' && token === expected) {
     console.log('[Meta Webhook] Verification successful');
     return res.status(200).send(challenge);
+  }
+
+  if (!expected) {
+    console.error('[Meta Webhook] META_VERIFY_TOKEN is not set in .env — restart the server after editing .env');
   }
 
   console.warn('[Meta Webhook] Verification failed — token mismatch or wrong mode');
