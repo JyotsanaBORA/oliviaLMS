@@ -16,6 +16,7 @@ const postbackLogSchema = new mongoose.Schema({
     type: String,
     enum: ['dispose', 'progress'],
     required: true,
+    
   },
   payload: {
     type: mongoose.Schema.Types.Mixed,
