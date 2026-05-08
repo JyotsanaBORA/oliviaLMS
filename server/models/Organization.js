@@ -40,6 +40,15 @@ const organizationSchema = new mongoose.Schema({
     index: true,
     select: false  // excluded from queries by default
   },
+  // Meta Lead Ads — Facebook Page ID linked to this organisation.
+  // Used to route Meta Instant Form leads to the correct org.
+  metaPageId: {
+    type: String,
+    trim: true,
+    sparse: true,
+    index: true,
+    default: null,
+  },
   isActive: {
     type: Boolean,
     default: true

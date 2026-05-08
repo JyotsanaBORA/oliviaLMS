@@ -27,7 +27,8 @@ const gtiIncomingRoutes = require('./routes/gtiIncoming');
 const adminUploadRoutes = require('./routes/adminUploads');
 const vicidialRoutes = require('./routes/vicidial');
 const notesRoutes = require('./routes/notes');
-const webhookRoutes = require('./routes/webhook');
+const webhookRoutes     = require('./routes/webhook');
+const metaWebhookRoutes = require('./routes/metaWebhook');
 const websiteLeadsRoutes = require('./routes/websiteLeads');
 const affiliateRoutes = require('./routes/affiliate');
 
@@ -79,7 +80,15 @@ app.use(cors({
 app.use(compression()); // gzip all responses — reduces payload size 60–80%
 app.use(helmet());
 app.use(mongoSanitize());
-app.use(express.json({ limit: '30mb' }));
+app.use(express.json({
+  limit: '30mb',
+  // Capture raw body for Meta webhook HMAC signature verification
+  verify: (req, _res, buf) => {
+    if (req.path.startsWith('/api/webhook/meta')) {
+      req.rawBody = buf;
+    }
+  },
+}));
 app.use(express.urlencoded({ extended: true, limit: '30mb' }));
 app.use(express.text({ limit: '10mb', type: ['text/plain', 'text/*'] }));
 app.use(morgan('combined'));
@@ -189,6 +198,7 @@ app.use('/api/admin-uploads', adminUploadRoutes);
 app.use('/api/vicidial', vicidialRoutes);
 app.use('/api/notes', notesRoutes);
 app.use('/api/webhook', webhookRoutes);
+app.use('/api/webhook/meta', metaWebhookRoutes);
 app.use('/api/website-leads', websiteLeadsRoutes);
 app.use('/api/affiliate', affiliateRoutes);
 

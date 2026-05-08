@@ -35,10 +35,18 @@ const websiteLeadSchema = new mongoose.Schema(
     // SMS consent
     smsOptIn: { type: Boolean, default: false },
 
+    // Lead origin — which channel this lead came from
+    source: {
+      type: String,
+      enum: ['website', 'meta'],
+      default: 'website',
+      index: true,
+    },
+
     // Which form submitted this
     formType: {
       type: String,
-      enum: ['contact-form', 'qualify-form', 'unknown'],
+      enum: ['contact-form', 'qualify-form', 'meta-lead-form', 'unknown'],
       default: 'unknown',
     },
 
