@@ -65,6 +65,26 @@ const websiteLeadSchema = new mongoose.Schema(
       default: null,
     },
 
+    // All Meta form fields stored as-is — key: Meta field name, value: submitted answer.
+    // This is a flexible map so custom questions from any form are never lost.
+    parsedFields: {
+      type: Map,
+      of: String,
+      default: undefined,
+    },
+
+    // Meta-specific: leadgen_id used for duplicate prevention (unique sparse index).
+    // Also surfaces ad attribution data.
+    metaAdData: {
+      leadgenId:    { type: String, default: undefined },
+      formId:       { type: String, default: undefined },
+      pageId:       { type: String, default: undefined },
+      adId:         { type: String, default: undefined },
+      adName:       { type: String, default: undefined },
+      adsetName:    { type: String, default: undefined },
+      campaignName: { type: String, default: undefined },
+    },
+
     // Raw payload stored for audit
     rawPayload: { type: mongoose.Schema.Types.Mixed },
   },
@@ -75,6 +95,8 @@ websiteLeadSchema.index({ organization: 1, createdAt: -1 });
 websiteLeadSchema.index({ status: 1, createdAt: -1 });
 websiteLeadSchema.index({ email: 1 });
 websiteLeadSchema.index({ phone: 1 });
+// Duplicate prevention: one DB record per Meta leadgen_id
+websiteLeadSchema.index({ 'rawPayload.leadgenId': 1 }, { sparse: true });
 
 const WebsiteLead = mongoose.model('WebsiteLead', websiteLeadSchema);
 
