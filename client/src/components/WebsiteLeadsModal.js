@@ -17,6 +17,7 @@ import {
   ChevronLeft,
   ChevronRight,
   FileDown,
+  Clock,
 } from 'lucide-react';
 import axios from '../utils/axios';
 import toast from 'react-hot-toast';
@@ -87,7 +88,7 @@ const WebsiteLeadsModal = ({ onClose }) => {
       const rows = res.data?.data || [];
       if (!rows.length) { toast.error('No leads to export'); return; }
 
-      const headers = ['Name','First Name','Last Name','Email','Phone','Form Type','Message','Debt Amount','Street Address','City','State','ZIP Code','SMS Opt-In','Status','Received'];
+      const headers = ['Name','First Name','Last Name','Email','Phone','Form Type','Message','Preferred Date','Preferred Time Slot','Custom Time','Debt Amount','Street Address','City','State','ZIP Code','SMS Opt-In','Status','Received'];
       const escape = (v) => {
         if (v == null || v === '') return '';
         const s = String(v);
@@ -100,6 +101,7 @@ const WebsiteLeadsModal = ({ onClose }) => {
           escape(r.email), escape(r.phone),
           escape(r.formType === 'contact-form' ? 'Contact Form' : r.formType === 'qualify-form' ? 'Qualify Form' : 'Unknown'),
           escape(r.message),
+          escape(r.preferredContactDate), escape(r.preferredContactSlot), escape(r.preferredContactCustomTime),
           escape(r.totalDebtAmount != null ? r.totalDebtAmount : ''),
           escape(r.streetAddress), escape(r.city), escape(r.state), escape(r.zipCode),
           escape(r.smsOptIn ? 'Yes' : 'No'),
@@ -453,6 +455,18 @@ const WebsiteLeadsModal = ({ onClose }) => {
                 <div className="bg-gray-50 rounded-xl p-4">
                   <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Debt Information</h4>
                   <Row icon={<DollarSign className="h-4 w-4 text-yellow-500" />} label="Estimated Debt" value={fmtMoney(detail.totalDebtAmount)} />
+                </div>
+              )}
+
+              {/* Preferred Contact Schedule */}
+              {(detail.preferredContactDate || detail.preferredContactSlot) && (
+                <div className="bg-gray-50 rounded-xl p-4 space-y-2">
+                  <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Preferred Contact Schedule</h4>
+                  <Row icon={<Clock className="h-4 w-4 text-teal-500" />} label="Date" value={fmt(detail.preferredContactDate)} />
+                  <Row icon={null} label="Time Slot" value={fmt(detail.preferredContactSlot)} />
+                  {detail.preferredContactCustomTime && (
+                    <Row icon={null} label="Custom Time" value={fmt(detail.preferredContactCustomTime)} />
+                  )}
                 </div>
               )}
 

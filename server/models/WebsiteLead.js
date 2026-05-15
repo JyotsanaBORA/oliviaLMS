@@ -32,6 +32,11 @@ const websiteLeadSchema = new mongoose.Schema(
     // Form 1 — contact / message form
     message: { type: String, trim: true, maxlength: 2000 },
 
+    // Preferred contact schedule — both forms
+    preferredContactDate:       { type: String, trim: true, maxlength: 40 },
+    preferredContactSlot:       { type: String, trim: true, maxlength: 100 },
+    preferredContactCustomTime: { type: String, trim: true, maxlength: 20 },
+
     // SMS consent
     smsOptIn: { type: Boolean, default: false },
 

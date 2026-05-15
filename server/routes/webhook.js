@@ -81,7 +81,10 @@ router.post('/leads', webhookLimiter, async (req, res) => {
       city,
       state,
       zipCode,         // Form 2 field name
-      smsOptIn         // both forms: SMS consent checkbox
+      smsOptIn,        // both forms: SMS consent checkbox
+      preferredContactDate,       // both forms: preferred contact date
+      preferredContactSlot,       // both forms: time slot (Morning/Afternoon/Evening/Custom)
+      preferredContactCustomTime, // both forms: custom time if slot === 'custom'
     } = req.body;
 
     // 4. Build full name
@@ -121,6 +124,10 @@ router.post('/leads', webhookLimiter, async (req, res) => {
     if (city)          doc.city          = str(city, 100);
     if (state)         doc.state         = str(state, 50);
     if (zipCode)       doc.zipCode       = str(zipCode, 20);
+
+    if (preferredContactDate)       doc.preferredContactDate       = str(preferredContactDate, 40);
+    if (preferredContactSlot)       doc.preferredContactSlot       = str(preferredContactSlot, 100);
+    if (preferredContactCustomTime) doc.preferredContactCustomTime = str(preferredContactCustomTime, 20);
 
     if (totalDebtAmount !== undefined && totalDebtAmount !== null) {
       const amount = Number(totalDebtAmount);
