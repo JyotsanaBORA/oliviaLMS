@@ -29,6 +29,7 @@ const vicidialRoutes = require('./routes/vicidial');
 const notesRoutes = require('./routes/notes');
 const webhookRoutes     = require('./routes/webhook');
 const metaWebhookRoutes = require('./routes/metaWebhook');
+const loopWebhookRoutes = require('./routes/loopWebhook');
 const websiteLeadsRoutes = require('./routes/websiteLeads');
 const affiliateRoutes = require('./routes/affiliate');
 
@@ -199,6 +200,7 @@ app.use('/api/vicidial', vicidialRoutes);
 app.use('/api/notes', notesRoutes);
 app.use('/api/webhook', webhookRoutes);
 app.use('/api/webhook/meta', metaWebhookRoutes);
+app.use('/api/webhook/loop', loopWebhookRoutes);
 app.use('/api/website-leads', websiteLeadsRoutes);
 app.use('/api/affiliate', affiliateRoutes);
 
