@@ -873,8 +873,8 @@ router.put('/users/:id', protect, [
       });
     }
 
-    // SuperAdmin can update agent1, agent2, and admin users
-    if (!['agent1', 'agent2', 'admin'].includes(targetUser.role)) {
+    // SuperAdmin can update agent1, agent2, admin, restricted_admin, and data_vendor users
+    if (!['agent1', 'agent2', 'admin', 'restricted_admin', 'affiliate_admin', 'data_vendor'].includes(targetUser.role)) {
       return res.status(400).json({
         success: false,
         message: 'Can only update agent1, agent2, or admin users'
@@ -1092,47 +1092,58 @@ router.delete('/admins/:id', protect, async (req, res) => {
   }
 });
 
-// @desc    Update admin status (SuperAdmin only)
-// @route   PUT /api/auth/admins/:id/status
-// @access  Private (SuperAdmin only)
-router.put('/admins/:id/status', protect, async (req, res) => {
+// @desc    List all data vendor users (SuperAdmin only)
+// @route   GET /api/auth/data-vendors
+// @access  Private (SuperAdmin)
+router.get('/data-vendors', protect, async (req, res) => {
   try {
-    // Check if user is superadmin
     if (req.user.role !== 'superadmin') {
-      return res.status(403).json({
-        success: false,
-        message: 'Only superadmin can update admin status'
-      });
+      return res.status(403).json({ success: false, message: 'SuperAdmin only' });
     }
-
-    const { isActive } = req.body;
-    const admin = await User.findById(req.params.id);
-
-    if (!admin || !['admin', 'restricted_admin'].includes(admin.role)) {
-      return res.status(404).json({
-        success: false,
-        message: 'Admin not found'
-      });
-    }
-
-    admin.isActive = isActive;
-    await admin.save();
-
-    res.status(200).json({
-      success: true,
-      message: `Admin ${isActive ? 'activated' : 'deactivated'} successfully`,
-      data: {
-        admin: admin.toJSON()
-      }
-    });
-
+    const vendors = await User.find({ role: 'data_vendor' }).select('-password').sort({ createdAt: -1 });
+    res.status(200).json({ success: true, data: vendors });
   } catch (error) {
-    console.error('Update admin status error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error updating admin status',
-      error: process.env.NODE_ENV === 'development' ? error.message : {}
-    });
+    res.status(500).json({ success: false, message: 'Error fetching data vendors' });
+  }
+});
+
+// @desc    Delete data vendor (SuperAdmin only)
+// @route   DELETE /api/auth/data-vendors/:id
+// @access  Private (SuperAdmin)
+router.delete('/data-vendors/:id', protect, async (req, res) => {
+  try {
+    if (req.user.role !== 'superadmin') {
+      return res.status(403).json({ success: false, message: 'SuperAdmin only' });
+    }
+    const vendor = await User.findById(req.params.id);
+    if (!vendor || vendor.role !== 'data_vendor') {
+      return res.status(404).json({ success: false, message: 'Data vendor not found' });
+    }
+    await User.findByIdAndDelete(req.params.id);
+    res.status(200).json({ success: true, message: 'Data vendor deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Error deleting data vendor' });
+  }
+});
+
+// @desc    Update data vendor status (SuperAdmin only)
+// @route   PUT /api/auth/data-vendors/:id/status
+// @access  Private (SuperAdmin)
+router.put('/data-vendors/:id/status', protect, async (req, res) => {
+  try {
+    if (req.user.role !== 'superadmin') {
+      return res.status(403).json({ success: false, message: 'SuperAdmin only' });
+    }
+    const { isActive } = req.body;
+    const vendor = await User.findById(req.params.id);
+    if (!vendor || vendor.role !== 'data_vendor') {
+      return res.status(404).json({ success: false, message: 'Data vendor not found' });
+    }
+    vendor.isActive = isActive;
+    await vendor.save();
+    res.status(200).json({ success: true, message: `Data vendor ${isActive ? 'activated' : 'deactivated'} successfully` });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Error updating data vendor status' });
   }
 });
 

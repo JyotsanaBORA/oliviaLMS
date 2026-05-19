@@ -43,15 +43,17 @@ const SuperAdminUserManagement = () => {
 
   const fetchUsers = async () => {
     try {
-      // Fetch both agents and admins
-      const [agentsResponse, adminsResponse] = await Promise.all([
+      // Fetch agents, admins, and data vendors
+      const [agentsResponse, adminsResponse, vendorsResponse] = await Promise.all([
         axios.get('/api/auth/agents'),
-        axios.get('/api/auth/admins')
+        axios.get('/api/auth/admins'),
+        axios.get('/api/auth/data-vendors')
       ]);
       
       const allUsers = [
         ...(Array.isArray(agentsResponse.data.data) ? agentsResponse.data.data : []),
-        ...(Array.isArray(adminsResponse.data.data) ? adminsResponse.data.data : [])
+        ...(Array.isArray(adminsResponse.data.data) ? adminsResponse.data.data : []),
+        ...(Array.isArray(vendorsResponse.data.data) ? vendorsResponse.data.data : [])
       ];
       
       setUsers(allUsers);
@@ -73,7 +75,14 @@ const SuperAdminUserManagement = () => {
   const toggleUserStatus = async (userId, currentStatus) => {
     try {
       const targetUser = users.find(u => u._id === userId);
-      const endpoint = (targetUser.role === 'admin' || targetUser.role === 'restricted_admin') ? 'admins' : 'agents';
+      let endpoint;
+      if (targetUser.role === 'data_vendor') {
+        endpoint = 'data-vendors';
+      } else if (targetUser.role === 'admin' || targetUser.role === 'restricted_admin') {
+        endpoint = 'admins';
+      } else {
+        endpoint = 'agents';
+      }
       
       const response = await axios.put(`/api/auth/${endpoint}/${userId}/status`, {
         isActive: !currentStatus
@@ -176,14 +185,22 @@ const SuperAdminUserManagement = () => {
 
   const deleteUser = async (userId, userName) => {
     const targetUser = users.find(u => u._id === userId);
-    const userType = (targetUser.role === 'admin' || targetUser.role === 'restricted_admin') ? 'admin' : 'agent';
+    const userType = targetUser.role === 'data_vendor' ? 'data vendor'
+                   : (targetUser.role === 'admin' || targetUser.role === 'restricted_admin') ? 'admin' : 'agent';
     
     if (!window.confirm(`Are you sure you want to delete ${userType} "${userName}"? This action cannot be undone.`)) {
       return;
     }
 
     try {
-      const endpoint = (targetUser.role === 'admin' || targetUser.role === 'restricted_admin') ? 'admins' : 'agents';
+      let endpoint;
+      if (targetUser.role === 'data_vendor') {
+        endpoint = 'data-vendors';
+      } else if (targetUser.role === 'admin' || targetUser.role === 'restricted_admin') {
+        endpoint = 'admins';
+      } else {
+        endpoint = 'agents';
+      }
       await axios.delete(`/api/auth/${endpoint}/${userId}`);
       
       setUsers(prev => prev.filter(user => user._id !== userId));
@@ -234,20 +251,24 @@ const SuperAdminUserManagement = () => {
       // Group deletions by type
       const agentIds = [];
       const adminIds = [];
+      const vendorIds = [];
       
       selectedUsers.forEach(userId => {
         const user = users.find(u => u._id === userId);
-        if (user.role === 'admin' || user.role === 'restricted_admin') {
+        if (user.role === 'data_vendor') {
+          vendorIds.push(userId);
+        } else if (user.role === 'admin' || user.role === 'restricted_admin') {
           adminIds.push(userId);
         } else {
           agentIds.push(userId);
         }
       });
 
-      // Delete agents and admins in parallel
+      // Delete in parallel
       const deletePromises = [
         ...agentIds.map(id => axios.delete(`/api/auth/agents/${id}`)),
-        ...adminIds.map(id => axios.delete(`/api/auth/admins/${id}`))
+        ...adminIds.map(id => axios.delete(`/api/auth/admins/${id}`)),
+        ...vendorIds.map(id => axios.delete(`/api/auth/data-vendors/${id}`))
       ];
 
       await Promise.all(deletePromises);
@@ -277,6 +298,8 @@ const SuperAdminUserManagement = () => {
         return 'bg-orange-100 text-orange-800';
       case 'affiliate_admin':
         return 'bg-indigo-100 text-indigo-800';
+      case 'data_vendor':
+        return 'bg-violet-100 text-violet-800';
       default:
         return 'bg-gray-100 text-gray-800';
     }
@@ -294,6 +317,8 @@ const SuperAdminUserManagement = () => {
         return 'Restricted Data Access';
       case 'affiliate_admin':
         return 'Affiliate Campaign Dashboard';
+      case 'data_vendor':
+        return 'ViciDial Data Transparency';
       default:
         return 'Unknown Role';
     }
@@ -406,6 +431,16 @@ const SuperAdminUserManagement = () => {
               }`}
             >
               Affiliate Admin ({users.filter(u => u.role === 'affiliate_admin').length})
+            </button>
+            <button
+              onClick={() => setRoleFilter('data_vendor')}
+              className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
+                roleFilter === 'data_vendor'
+                  ? 'bg-violet-100 text-violet-700 border border-violet-300'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              Data Vendor ({users.filter(u => u.role === 'data_vendor').length})
             </button>
           </div>
         </div>
