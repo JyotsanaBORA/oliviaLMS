@@ -15,7 +15,8 @@ import {
   X,
   Download,
   UserCheck,
-  TrendingUp
+  TrendingUp,
+  Database
 } from 'lucide-react';
 import axios from '../utils/axios';
 import toast from 'react-hot-toast';
@@ -25,6 +26,7 @@ import SuperUserManagement from '../components/SuperUserManagement';
 import OrganizationManagement from './OrganizationManagement';
 import LeadReassignModal from '../components/LeadReassignModal';
 import AdminUploadShareModal from '../components/AdminUploadShareModal';
+import DataVendorShareModal from '../components/DataVendorShareModal';
 import WebsiteLeadsModal from '../components/WebsiteLeadsModal';
 import Pagination from '../components/Pagination';
 import { useSocket } from '../contexts/SocketContext';
@@ -142,6 +144,7 @@ const AdminDashboard = () => {
 
   // Admin upload share modal
   const [showShareModal, setShowShareModal] = useState(false);
+  const [showVendorModal, setShowVendorModal] = useState(false);
 
   // Website leads modal (Reddington admin only)
   const [showWebsiteLeads, setShowWebsiteLeads] = useState(false);
@@ -1579,6 +1582,13 @@ const AdminDashboard = () => {
             {isReddingtonAdmin && (
               <div className="ml-auto flex items-center gap-2">
                 <button
+                  onClick={() => setShowVendorModal(true)}
+                  className="px-4 py-1.5 bg-gradient-to-r from-violet-600 to-purple-600 text-white text-xs font-semibold rounded-lg hover:shadow-xl hover:scale-105 transition-all duration-200 flex items-center gap-1.5"
+                >
+                  <Database size={14} />
+                  <span>Vendor Data</span>
+                </button>
+                <button
                   onClick={() => setShowShareModal(true)}
                   className="px-4 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-xs font-semibold rounded-lg hover:shadow-xl hover:scale-105 transition-all duration-200 flex items-center gap-1.5"
                 >
@@ -2595,6 +2605,12 @@ const AdminDashboard = () => {
       <AdminUploadShareModal
         isOpen={showShareModal}
         onClose={() => setShowShareModal(false)}
+      />
+
+      {/* Data Vendor Upload Modal */}
+      <DataVendorShareModal
+        isOpen={showVendorModal}
+        onClose={() => setShowVendorModal(false)}
       />
 
       {/* Website Leads Modal — Reddington admin only */}

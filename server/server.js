@@ -32,6 +32,7 @@ const metaWebhookRoutes = require('./routes/metaWebhook');
 const loopWebhookRoutes = require('./routes/loopWebhook');
 const websiteLeadsRoutes = require('./routes/websiteLeads');
 const affiliateRoutes = require('./routes/affiliate');
+const dataVendorRoutes = require('./routes/dataVendorUploads');
 
 const app = express();
 const server = http.createServer(app);
@@ -203,6 +204,7 @@ app.use('/api/webhook/meta', metaWebhookRoutes);
 app.use('/api/webhook/loop', loopWebhookRoutes);
 app.use('/api/website-leads', websiteLeadsRoutes);
 app.use('/api/affiliate', affiliateRoutes);
+app.use('/api/data-vendor-uploads', dataVendorRoutes);
 
 // =========================
 // HEALTH CHECK

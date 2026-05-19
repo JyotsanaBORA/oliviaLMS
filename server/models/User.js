@@ -24,7 +24,7 @@ const userSchema = new mongoose.Schema({
   },
   role: {
     type: String,
-    enum: ['agent1', 'agent2', 'admin', 'superadmin', 'restricted_admin', 'affiliate_admin'],
+    enum: ['agent1', 'agent2', 'admin', 'superadmin', 'restricted_admin', 'affiliate_admin', 'data_vendor'],
     default: 'agent1'
   },
   isActive: {
@@ -38,8 +38,8 @@ const userSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Organization',
     required: function() {
-      // Organization is required for admin and agents, but not for superadmin
-      return this.role !== 'superadmin' && this.role !== 'affiliate_admin';
+      // Organization is required for admin and agents, but not for superadmin/affiliate_admin/data_vendor
+      return this.role !== 'superadmin' && this.role !== 'affiliate_admin' && this.role !== 'data_vendor';
     }
   },
   createdBy: {

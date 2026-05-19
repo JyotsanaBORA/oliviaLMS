@@ -316,6 +316,60 @@ router.post('/create-affiliate-admin', protect, [
   }
 });
 
+// @desc    Create Data Vendor (Admin [main org] + SuperAdmin)
+// @route   POST /api/auth/create-data-vendor
+// @access  Private (Admin [main org] or SuperAdmin)
+router.post('/create-data-vendor', protect, [
+  body('name').trim().isLength({ min: 2, max: 50 }).withMessage('Name must be between 2 and 50 characters'),
+  body('email').isEmail().normalizeEmail().withMessage('Please enter a valid email'),
+  body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters long')
+    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/).withMessage('Password must contain at least one lowercase letter, one uppercase letter, and one number'),
+], handleValidationErrors, async (req, res) => {
+  try {
+    // Only superadmin or main org admin may create data vendor accounts
+    const allowed = req.user.role === 'superadmin' || await isMainOrgAdminUser(req.user);
+    if (!allowed) {
+      return res.status(403).json({
+        success: false,
+        message: 'Only superadmin or the main organisation admin can create data vendor accounts'
+      });
+    }
+
+    const { name, email, password } = req.body;
+
+    const existingUser = await User.findByEmail(email);
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        message: 'User with this email already exists'
+      });
+    }
+
+    const user = await User.create({
+      name,
+      email,
+      password,
+      role: 'data_vendor',
+      createdBy: req.user._id,
+      // No organization — data vendors access data via sharedWith link only
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'Data vendor account created successfully',
+      data: { user: user.toJSON() }
+    });
+
+  } catch (error) {
+    console.error('Create data vendor error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error creating data vendor account',
+      error: process.env.NODE_ENV === 'development' ? error.message : {}
+    });
+  }
+});
+
 // @desc    Login user
 // @route   POST /api/auth/login
 // @access  Public

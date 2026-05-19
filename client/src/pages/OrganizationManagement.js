@@ -130,8 +130,18 @@ const OrganizationManagement = () => {
     setSubmitting(true);
 
     try {
-      await axios.post(`/api/organizations/${selectedOrg._id}/users`, userForm);
-      toast.success(`${userForm.role} created successfully!`);
+      if (userForm.role === 'data_vendor') {
+        // Data vendor accounts are org-independent
+        await axios.post('/api/auth/create-data-vendor', {
+          name: userForm.name,
+          email: userForm.email,
+          password: userForm.password
+        });
+        toast.success('Data Vendor account created successfully!');
+      } else {
+        await axios.post(`/api/organizations/${selectedOrg._id}/users`, userForm);
+        toast.success(`${userForm.role} created successfully!`);
+      }
       setUserForm({
         name: '',
         email: '',
@@ -717,6 +727,7 @@ const OrganizationManagement = () => {
                         <option value="agent1">Agent 1</option>
                         <option value="agent2">Agent 2</option>
                         <option value="restricted_admin">Restricted Admin</option>
+                        <option value="data_vendor">Data Vendor</option>
                       </select>
                     </div>
                   </div>

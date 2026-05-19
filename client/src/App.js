@@ -15,6 +15,7 @@ import AdminDashboard from './pages/AdminDashboard';
 import SuperAdminDashboard from './pages/SuperAdminDashboard';
 import RestrictedAdminDashboard from './pages/RestrictedAdminDashboard';
 import AffiliateDashboard from './pages/AffiliateDashboard';
+import DataVendorDashboard from './pages/DataVendorDashboard';
 import Profile from './pages/Profile';
 import Chat from './pages/Chat';
 
@@ -105,6 +106,12 @@ function App() {
                 <Route path="affiliate" element={
                   <ProtectedRoute roles={['affiliate_admin', 'superadmin']}>
                     <AffiliateDashboard />
+                  </ProtectedRoute>
+                } />
+
+                <Route path="vendor-dashboard" element={
+                  <ProtectedRoute roles={['data_vendor', 'superadmin']}>
+                    <DataVendorDashboard />
                   </ProtectedRoute>
                 } />
 
