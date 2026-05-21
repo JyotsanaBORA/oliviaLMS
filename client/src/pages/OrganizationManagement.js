@@ -150,7 +150,8 @@ const OrganizationManagement = () => {
         name: '',
         email: '',
         password: '',
-        role: 'admin'
+        role: 'admin',
+        canDownloadLeads: false
       });
       setShowUserModal(false);
       setSelectedOrg(null);
@@ -184,7 +185,8 @@ const OrganizationManagement = () => {
       name: '',
       email: '',
       password: '',
-      role: 'admin'
+      role: 'admin',
+      canDownloadLeads: false
     });
     setShowUserModal(true);
   };
@@ -791,7 +793,7 @@ const OrganizationManagement = () => {
                         required
                         className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                         value={userForm.role}
-                        onChange={(e) => setUserForm({...userForm, role: e.target.value})}
+                        onChange={(e) => setUserForm({...userForm, role: e.target.value, canDownloadLeads: false})}
                       >
                         <option value="admin">Admin</option>
                         <option value="agent1">Agent 1</option>
@@ -800,6 +802,29 @@ const OrganizationManagement = () => {
                         <option value="data_vendor">Data Vendor</option>
                       </select>
                     </div>
+
+                    {/* Download permission — admin only */}
+                    {userForm.role === 'admin' && (
+                      <div className="flex items-start gap-3 p-3 bg-emerald-50 border border-emerald-200 rounded-lg">
+                        <div className="flex items-center h-5 mt-0.5">
+                          <input
+                            id="canDownloadLeads"
+                            type="checkbox"
+                            className="w-4 h-4 text-emerald-600 border-gray-300 rounded focus:ring-emerald-500 cursor-pointer"
+                            checked={!!userForm.canDownloadLeads}
+                            onChange={(e) => setUserForm({...userForm, canDownloadLeads: e.target.checked})}
+                          />
+                        </div>
+                        <div>
+                          <label htmlFor="canDownloadLeads" className="text-sm font-medium text-gray-800 cursor-pointer">
+                            Allow CSV Download
+                          </label>
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            This admin will be able to export leads from their organisation as a CSV file. They can only download leads belonging to their own organisation.
+                          </p>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
 

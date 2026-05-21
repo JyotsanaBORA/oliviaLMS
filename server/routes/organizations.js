@@ -461,12 +461,16 @@ router.post('/:id/users', protect, userValidation, handleValidationErrors, async
       });
     }
 
+    // canDownloadLeads is only meaningful for admin role; sanitise to boolean
+    const canDownloadLeads = role === 'admin' ? Boolean(req.body.canDownloadLeads) : false;
+
     // Create user
     const user = await User.create({
       name,
       email,
       password,
       role,
+      canDownloadLeads,
       organization: req.params.id,
       createdBy: req.user._id
     });

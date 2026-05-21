@@ -15,6 +15,7 @@ const {
 } = require('../utils/timeFilters');
 const { sendGTIPostback, syncLeadWithInboundCall } = require('../utils/gtiPostbackService');
 const cache = require('../utils/cache');
+const { notifyLeadDownload } = require('../utils/notificationHelper');
 
 const EASTERN_TIMEZONE = 'America/New_York';
 
@@ -579,6 +580,21 @@ router.get('/export', [
 
     console.log(`Export request from ${user.role} user: ${user._id}`);
 
+    // --- Permission gate ---
+    // Superadmin: always allowed.
+    // Admin from REDDINGTON: always allowed (cross-org visibility).
+    // Other admins: only allowed if canDownloadLeads === true.
+    if (user.role === 'admin') {
+      const exportOrg = await Organization.findById(user.organization).select('name').lean();
+      const isReddington = exportOrg && exportOrg.name === 'REDDINGTON GLOBAL CONSULTANCY';
+      if (!isReddington && !user.canDownloadLeads) {
+        return res.status(403).json({
+          success: false,
+          message: 'You do not have permission to download leads. Contact your administrator.'
+        });
+      }
+    }
+
     // Build filter object using EXACT same logic as main leads route
     const filter = {};
     
@@ -940,6 +956,25 @@ router.get('/export', [
     res.setHeader('Pragma', 'no-cache');
 
     res.status(200).send(csvContent);
+
+    // Fire-and-forget: notify superadmin + Reddington admin about the download,
+    // and confirm to the downloader themselves. This runs AFTER the response is sent.
+    (async () => {
+      try {
+        let exportOrgName = 'Unknown Organisation';
+        if (user.organization) {
+          const exportOrg = await Organization.findById(user.organization).select('name').lean();
+          if (exportOrg) exportOrgName = exportOrg.name;
+        }
+        await notifyLeadDownload({
+          user,
+          orgName: exportOrgName,
+          leadCount: validCsvRows.length,
+        });
+      } catch (notifErr) {
+        console.error('Export notification error (non-fatal):', notifErr.message);
+      }
+    })();
 
   } catch (error) {
     console.error('Export leads error:', error);

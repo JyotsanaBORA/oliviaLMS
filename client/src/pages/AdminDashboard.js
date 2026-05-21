@@ -1056,7 +1056,8 @@ const AdminDashboard = () => {
           </div>
         </div>
 
-        {/* ── Inbound / Outbound Call Report ────────────────────────────── */}
+        {/* ── Inbound / Outbound Call Report — main org admin only ────── */}
+        {isReddingtonAdmin && (
         <div className="bg-white rounded-xl shadow-md border border-gray-100 overflow-hidden">
           {/* Header / toggle */}
           <button
@@ -1209,6 +1210,7 @@ const AdminDashboard = () => {
             </div>
           )}
         </div>
+        )} {/* end isReddingtonAdmin call report */}
 
         {/* Lead Management Toggle */}
         <div className="bg-white rounded-xl shadow-md border border-gray-100 overflow-hidden backdrop-blur-sm bg-opacity-95">
@@ -1578,8 +1580,9 @@ const AdminDashboard = () => {
               </div>
             </div>
             
-            {/* Export & Share Buttons - Only for Reddington Admin */}
-            {isReddingtonAdmin && (
+            {/* Export & Share Buttons */}
+            {isReddingtonAdmin ? (
+              /* Reddington admin: full action bar — Vendor Data, Share Data, Export CSV */
               <div className="ml-auto flex items-center gap-2">
                 <button
                   onClick={() => setShowVendorModal(true)}
@@ -1603,7 +1606,18 @@ const AdminDashboard = () => {
                   <span>Export CSV</span>
                 </button>
               </div>
-            )}
+            ) : user?.canDownloadLeads ? (
+              /* Other org admin with download permission: Export CSV only (own org leads) */
+              <div className="ml-auto flex items-center gap-2">
+                <button
+                  onClick={handleExportLeads}
+                  className="px-4 py-1.5 bg-gradient-to-r from-emerald-600 to-emerald-600 text-white text-xs font-semibold rounded-lg hover:shadow-xl hover:scale-105 transition-all duration-200 flex items-center gap-1.5"
+                >
+                  <Download size={14} />
+                  <span>Export CSV</span>
+                </button>
+              </div>
+            ) : null}
           </div>
           
           {/* Filter Summary */}

@@ -205,6 +205,7 @@ app.use('/api/webhook/loop', loopWebhookRoutes);
 app.use('/api/website-leads', websiteLeadsRoutes);
 app.use('/api/affiliate', affiliateRoutes);
 app.use('/api/data-vendor-uploads', dataVendorRoutes);
+app.use('/api/notifications', require('./routes/notifications'));
 
 // =========================
 // HEALTH CHECK

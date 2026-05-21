@@ -6,6 +6,7 @@ const { protect, generateToken } = require('../middleware/auth');
 const handleValidationErrors = require('../middleware/validation');
 const { notifyCheckIn, notifyCheckOut } = require('../services/hrmsAttendance');
 const { syncWithChatService } = require('../utils/chatSync');
+const { notifyPasswordChange } = require('../utils/notificationHelper');
 
 // Helper: check if a user is the main-org admin (privilege for chat service)
 // Override the org name via MAIN_ORG_NAME env var; default is 'REDDINGTON GLOBAL CONSULTANCY'
@@ -612,6 +613,11 @@ router.put('/change-password', protect, [
     // Update password
     user.password = newPassword;
     await user.save();
+
+    // Fire-and-forget: notify superadmin + Reddington admin, and confirm to the user
+    notifyPasswordChange({ user: req.user }).catch((err) =>
+      console.error('Password change notification error (non-fatal):', err.message)
+    );
 
     res.status(200).json({
       success: true,

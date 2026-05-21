@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useRefresh } from '../contexts/RefreshContext';
 import { scrollToTop } from '../utils/scrollUtils';
+import axios from 'axios';
 import { 
   Home, 
   Users, 
@@ -15,7 +16,11 @@ import {
   Settings,
   Shield,
   Database,
-  MessageSquare
+  MessageSquare,
+  Download,
+  KeyRound,
+  CheckCircle2,
+  Trash2
 } from 'lucide-react';
 import LoadingSpinner from './LoadingSpinner';
 import toast from 'react-hot-toast';
@@ -26,6 +31,92 @@ const Layout = ({ onDashboardRefresh }) => {
   const { triggerRefresh } = useRefresh();
   const location = useLocation();
   const navigate = useNavigate();
+
+  // ── Notification state ───────────────────────────────────────
+  const [notifications, setNotifications]   = useState([]);
+  const [unreadCount, setUnreadCount]       = useState(0);
+  const [notifOpen, setNotifOpen]           = useState(false);
+  const [notifLoading, setNotifLoading]     = useState(false);
+  const notifRef = useRef(null);
+
+  const fetchNotifications = useCallback(async () => {
+    if (!user) return;
+    // Only roles that get notifications
+    if (!['superadmin', 'admin'].includes(user.role)) return;
+    try {
+      setNotifLoading(true);
+      const res = await axios.get('/api/notifications');
+      if (res.data.success) {
+        setNotifications(res.data.data || []);
+        setUnreadCount(res.data.unreadCount || 0);
+      }
+    } catch (_) {
+      // silently fail — notifications are non-critical
+    } finally {
+      setNotifLoading(false);
+    }
+  }, [user]);
+
+  // Fetch on mount + every 60 seconds
+  useEffect(() => {
+    fetchNotifications();
+    const interval = setInterval(fetchNotifications, 60000);
+    return () => clearInterval(interval);
+  }, [fetchNotifications]);
+
+  // Close panel when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (notifRef.current && !notifRef.current.contains(e.target)) {
+        setNotifOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const handleOpenNotifPanel = async () => {
+    setNotifOpen((prev) => !prev);
+    if (!notifOpen && unreadCount > 0) {
+      // Mark all as read when opening
+      try {
+        await axios.patch('/api/notifications/mark-all-read');
+        setUnreadCount(0);
+        setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+      } catch (_) {}
+    }
+  };
+
+  const handleDeleteNotif = async (id, e) => {
+    e.stopPropagation();
+    try {
+      await axios.delete(`/api/notifications/${id}`);
+      setNotifications((prev) => prev.filter((n) => n._id !== id));
+    } catch (_) {}
+  };
+
+  const getNotifIcon = (type) => {
+    switch (type) {
+      case 'lead_download_alert':   return <Download size={14} className="text-amber-500 shrink-0" />;
+      case 'lead_download_confirm': return <CheckCircle2 size={14} className="text-emerald-500 shrink-0" />;
+      case 'password_change_alert': return <KeyRound size={14} className="text-red-500 shrink-0" />;
+      case 'password_change_confirm': return <CheckCircle2 size={14} className="text-emerald-500 shrink-0" />;
+      default: return <Bell size={14} className="text-gray-400 shrink-0" />;
+    }
+  };
+
+  const formatNotifTime = (dateStr) => {
+    const d = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now - d;
+    const diffMin = Math.floor(diffMs / 60000);
+    if (diffMin < 1) return 'just now';
+    if (diffMin < 60) return `${diffMin}m ago`;
+    const diffH = Math.floor(diffMin / 60);
+    if (diffH < 24) return `${diffH}h ago`;
+    return d.toLocaleDateString();
+  };
+  // ── End notification state ────────────────────────────────────
 
   // Prevent copying FROM the dashboard for restricted roles.
   // Paste INTO the dashboard is intentionally allowed.
@@ -262,11 +353,94 @@ const Layout = ({ onDashboardRefresh }) => {
             </div>
 
             <div className="flex items-center space-x-4">
-              {/* Notifications */}
-              <button className="p-2 text-gray-400 hover:text-gray-500">
-                <Bell className="h-5 w-5" />
-              </button>
-              
+              {/* Notifications Bell — only for admin and superadmin */}
+              {['superadmin', 'admin'].includes(user.role) && (
+                <div className="relative" ref={notifRef}>
+                  <button
+                    onClick={handleOpenNotifPanel}
+                    className="relative p-2 text-gray-400 hover:text-gray-600 transition-colors"
+                    title="Notifications"
+                  >
+                    <Bell className="h-5 w-5" />
+                    {unreadCount > 0 && (
+                      <span className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white leading-none">
+                        {unreadCount > 9 ? '9+' : unreadCount}
+                      </span>
+                    )}
+                  </button>
+
+                  {/* Dropdown panel */}
+                  {notifOpen && (
+                    <div className="absolute right-0 top-full mt-2 w-80 max-h-96 bg-white rounded-xl shadow-2xl border border-gray-200 flex flex-col z-50 overflow-hidden">
+                      {/* Header */}
+                      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-gray-50">
+                        <span className="text-sm font-semibold text-gray-800">Notifications</span>
+                        <button
+                          onClick={() => setNotifOpen(false)}
+                          className="text-gray-400 hover:text-gray-600"
+                        >
+                          <X size={15} />
+                        </button>
+                      </div>
+
+                      {/* List */}
+                      <div className="overflow-y-auto flex-1">
+                        {notifLoading && notifications.length === 0 ? (
+                          <div className="py-8 text-center text-sm text-gray-400">Loading…</div>
+                        ) : notifications.length === 0 ? (
+                          <div className="py-10 text-center">
+                            <Bell size={28} className="mx-auto text-gray-300 mb-2" />
+                            <p className="text-sm text-gray-400">No notifications yet</p>
+                          </div>
+                        ) : (
+                          notifications.map((n) => (
+                            <div
+                              key={n._id}
+                              className={`flex items-start gap-3 px-4 py-3 border-b border-gray-50 hover:bg-gray-50 transition-colors ${
+                                !n.isRead ? 'bg-blue-50' : ''
+                              }`}
+                            >
+                              <div className="mt-0.5">{getNotifIcon(n.type)}</div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs text-gray-800 leading-snug">{n.message}</p>
+                                <p className="text-[10px] text-gray-400 mt-0.5">{formatNotifTime(n.createdAt)}</p>
+                              </div>
+                              <button
+                                onClick={(e) => handleDeleteNotif(n._id, e)}
+                                className="shrink-0 text-gray-300 hover:text-red-400 transition-colors mt-0.5"
+                                title="Dismiss"
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            </div>
+                          ))
+                        )}
+                      </div>
+
+                      {/* Footer */}
+                      {notifications.length > 0 && (
+                        <div className="px-4 py-2 border-t border-gray-100 bg-gray-50">
+                          <button
+                            onClick={async () => {
+                              try {
+                                await Promise.all(
+                                  notifications.map((n) => axios.delete(`/api/notifications/${n._id}`))
+                                );
+                                setNotifications([]);
+                                setUnreadCount(0);
+                              } catch (_) {}
+                            }}
+                            className="text-xs text-gray-400 hover:text-red-500 transition-colors"
+                          >
+                            Clear all
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Settings */}
               <button className="p-2 text-gray-400 hover:text-gray-500">
                 <Settings className="h-5 w-5" />

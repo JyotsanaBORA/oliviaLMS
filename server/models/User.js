@@ -53,6 +53,12 @@ const userSchema = new mongoose.Schema({
     sparse: true,
     index: true,
   },
+  // Permission: whether this admin can export/download leads as CSV.
+  // Only relevant for role === 'admin'. Defaults to false (no download access).
+  canDownloadLeads: {
+    type: Boolean,
+    default: false,
+  },
   createdAt: {
     type: Date,
     default: Date.now
