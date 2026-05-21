@@ -55,7 +55,12 @@ const HEADER_MAP = {
   'custom3': 'custom3',
   'custom4': 'custom4',
   'custom5': 'custom5',
-  'custom6': 'custom6'
+  'custom6': 'custom6',
+  'enrolled_debt': 'enrolled_debt',
+  'enrolleddebt': 'enrolled_debt',
+  'enrolled debt': 'enrolled_debt',
+  'enrolleddebtamount': 'enrolled_debt',
+  'enrolled_debt_amount': 'enrolled_debt'
 };
 
 const DATE_FIELDS = new Set(['entry_date', 'modify_date', 'last_local_call_time']);
@@ -503,7 +508,7 @@ router.get('/runs/:runBatchId/export', protect, requireRoles('data_vendor', 'adm
       'postal_code','country_code','gender','date_of_birth','alt_phone',
       'email','security_phrase','comments','called_count','last_local_call_time',
       'rank','owner','entry_id','debt','ccount','monthly_payment','remark',
-      'custom1','custom2','custom3','custom4','custom5','custom6'
+      'custom1','custom2','custom3','custom4','custom5','custom6','enrolled_debt'
     ];
 
     const escape = v => {
@@ -554,7 +559,7 @@ router.get('/lists/:listName/export', protect, requireRoles('data_vendor', 'admi
       'title','first_name','middle_initial','last_name','city','state','country_code',
       'date_of_birth','alt_phone','email','comments','called_count',
       'last_local_call_time','debt','monthly_payment','remark',
-      'custom1','custom2','custom3','custom4','custom5','custom6'
+      'custom1','custom2','custom3','custom4','custom5','custom6','enrolled_debt'
     ];
 
     const escape = v => {
@@ -605,7 +610,7 @@ router.get('/export', protect, requireRoles('data_vendor', 'admin', 'superadmin'
       'source_id','list_id','called_since_last_reset','phone_code','phone_number',
       'first_name','last_name','email','comments','called_count',
       'last_local_call_time','debt','monthly_payment','remark',
-      'custom1','custom2','custom3','custom4','custom5','custom6'
+      'custom1','custom2','custom3','custom4','custom5','custom6','enrolled_debt'
     ];
 
     const escape = v => {
@@ -625,6 +630,193 @@ router.get('/export', protect, requireRoles('data_vendor', 'admin', 'superadmin'
     res.send([header, ...rows].join('\n'));
   } catch (err) {
     console.error('Export all error:', err);
+    res.status(500).json({ success: false, message: 'Export failed' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────
+// GET /api/data-vendor-uploads/sales-stats
+// Enrolled-debt / SALE disposition stats with optional date range
+// Query params: startDate (YYYY-MM-DD), endDate (YYYY-MM-DD)
+// Access: data_vendor (own), admin/superadmin
+// ─────────────────────────────────────────────────────────────────
+router.get('/sales-stats', protect, requireRoles('data_vendor', 'admin', 'superadmin'), async (req, res) => {
+  try {
+    const match = buildVendorMatch(req);
+
+    // Only SALE records (case-insensitive)
+    match.status = { $regex: /^SALE$/i };
+
+    // Optional date-range on entryDateParsed
+    if (req.query.startDate || req.query.endDate) {
+      const dateFilter = {};
+      if (req.query.startDate) {
+        const start = new Date(req.query.startDate);
+        if (isNaN(start.getTime())) {
+          return res.status(400).json({ success: false, message: 'Invalid startDate' });
+        }
+        dateFilter.$gte = start;
+      }
+      if (req.query.endDate) {
+        const end = new Date(req.query.endDate);
+        if (isNaN(end.getTime())) {
+          return res.status(400).json({ success: false, message: 'Invalid endDate' });
+        }
+        // Include all records through the end of that day
+        end.setDate(end.getDate() + 1);
+        dateFilter.$lt = end;
+      }
+      match.entryDateParsed = dateFilter;
+    }
+
+    // Aggregation helper: safely convert enrolled_debt string → number.
+    // Uses $toDouble which is available in MongoDB 4.0+.
+    // Empty strings / non-numeric values yield 0 via the $ifNull + $cond guard.
+    const toDebt = {
+      $cond: {
+        if: {
+          $and: [
+            { $ne: [{ $ifNull: ['$enrolled_debt', ''] }, ''] },
+            { $ne: ['$enrolled_debt', null] }
+          ]
+        },
+        then: {
+          $convert: {
+            input: '$enrolled_debt',
+            to: 'double',
+            onError: 0,
+            onNull: 0
+          }
+        },
+        else: 0
+      }
+    };
+
+    // Summary stats
+    const [summary] = await DataVendorUpload.aggregate([
+      { $match: match },
+      {
+        $group: {
+          _id: null,
+          totalSales: { $sum: 1 },
+          totalEnrolledDebt: { $sum: toDebt }
+        }
+      },
+      {
+        $project: {
+          _id: 0,
+          totalSales: 1,
+          totalEnrolledDebt: { $round: ['$totalEnrolledDebt', 2] },
+          avgEnrolledDebt: {
+            $cond: [
+              { $eq: ['$totalSales', 0] }, 0,
+              { $round: [{ $divide: ['$totalEnrolledDebt', '$totalSales'] }, 2] }
+            ]
+          }
+        }
+      }
+    ]);
+
+    // Daily breakdown — only records with a valid entryDateParsed
+    const dailyBaseMatch = { ...match };
+    if (dailyBaseMatch.entryDateParsed) {
+      // Already filtered — just ensure not-null
+      dailyBaseMatch.entryDateParsed = { ...dailyBaseMatch.entryDateParsed, $ne: null };
+    } else {
+      dailyBaseMatch.entryDateParsed = { $ne: null };
+    }
+
+    const daily = await DataVendorUpload.aggregate([
+      { $match: dailyBaseMatch },
+      {
+        $group: {
+          _id: { $dateToString: { format: '%Y-%m-%d', date: '$entryDateParsed' } },
+          sales: { $sum: 1 },
+          enrolledDebt: { $sum: toDebt }
+        }
+      },
+      { $sort: { _id: 1 } },
+      {
+        $project: {
+          _id: 0,
+          date: '$_id',
+          sales: 1,
+          enrolledDebt: { $round: ['$enrolledDebt', 2] }
+        }
+      }
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        ...(summary || { totalSales: 0, totalEnrolledDebt: 0, avgEnrolledDebt: 0 }),
+        dailyBreakdown: daily
+      }
+    });
+  } catch (err) {
+    console.error('Sales stats error:', err);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────
+// GET /api/data-vendor-uploads/sales-export-day
+// Download all SALE records for a specific date as CSV
+// Query param: date (YYYY-MM-DD, required)
+// Access: data_vendor (own), admin/superadmin
+// ─────────────────────────────────────────────────────────────────
+router.get('/sales-export-day', protect, requireRoles('data_vendor', 'admin', 'superadmin'), async (req, res) => {
+  try {
+    const { date } = req.query;
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return res.status(400).json({ success: false, message: 'date param required (YYYY-MM-DD)' });
+    }
+
+    const match = buildVendorMatch(req);
+    match.status = { $regex: /^SALE$/i };
+
+    // Use UTC day boundaries — consistent with the $dateToString grouping in sales-stats
+    const dayStart = new Date(date + 'T00:00:00.000Z');
+    const dayEnd   = new Date(date + 'T00:00:00.000Z');
+    dayEnd.setUTCDate(dayEnd.getUTCDate() + 1);
+    match.entryDateParsed = { $gte: dayStart, $lt: dayEnd };
+
+    const CSV_FIELDS = [
+      'lead_id','entry_date','modify_date','status','user','vendor_lead_code',
+      'source_id','list_id','gmt_offset_now','called_since_last_reset',
+      'phone_code','phone_number','title','first_name','middle_initial',
+      'last_name','address1','address2','address3','city','state','province',
+      'postal_code','country_code','gender','date_of_birth','alt_phone',
+      'email','security_phrase','comments','called_count','last_local_call_time',
+      'rank','owner','entry_id','debt','ccount','monthly_payment','remark',
+      'custom1','custom2','custom3','custom4','custom5','custom6','enrolled_debt',
+      'listName','runNumber','runLabel'
+    ];
+
+    const records = await DataVendorUpload.find(match)
+      .select(CSV_FIELDS.join(' ') + ' -_id')
+      .sort({ listName: 1, runNumber: 1 })
+      .lean();
+
+    if (!records.length) {
+      return res.status(404).json({ success: false, message: `No SALE records found for ${date}` });
+    }
+
+    const escape = v => {
+      const s = String(v ?? '');
+      return (s.includes(',') || s.includes('"') || s.includes('\n'))
+        ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+
+    const filename = `sales_${date}.csv`;
+    const header = CSV_FIELDS.join(',');
+    const rows = records.map(r => CSV_FIELDS.map(f => escape(r[f])).join(','));
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send([header, ...rows].join('\n'));
+  } catch (err) {
+    console.error('Sales export day error:', err);
     res.status(500).json({ success: false, message: 'Export failed' });
   }
 });

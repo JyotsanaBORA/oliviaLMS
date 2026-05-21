@@ -48,6 +48,10 @@ const dataVendorUploadSchema = new mongoose.Schema({
   custom5:                 { type: String, trim: true, default: '' },
   custom6:                 { type: String, trim: true, default: '' },
 
+  // ── Sale tracking field ────────────────────────────────────────
+  // Populated when status = SALE; holds the enrolled/sale debt amount
+  enrolled_debt:           { type: String, trim: true, default: '' },
+
   // ── Parsed date for efficient date-range queries ───────────────
   entryDateParsed: { type: Date, index: true },
 
