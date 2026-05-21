@@ -30,8 +30,12 @@ const OrganizationManagement = () => {
     address: '',
     phone: '',
     email: '',
-    website: ''
+    website: '',
+    sourceIds: []
   });
+
+  // Controlled input for adding a new source ID
+  const [sourceIdInput, setSourceIdInput] = useState('');
 
   const [userForm, setUserForm] = useState({
     name: '',
@@ -161,13 +165,15 @@ const OrganizationManagement = () => {
 
   const openEditModal = (org) => {
     setSelectedOrg(org);
+    setSourceIdInput('');
     setOrganizationForm({
       name: org.name || '',
       description: org.description || '',
       address: org.address || '',
       phone: org.phone || '',
       email: org.email || '',
-      website: org.website || ''
+      website: org.website || '',
+      sourceIds: Array.isArray(org.sourceIds) ? [...org.sourceIds] : []
     });
     setShowEditModal(true);
   };
@@ -181,6 +187,25 @@ const OrganizationManagement = () => {
       role: 'admin'
     });
     setShowUserModal(true);
+  };
+
+  const handleAddSourceId = () => {
+    const val = sourceIdInput.trim().toUpperCase();
+    if (!val) return;
+    if (!/^[A-Za-z0-9]+$/.test(val)) {
+      toast.error('Source ID must be alphanumeric (letters and digits only, no spaces or special characters)');
+      return;
+    }
+    if ((organizationForm.sourceIds || []).includes(val)) {
+      toast.error('This source ID is already added');
+      return;
+    }
+    setOrganizationForm(prev => ({ ...prev, sourceIds: [...(prev.sourceIds || []), val] }));
+    setSourceIdInput('');
+  };
+
+  const handleRemoveSourceId = (id) => {
+    setOrganizationForm(prev => ({ ...prev, sourceIds: (prev.sourceIds || []).filter(s => s !== id) }));
   };
 
   const filteredOrganizations = organizations.filter(org => {
@@ -632,6 +657,51 @@ const OrganizationManagement = () => {
                         value={organizationForm.address}
                         onChange={(e) => setOrganizationForm({...organizationForm, address: e.target.value})}
                       />
+                    </div>
+
+                    {/* Source ID Management */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Vicidial Source IDs</label>
+                      <p className="text-xs text-gray-400 mb-2">
+                        Leads whose source ID matches one of these values will appear on this organisation's admin dashboard. Alphanumeric only (e.g. <span className="font-mono">SRC01</span>, <span className="font-mono">CAMP2</span>).
+                      </p>
+                      <div className="flex gap-2 mb-2">
+                        <input
+                          type="text"
+                          placeholder="Enter source ID (e.g. SRC01)"
+                          className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm uppercase focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                          value={sourceIdInput}
+                          onChange={(e) => setSourceIdInput(e.target.value.toUpperCase().replace(/[^A-Za-z0-9]/g, ''))}
+                          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddSourceId(); } }}
+                          maxLength={50}
+                        />
+                        <button
+                          type="button"
+                          onClick={handleAddSourceId}
+                          className="px-3 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                          Add
+                        </button>
+                      </div>
+                      <div className="flex flex-wrap gap-2 min-h-[28px]">
+                        {(organizationForm.sourceIds || []).length === 0 ? (
+                          <span className="text-xs text-gray-400 italic">No source IDs assigned. Admin dashboard will filter by organisation instead.</span>
+                        ) : (
+                          (organizationForm.sourceIds || []).map((id) => (
+                            <span key={id} className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-mono">
+                              {id}
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveSourceId(id)}
+                                className="ml-1 text-blue-500 hover:text-red-600 font-bold leading-none"
+                                title={`Remove ${id}`}
+                              >
+                                ×
+                              </button>
+                            </span>
+                          ))
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>

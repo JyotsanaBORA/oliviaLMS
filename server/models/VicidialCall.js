@@ -87,6 +87,14 @@ const vicidialCallSchema = new mongoose.Schema({
   vendorLeadCode: {
     type: String,
   },
+  // Source ID received from Vicidial (source_id / sourceId field).
+  // Propagated to the Lead created from this call.
+  sourceId: {
+    type: String,
+    trim: true,
+    index: true,
+    sparse: true,
+  },
   callStatus: {
     type: String,
   },

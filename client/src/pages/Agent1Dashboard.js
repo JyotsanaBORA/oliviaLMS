@@ -99,6 +99,8 @@ const Agent1Dashboard = () => {
   const [activeVicidialDid, setActiveVicidialDid] = useState('');
   // Campaign name from the active Vicidial call (used for affiliate dashboard filtering)
   const [activeVicidialCampaign, setActiveVicidialCampaign] = useState('');
+  // Source ID from the active Vicidial call (used for org-based lead routing)
+  const [activeVicidialSourceId, setActiveVicidialSourceId] = useState('');
   // Notes modal state
   const [showNotesModal, setShowNotesModal] = useState(false);
   // eslint-disable-next-line no-unused-vars
@@ -214,6 +216,7 @@ const Agent1Dashboard = () => {
     setActiveVicidialCallId(null);
     setActiveVicidialDid('');
     setActiveVicidialCampaign('');
+    setActiveVicidialSourceId('');
     clearActiveInboundCall();
     resetGtiDispositionState();
     setFormErrors({ phone: '', alternatePhone: '', dispositionReason: '' });
@@ -264,6 +267,7 @@ const Agent1Dashboard = () => {
     setActiveVicidialCallId(callData._vicidialCallId || null);
     setActiveVicidialDid(callData._vicidialDid || '');
     setActiveVicidialCampaign(callData._vicidialCampaign || '');
+    setActiveVicidialSourceId(callData._vicidialSourceId || '');
     setIsFormActive(true);
 
     // Propagate inbound DID to the global context so the Layout-level banner appears
@@ -679,6 +683,11 @@ const Agent1Dashboard = () => {
       // Stamp campaign name for affiliate dashboard filtering
       if (activeVicidialCallId && activeVicidialCampaign && activeVicidialCampaign.trim() !== '') {
         cleanFormData.vicidialCampaignName = activeVicidialCampaign.trim();
+      }
+
+      // Stamp source ID for organisation-based lead routing
+      if (activeVicidialCallId && activeVicidialSourceId && activeVicidialSourceId.trim() !== '') {
+        cleanFormData.sourceId = activeVicidialSourceId.trim();
       }
 
       if (shouldDisposeLead) {

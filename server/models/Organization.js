@@ -49,6 +49,19 @@ const organizationSchema = new mongoose.Schema({
     index: true,
     default: null,
   },
+  // Vicidial source IDs assigned to this organisation.
+  // Leads whose sourceId matches one of these values will appear on this org's admin dashboard.
+  // Alphanumeric only (letters and/or digits). Stored uppercase for consistent matching.
+  sourceIds: {
+    type: [String],
+    default: [],
+    validate: {
+      validator: function(arr) {
+        return arr.every(id => typeof id === 'string' && /^[A-Za-z0-9]+$/.test(id.trim()));
+      },
+      message: 'Each source ID must contain only letters and/or digits (alphanumeric)'
+    }
+  },
   isActive: {
     type: Boolean,
     default: true

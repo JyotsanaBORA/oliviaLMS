@@ -90,6 +90,14 @@ const leadSchema = new mongoose.Schema({
     index: true,
     sparse: true,
   },
+  // Source ID from Vicidial — used to route leads to the correct organisation's dashboard.
+  // An organisation admin sees leads whose sourceId is listed in their org's sourceIds array.
+  sourceId: {
+    type: String,
+    trim: true,
+    index: true,
+    sparse: true,
+  },
 
   gtiPostbackHistory: [{
     eventType: {

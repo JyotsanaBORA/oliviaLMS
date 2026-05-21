@@ -85,6 +85,28 @@ const getOrganizationNameById = async (organizationId) => {
   return org ? org.name : null;
 };
 
+/**
+ * Build the MongoDB filter that scopes a leads query to the org admin's visible leads.
+ *
+ * Returns:
+ *   null                              → Reddington admin, no scope restriction (sees all leads)
+ *   { sourceId: { $in: [...] } }     → org has sourceIds configured; filter by source ID
+ *   { organization: ObjectId }       → fallback; org-based filter (backward compatible)
+ *
+ * Only call this for role === 'admin'.
+ */
+const buildAdminLeadScopeFilter = async (user) => {
+  const adminOrg = await Organization.findById(user.organization)
+    .select('name sourceIds')
+    .lean();
+  if (!adminOrg) return { organization: user.organization };
+  if (adminOrg.name === 'REDDINGTON GLOBAL CONSULTANCY') return null; // no restriction
+  if (Array.isArray(adminOrg.sourceIds) && adminOrg.sourceIds.length > 0) {
+    return { sourceId: { $in: adminOrg.sourceIds } };
+  }
+  return { organization: user.organization };
+};
+
 // Validation rules
 const createLeadValidation = [
   body('name')
@@ -560,22 +582,19 @@ router.get('/export', [
     // Build filter object using EXACT same logic as main leads route
     const filter = {};
     
-    // IMPORTANT: Apply organization filter FIRST for non-REDDINGTON admins
-    // This ensures all subsequent filters work within the correct organization scope
+    // IMPORTANT: Apply organisation scope filter FIRST for admin users.
+    // This ensures all subsequent filters work within the correct organisation scope.
     if (req.user.role === 'admin') {
-      const adminOrganization = await Organization.findById(req.user.organization);
-      
-      if (adminOrganization && adminOrganization.name === 'REDDINGTON GLOBAL CONSULTANCY') {
-        // REDDINGTON GLOBAL CONSULTANCY Admin can filter by organization
+      const scopeFilter = await buildAdminLeadScopeFilter(req.user);
+      if (scopeFilter === null) {
+        // Reddington admin — can optionally filter by a specific organisation
         if (req.query.organization) {
           filter.organization = req.query.organization;
         }
-        // If no organization filter specified, they can see all organizations
       } else {
-        // Other organization admins can ONLY see leads from their own organization
-        // This restriction is applied FIRST and cannot be overridden by query params
-        filter.organization = req.user.organization;
-        console.log('Export - Non-REDDINGTON Admin: Restricting to organization', req.user.organization);
+        // Other admins: locked to their scope (org or sourceId-based)
+        Object.assign(filter, scopeFilter);
+        console.log('Export - Admin scope filter applied:', JSON.stringify(scopeFilter));
       }
     } else if (req.user.role === 'superadmin' && req.query.organization) {
       // SuperAdmin can filter by organization if specified
@@ -1051,22 +1070,18 @@ router.get('/', protect, [
     // Build filter object
     const filter = {};
     
-    // IMPORTANT: Apply organization filter FIRST for non-REDDINGTON admins
-    // This ensures all subsequent filters work within the correct organization scope
+    // IMPORTANT: Apply organisation scope filter FIRST for admin users.
+    // This ensures all subsequent filters work within the correct organisation scope.
     if (req.user.role === 'admin') {
-      // Use .lean() and select only name to avoid full document overhead
-      const adminOrganization = await Organization.findById(req.user.organization).select('name').lean();
-      
-      if (adminOrganization && adminOrganization.name === 'REDDINGTON GLOBAL CONSULTANCY') {
-        // REDDINGTON GLOBAL CONSULTANCY Admin can filter by organization
+      const scopeFilter = await buildAdminLeadScopeFilter(req.user);
+      if (scopeFilter === null) {
+        // Reddington admin — can optionally filter by a specific organisation
         if (req.query.organization) {
           filter.organization = req.query.organization;
         }
-        // If no organization filter specified, they can see all organizations
       } else {
-        // Other organization admins can ONLY see leads from their own organization
-        // This restriction is applied FIRST and cannot be overridden by query params
-        filter.organization = req.user.organization;
+        // Other admins: locked to their scope (org or sourceId-based)
+        Object.assign(filter, scopeFilter);
       }
     } else if (req.user.role === 'superadmin' && req.query.organization) {
       // SuperAdmin can filter by organization if specified
@@ -1352,10 +1367,12 @@ router.get('/today-stats', protect, authorize('admin', 'superadmin'), async (req
     const todayEnd = getEasternEndOfDay();
     const dateFilter = { createdAt: { $gte: todayStart, $lte: todayEnd } };
 
-    // Apply organization filter for non-superadmin
+    // Apply organisation scope for admin; superadmin sees all
     let orgFilter = {};
     if (req.user.role === 'admin') {
-      orgFilter = { organization: req.user.organization };
+      const scopeFilter = await buildAdminLeadScopeFilter(req.user);
+      // null → Reddington admin → see all (orgFilter stays {})
+      if (scopeFilter !== null) orgFilter = scopeFilter;
     }
 
     const baseFilter = { ...orgFilter, ...dateFilter };
@@ -1394,11 +1411,9 @@ router.get('/call-report', protect, authorize('admin', 'superadmin'), async (req
     // Build org scope
     let orgFilter = {};
     if (req.user.role === 'admin') {
-      const adminOrg = await Organization.findById(req.user.organization).select('name').lean();
-      const isReddington = adminOrg && adminOrg.name === 'REDDINGTON GLOBAL CONSULTANCY';
-      if (!isReddington) {
-        orgFilter = { organization: req.user.organization };
-      }
+      const scopeFilter = await buildAdminLeadScopeFilter(req.user);
+      // null → Reddington admin → see all (orgFilter stays {})
+      if (scopeFilter !== null) orgFilter = scopeFilter;
     }
 
     // Date range — default to today (Eastern)
@@ -2355,10 +2370,17 @@ router.get('/dashboard/stats', protect, async (req, res) => {
       stats.activeAgents = activeAgents;
     } else if (role === 'admin') {
       // Check if this admin belongs to REDDINGTON (same logic as the main leads list endpoint).
-      // REDDINGTON admin can see all organizations; other admins see only their own org.
-      const adminOrganization = await Organization.findById(req.user.organization).select('name').lean();
+      // REDDINGTON admin can see all organizations; other admins see only their own org / sourceId scope.
+      const adminOrganization = await Organization.findById(req.user.organization).select('name sourceIds').lean();
       const isReddingtonAdmin = adminOrganization && adminOrganization.name === 'REDDINGTON GLOBAL CONSULTANCY';
-      const orgFilter = isReddingtonAdmin ? {} : { organization: req.user.organization };
+      let orgFilter;
+      if (isReddingtonAdmin) {
+        orgFilter = {};
+      } else if (adminOrganization && Array.isArray(adminOrganization.sourceIds) && adminOrganization.sourceIds.length > 0) {
+        orgFilter = { sourceId: { $in: adminOrganization.sourceIds } };
+      } else {
+        orgFilter = { organization: req.user.organization };
+      }
 
       // Use single aggregation pipeline for better performance
       const aggregationResults = await Lead.aggregate([

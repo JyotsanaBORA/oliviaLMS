@@ -124,6 +124,12 @@ router.post('/call-data', async (req, res) => {
       payload.campaign || payload.campaignName || payload.campaign_id || ''
     ).toString().trim();
 
+    // Source ID — Vicidial sends this as source_id; accept multiple aliases for safety
+    const sourceId = (
+      payload.source_id || payload.sourceId || payload.src_id || payload.srcId ||
+      payload.sourceid || payload.source_code || payload.sourceCode || ''
+    ).toString().trim().toUpperCase();
+
     const did = (payload.did || payload.DID || '').toString().trim();
 
     console.log(`[ViciDial POST] Looking up agent with vicidialAgentId: ${vicidialAgentId}`);
@@ -176,6 +182,7 @@ router.post('/call-data', async (req, res) => {
       listId: (payload.list_id || payload.listId || '').toString().trim() || undefined,
       vendorLeadCode: (payload.vendor_lead_code || payload.vendorLeadCode || '').toString().trim() || undefined,
       callStatus: (payload.status || payload.dispo || '').toString().trim() || undefined,
+      sourceId: sourceId || undefined,
       rawPayload: payload,
       priority: callType === 'inbound' ? 'high' : 'normal',
       queueStatus: 'pending',
@@ -206,6 +213,7 @@ router.post('/call-data', async (req, res) => {
         callType: callData.callType,
         callId,
         campaignName,
+        sourceId: sourceId || undefined,
         did: did || undefined,
         priority: callData.priority,
         receivedAt: vicidialCall.receivedAt,
@@ -283,6 +291,12 @@ router.get('/call-data', async (req, res) => {
       payload.campaign || payload.campaignName || payload.campaign_id || ''
     ).toString().trim();
 
+    // Source ID — accept multiple aliases for safety
+    const sourceId = (
+      payload.source_id || payload.sourceId || payload.src_id || payload.srcId ||
+      payload.sourceid || payload.source_code || payload.sourceCode || ''
+    ).toString().trim().toUpperCase();
+
     const did = (payload.did || payload.DID || '').toString().trim();
 
     console.log(`[ViciDial GET] Looking up agent with vicidialAgentId: ${vicidialAgentId}`);
@@ -333,6 +347,7 @@ router.get('/call-data', async (req, res) => {
       listId: (payload.list_id || payload.listId || '').toString().trim() || undefined,
       vendorLeadCode: (payload.vendor_lead_code || payload.vendorLeadCode || '').toString().trim() || undefined,
       callStatus: (payload.status || payload.dispo || '').toString().trim() || undefined,
+      sourceId: sourceId || undefined,
       rawPayload: payload,
       priority: callType === 'inbound' ? 'high' : 'normal',
       queueStatus: 'pending',
@@ -361,6 +376,7 @@ router.get('/call-data', async (req, res) => {
         callType: callData.callType,
         callId,
         campaignName,
+        sourceId: sourceId || undefined,
         did: did || undefined,
         priority: callData.priority,
         receivedAt: vicidialCall.receivedAt,

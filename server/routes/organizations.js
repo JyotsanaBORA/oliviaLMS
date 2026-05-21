@@ -52,7 +52,21 @@ const organizationValidation = [
   body('isActive')
     .optional()
     .isBoolean()
-    .withMessage('isActive must be a boolean value')
+    .withMessage('isActive must be a boolean value'),
+  body('sourceIds')
+    .optional()
+    .isArray()
+    .withMessage('sourceIds must be an array')
+    .custom((arr) => {
+      if (!Array.isArray(arr)) return true;
+      for (const id of arr) {
+        const trimmed = String(id).trim();
+        if (!trimmed || !/^[A-Za-z0-9]+$/.test(trimmed)) {
+          throw new Error('Each source ID must contain only letters and/or digits (alphanumeric, no spaces or special characters)');
+        }
+      }
+      return true;
+    })
 ];
 
 const organizationCreateValidation = [
@@ -305,7 +319,7 @@ router.put('/:id', protect, organizationValidation, handleValidationErrors, asyn
       });
     }
 
-    const { name, description, address, phone, email, website, isActive } = req.body;
+    const { name, description, address, phone, email, website, isActive, sourceIds } = req.body;
 
     // Check if organization exists
     const organization = await Organization.findById(req.params.id);
@@ -331,18 +345,20 @@ router.put('/:id', protect, organizationValidation, handleValidationErrors, asyn
       }
     }
 
+    // Build the update object
+    const updateData = { name, description, address, phone, email, website, isActive };
+
+    // Only update sourceIds when explicitly provided; normalise to uppercase trimmed strings
+    if (Array.isArray(sourceIds)) {
+      updateData.sourceIds = sourceIds
+        .map(id => String(id).trim().toUpperCase())
+        .filter(id => id.length > 0);
+    }
+
     // Update organization
     const updatedOrganization = await Organization.findByIdAndUpdate(
       req.params.id,
-      {
-        name,
-        description,
-        address,
-        phone,
-        email,
-        website,
-        isActive
-      },
+      updateData,
       { new: true, runValidators: true }
     ).populate('createdBy', 'name email');
 
