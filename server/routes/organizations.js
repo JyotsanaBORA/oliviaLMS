@@ -66,6 +66,19 @@ const organizationValidation = [
         }
       }
       return true;
+    }),
+  body('inboundDids')
+    .optional()
+    .isArray()
+    .withMessage('inboundDids must be an array')
+    .custom((arr) => {
+      if (!Array.isArray(arr)) return true;
+      for (const did of arr) {
+        if (!String(did).trim()) {
+          throw new Error('Each inbound DID must be a non-empty string');
+        }
+      }
+      return true;
     })
 ];
 
@@ -319,7 +332,7 @@ router.put('/:id', protect, organizationValidation, handleValidationErrors, asyn
       });
     }
 
-    const { name, description, address, phone, email, website, isActive, sourceIds } = req.body;
+    const { name, description, address, phone, email, website, isActive, sourceIds, inboundDids } = req.body;
 
     // Check if organization exists
     const organization = await Organization.findById(req.params.id);
@@ -353,6 +366,13 @@ router.put('/:id', protect, organizationValidation, handleValidationErrors, asyn
       updateData.sourceIds = sourceIds
         .map(id => String(id).trim().toUpperCase())
         .filter(id => id.length > 0);
+    }
+
+    // Only update inboundDids when explicitly provided; stored as trimmed strings (not uppercased)
+    if (Array.isArray(inboundDids)) {
+      updateData.inboundDids = inboundDids
+        .map(d => String(d).trim())
+        .filter(d => d.length > 0);
     }
 
     // Update organization

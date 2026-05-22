@@ -62,6 +62,19 @@ const organizationSchema = new mongoose.Schema({
       message: 'Each source ID must contain only letters and/or digits (alphanumeric)'
     }
   },
+  // Vicidial inbound DIDs assigned to this organisation.
+  // Inbound leads whose vicidialDid matches one of these values will appear on this org's admin dashboard.
+  // Stored as trimmed strings exactly as ViciDial sends them (e.g. '3239999272').
+  inboundDids: {
+    type: [String],
+    default: [],
+    validate: {
+      validator: function(arr) {
+        return arr.every(id => typeof id === 'string' && id.trim().length > 0);
+      },
+      message: 'Each inbound DID must be a non-empty string'
+    }
+  },
   isActive: {
     type: Boolean,
     default: true

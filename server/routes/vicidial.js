@@ -2,6 +2,7 @@ const express = require('express');
 const querystring = require('querystring');
 const VicidialCall = require('../models/VicidialCall');
 const User = require('../models/User');
+const Organization = require('../models/Organization');
 const { protect, authorize } = require('../middleware/auth');
 
 const router = express.Router();
@@ -163,6 +164,16 @@ router.post('/call-data', async (req, res) => {
       console.log(`[ViciDial POST] Agent not found or no organization for vicidialAgentId: ${vicidialAgentId}`);
     }
 
+    // Look up org by inbound DID — allows inbound calls to be attributed to the correct org
+    // even when the receiving agent belongs to a different org (or no org)
+    let didMatchedOrg = null;
+    if (did) {
+      didMatchedOrg = await Organization.findOne({ inboundDids: did }).select('_id name').lean();
+      if (didMatchedOrg) {
+        console.log(`✅ [ViciDial POST] DID ${did} matched org: ${didMatchedOrg.name}`);
+      }
+    }
+
     // Build the call document
     const callData = {
       vicidialAgentId,
@@ -192,6 +203,13 @@ router.post('/call-data', async (req, res) => {
     if (agent) {
       callData.agent = agent._id;
       callData.organization = agent.organization?._id || agent.organization;
+    }
+
+    // Override/supplement organization with DID-matched org for inbound routing
+    // This ensures inbound calls with a known DID are always scoped to the correct org,
+    // regardless of which agent received the call.
+    if (didMatchedOrg) {
+      callData.organization = didMatchedOrg._id;
     }
 
     const vicidialCall = await VicidialCall.create(callData);
@@ -329,6 +347,15 @@ router.get('/call-data', async (req, res) => {
       console.log(`[ViciDial GET] Agent not found or no organization for vicidialAgentId: ${vicidialAgentId}`);
     }
 
+    // Look up org by inbound DID — same logic as POST handler
+    let didMatchedOrg = null;
+    if (did) {
+      didMatchedOrg = await Organization.findOne({ inboundDids: did }).select('_id name').lean();
+      if (didMatchedOrg) {
+        console.log(`✅ [ViciDial GET] DID ${did} matched org: ${didMatchedOrg.name}`);
+      }
+    }
+
     const callData = {
       vicidialAgentId,
       phoneNumber,
@@ -356,6 +383,11 @@ router.get('/call-data', async (req, res) => {
     if (agent) {
       callData.agent = agent._id;
       callData.organization = agent.organization?._id || agent.organization;
+    }
+
+    // Override/supplement organization with DID-matched org for inbound routing
+    if (didMatchedOrg) {
+      callData.organization = didMatchedOrg._id;
     }
 
     const vicidialCall = await VicidialCall.create(callData);

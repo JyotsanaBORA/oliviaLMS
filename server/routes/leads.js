@@ -90,21 +90,30 @@ const getOrganizationNameById = async (organizationId) => {
  * Build the MongoDB filter that scopes a leads query to the org admin's visible leads.
  *
  * Returns:
- *   null                              → Reddington admin, no scope restriction (sees all leads)
- *   { sourceId: { $in: [...] } }     → org has sourceIds configured; filter by source ID
- *   { organization: ObjectId }       → fallback; org-based filter (backward compatible)
+ *   null                                       → Reddington admin, no scope restriction (sees all leads)
+ *   { $or: [sourceId match, vicidialDid match] } → org has both sourceIds and inboundDids
+ *   { sourceId: { $in: [...] } }               → org has sourceIds configured; filter by source ID
+ *   { vicidialDid: { $in: [...] } }            → org has inboundDids configured; filter by DID
+ *   { organization: ObjectId }                 → fallback; org-based filter (backward compatible)
  *
  * Only call this for role === 'admin'.
  */
 const buildAdminLeadScopeFilter = async (user) => {
   const adminOrg = await Organization.findById(user.organization)
-    .select('name sourceIds')
+    .select('name sourceIds inboundDids')
     .lean();
   if (!adminOrg) return { organization: user.organization };
   if (adminOrg.name === 'REDDINGTON GLOBAL CONSULTANCY') return null; // no restriction
-  if (Array.isArray(adminOrg.sourceIds) && adminOrg.sourceIds.length > 0) {
-    return { sourceId: { $in: adminOrg.sourceIds } };
+  const hasSourceIds = Array.isArray(adminOrg.sourceIds) && adminOrg.sourceIds.length > 0;
+  const hasInboundDids = Array.isArray(adminOrg.inboundDids) && adminOrg.inboundDids.length > 0;
+  if (hasSourceIds && hasInboundDids) {
+    return { $or: [
+      { sourceId: { $in: adminOrg.sourceIds } },
+      { vicidialDid: { $in: adminOrg.inboundDids } }
+    ]};
   }
+  if (hasSourceIds) return { sourceId: { $in: adminOrg.sourceIds } };
+  if (hasInboundDids) return { vicidialDid: { $in: adminOrg.inboundDids } };
   return { organization: user.organization };
 };
 
@@ -608,8 +617,14 @@ router.get('/export', [
           filter.organization = req.query.organization;
         }
       } else {
-        // Other admins: locked to their scope (org or sourceId-based)
-        Object.assign(filter, scopeFilter);
+        // Other admins: locked to their scope (org or sourceId-based).
+        // When scopeFilter itself uses $or (org has both sourceIds and inboundDids), wrap it
+        // inside $and so a later search filter.$or assignment doesn't overwrite the scope.
+        if (scopeFilter.$or) {
+          filter.$and = [...(filter.$and || []), scopeFilter];
+        } else {
+          Object.assign(filter, scopeFilter);
+        }
         console.log('Export - Admin scope filter applied:', JSON.stringify(scopeFilter));
       }
     } else if (req.user.role === 'superadmin' && req.query.organization) {
@@ -1115,8 +1130,14 @@ router.get('/', protect, [
           filter.organization = req.query.organization;
         }
       } else {
-        // Other admins: locked to their scope (org or sourceId-based)
-        Object.assign(filter, scopeFilter);
+        // Other admins: locked to their scope (org or sourceId-based).
+        // When scopeFilter itself uses $or (org has both sourceIds and inboundDids), wrap it
+        // inside $and so a later search filter.$or assignment doesn't overwrite the scope.
+        if (scopeFilter.$or) {
+          filter.$and = [...(filter.$and || []), scopeFilter];
+        } else {
+          Object.assign(filter, scopeFilter);
+        }
       }
     } else if (req.user.role === 'superadmin' && req.query.organization) {
       // SuperAdmin can filter by organization if specified
@@ -1575,11 +1596,26 @@ router.get('/:id', protect, async (req, res) => {
 
     // Organization-based access for admin
     if (req.user.role === 'admin') {
-      if (lead.createdBy.organization.toString() !== req.user.organization.toString()) {
-        return res.status(403).json({
-          success: false,
-          message: 'Not authorized to view leads from other organizations'
-        });
+      const adminOrg = await Organization.findById(req.user.organization)
+        .select('name sourceIds inboundDids')
+        .lean();
+
+      const isReddington = adminOrg && adminOrg.name === 'REDDINGTON GLOBAL CONSULTANCY';
+
+      if (!isReddington) {
+        const hasSourceIds = Array.isArray(adminOrg?.sourceIds) && adminOrg.sourceIds.length > 0;
+        const hasInboundDids = Array.isArray(adminOrg?.inboundDids) && adminOrg.inboundDids.length > 0;
+
+        const ownOrg = lead.createdBy?.organization?.toString() === req.user.organization.toString();
+        const matchesSourceId = hasSourceIds && adminOrg.sourceIds.includes(lead.sourceId);
+        const matchesInboundDid = hasInboundDids && lead.vicidialDid && adminOrg.inboundDids.includes(lead.vicidialDid);
+
+        if (!ownOrg && !matchesSourceId && !matchesInboundDid) {
+          return res.status(403).json({
+            success: false,
+            message: 'Not authorized to view leads from other organizations'
+          });
+        }
       }
     }
     // SuperAdmin and Agent2 can view any lead (existing behavior)
@@ -2405,16 +2441,27 @@ router.get('/dashboard/stats', protect, async (req, res) => {
       stats.activeAgents = activeAgents;
     } else if (role === 'admin') {
       // Check if this admin belongs to REDDINGTON (same logic as the main leads list endpoint).
-      // REDDINGTON admin can see all organizations; other admins see only their own org / sourceId scope.
-      const adminOrganization = await Organization.findById(req.user.organization).select('name sourceIds').lean();
+      // REDDINGTON admin can see all organizations; other admins see only their own org / sourceId / inboundDid scope.
+      const adminOrganization = await Organization.findById(req.user.organization).select('name sourceIds inboundDids').lean();
       const isReddingtonAdmin = adminOrganization && adminOrganization.name === 'REDDINGTON GLOBAL CONSULTANCY';
       let orgFilter;
       if (isReddingtonAdmin) {
         orgFilter = {};
-      } else if (adminOrganization && Array.isArray(adminOrganization.sourceIds) && adminOrganization.sourceIds.length > 0) {
-        orgFilter = { sourceId: { $in: adminOrganization.sourceIds } };
       } else {
-        orgFilter = { organization: req.user.organization };
+        const hasSourceIds = adminOrganization && Array.isArray(adminOrganization.sourceIds) && adminOrganization.sourceIds.length > 0;
+        const hasInboundDids = adminOrganization && Array.isArray(adminOrganization.inboundDids) && adminOrganization.inboundDids.length > 0;
+        if (hasSourceIds && hasInboundDids) {
+          orgFilter = { $or: [
+            { sourceId: { $in: adminOrganization.sourceIds } },
+            { vicidialDid: { $in: adminOrganization.inboundDids } }
+          ]};
+        } else if (hasSourceIds) {
+          orgFilter = { sourceId: { $in: adminOrganization.sourceIds } };
+        } else if (hasInboundDids) {
+          orgFilter = { vicidialDid: { $in: adminOrganization.inboundDids } };
+        } else {
+          orgFilter = { organization: req.user.organization };
+        }
       }
 
       // Use single aggregation pipeline for better performance

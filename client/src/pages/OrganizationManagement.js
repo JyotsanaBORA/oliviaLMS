@@ -31,11 +31,14 @@ const OrganizationManagement = () => {
     phone: '',
     email: '',
     website: '',
-    sourceIds: []
+    sourceIds: [],
+    inboundDids: []
   });
 
   // Controlled input for adding a new source ID
   const [sourceIdInput, setSourceIdInput] = useState('');
+  // Controlled input for adding a new inbound DID
+  const [didInput, setDidInput] = useState('');
 
   const [userForm, setUserForm] = useState({
     name: '',
@@ -167,6 +170,7 @@ const OrganizationManagement = () => {
   const openEditModal = (org) => {
     setSelectedOrg(org);
     setSourceIdInput('');
+    setDidInput('');
     setOrganizationForm({
       name: org.name || '',
       description: org.description || '',
@@ -174,7 +178,8 @@ const OrganizationManagement = () => {
       phone: org.phone || '',
       email: org.email || '',
       website: org.website || '',
-      sourceIds: Array.isArray(org.sourceIds) ? [...org.sourceIds] : []
+      sourceIds: Array.isArray(org.sourceIds) ? [...org.sourceIds] : [],
+      inboundDids: Array.isArray(org.inboundDids) ? [...org.inboundDids] : []
     });
     setShowEditModal(true);
   };
@@ -208,6 +213,21 @@ const OrganizationManagement = () => {
 
   const handleRemoveSourceId = (id) => {
     setOrganizationForm(prev => ({ ...prev, sourceIds: (prev.sourceIds || []).filter(s => s !== id) }));
+  };
+
+  const handleAddDid = () => {
+    const val = didInput.trim();
+    if (!val) return;
+    if ((organizationForm.inboundDids || []).includes(val)) {
+      toast.error('This DID is already added');
+      return;
+    }
+    setOrganizationForm(prev => ({ ...prev, inboundDids: [...(prev.inboundDids || []), val] }));
+    setDidInput('');
+  };
+
+  const handleRemoveDid = (did) => {
+    setOrganizationForm(prev => ({ ...prev, inboundDids: (prev.inboundDids || []).filter(d => d !== did) }));
   };
 
   const filteredOrganizations = organizations.filter(org => {
@@ -697,6 +717,51 @@ const OrganizationManagement = () => {
                                 onClick={() => handleRemoveSourceId(id)}
                                 className="ml-1 text-blue-500 hover:text-red-600 font-bold leading-none"
                                 title={`Remove ${id}`}
+                              >
+                                ×
+                              </button>
+                            </span>
+                          ))
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Inbound DID Management */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Inbound ViciDial DIDs</label>
+                      <p className="text-xs text-gray-400 mb-2">
+                        Inbound call leads whose DID matches one of these numbers will appear on this organisation's admin dashboard (e.g. <span className="font-mono">3239999272</span>).
+                      </p>
+                      <div className="flex gap-2 mb-2">
+                        <input
+                          type="text"
+                          placeholder="Enter DID (e.g. 3239999272)"
+                          className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm font-mono focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                          value={didInput}
+                          onChange={(e) => setDidInput(e.target.value.replace(/[^0-9+\-\s()]/g, ''))}
+                          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddDid(); } }}
+                          maxLength={20}
+                        />
+                        <button
+                          type="button"
+                          onClick={handleAddDid}
+                          className="px-3 py-2 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        >
+                          Add
+                        </button>
+                      </div>
+                      <div className="flex flex-wrap gap-2 min-h-[28px]">
+                        {(organizationForm.inboundDids || []).length === 0 ? (
+                          <span className="text-xs text-gray-400 italic">No inbound DIDs assigned.</span>
+                        ) : (
+                          (organizationForm.inboundDids || []).map((did) => (
+                            <span key={did} className="inline-flex items-center gap-1 px-2 py-1 bg-indigo-100 text-indigo-800 rounded text-xs font-mono">
+                              {did}
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveDid(did)}
+                                className="ml-1 text-indigo-500 hover:text-red-600 font-bold leading-none"
+                                title={`Remove ${did}`}
                               >
                                 ×
                               </button>
