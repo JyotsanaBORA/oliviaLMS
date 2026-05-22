@@ -490,7 +490,7 @@ const AdminDashboard = () => {
         params.append('organization', organizationFilter);
       }
 
-      console.log('Export parameters:', params.toString());
+
 
       const response = await axios.get(`/api/leads/export?${params.toString()}`, {
         responseType: 'blob'
@@ -602,7 +602,6 @@ const AdminDashboard = () => {
       };
       
       const handleLeadUpdated = (data) => {
-        console.log('Lead updated via socket:', data);
         // Only show notifications to main organization (REDDINGTON) admins
         if (isReddingtonAdmin) {
           toast.success(`Lead updated by ${data.updatedBy}`, {
@@ -614,7 +613,6 @@ const AdminDashboard = () => {
       };
 
       const handleLeadCreated = (data) => {
-        console.log('New lead created via socket:', data);
         // Only show notifications to main organization (REDDINGTON) admins
         if (isReddingtonAdmin) {
           toast.success(`New lead created by ${data.createdBy}`, {
@@ -626,7 +624,6 @@ const AdminDashboard = () => {
       };
 
       const handleLeadDeleted = (data) => {
-        console.log('Lead deleted via socket:', data);
         // Only show notifications to main organization (REDDINGTON) admins
         if (isReddingtonAdmin) {
           toast.success(`Lead deleted by ${data.deletedBy}`, {
@@ -708,10 +705,6 @@ const AdminDashboard = () => {
 
     setIsUpdating(true);
     try {
-      console.log('Frontend: Attempting to update lead with ID:', editedLead._id);
-      console.log('Frontend: Original lead data:', selectedLead);
-      console.log('Frontend: Edited lead data:', editedLead);
-      
       // Prepare the update data with proper data types
       const updateData = {
         ...editedLead,
@@ -722,12 +715,7 @@ const AdminDashboard = () => {
         completionPercentage: editedLead.completionPercentage ? parseInt(editedLead.completionPercentage) : undefined,
       };
 
-      console.log('Frontend: Sending update data:', updateData);
-      console.log('Frontend: Making PUT request to:', `/api/leads/${editedLead._id}`);
-
       const response = await axios.put(`/api/leads/${editedLead._id}`, updateData);
-      
-      console.log('Frontend: Update response:', response.data);
       
       if (response.data) {
         // Update the lead in our local state

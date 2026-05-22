@@ -372,12 +372,10 @@ const Agent2Dashboard = () => {
       };
 
       const handleLeadUpdated = (data) => {
-        console.log('Lead updated via socket in Agent2:', data);
         debouncedFetch();
       };
 
       const handleLeadCreated = (data) => {
-        console.log('New lead created via socket in Agent2:', data);
         debouncedFetch();
       };
 
@@ -416,7 +414,6 @@ const Agent2Dashboard = () => {
       
       // Fetch leads assigned to this Agent2 user
       const response = await axios.get('/api/leads/assigned-to-me');
-      console.log('Persistent leads response:', response.data);
       const leads = response.data?.data?.leads || [];
       
       // Filter leads by status - these persist regardless of creation date
@@ -516,10 +513,6 @@ const Agent2Dashboard = () => {
     const isSelectedLeadGti = isLeadGti(selectedLead);
 
     try {
-      console.log('Form submission - updateData:', updateData);
-      console.log('Form submission - customDisposition:', customDisposition);
-      console.log('Form submission - showCustomDisposition:', showCustomDisposition);
-      
       // Clean the update data to remove empty strings
       const cleanUpdateData = {};
       
@@ -606,8 +599,6 @@ const Agent2Dashboard = () => {
         }
       }
       
-      console.log('Update form data:', updateData);
-      console.log('Sending update request with cleaned data:', cleanUpdateData);
       console.log('Selected lead ID:', selectedLead.leadId);
       console.log('Selected lead _id:', selectedLead._id);
       
@@ -626,10 +617,8 @@ const Agent2Dashboard = () => {
       
       // Use MongoDB _id instead of leadId for consistency with backend
       const leadIdToUse = selectedLead._id || selectedLead.leadId;
-      console.log('Using lead ID for API call:', leadIdToUse);
       
       const response = await axios.put(`/api/leads/${leadIdToUse}`, cleanUpdateData);
-      console.log('Update response:', response.data);
       
       toast.success('Lead updated successfully!');
       
@@ -851,10 +840,7 @@ const Agent2Dashboard = () => {
       cleanUpdateData.lastUpdatedBy = user?.name || 'Agent2';
       cleanUpdateData.lastUpdatedAt = getEasternNow().toISOString();
 
-      console.log('Sending comprehensive update:', cleanUpdateData);
-
       const response = await axios.put(`/api/leads/${selectedLead.leadId}`, cleanUpdateData);
-      console.log('Edit response:', response.data);
 
       toast.success('Lead details updated successfully!');
       
@@ -933,8 +919,6 @@ const Agent2Dashboard = () => {
   const openViewModal = (lead) => {
     setSelectedLead(lead);
     setShowViewModal(true);
-    // Log the lead data to debug
-    console.log('Opening view modal for lead:', lead);
     console.log('Lead Progress Status:', lead.leadProgressStatus);
     console.log('Agent2 Last Action:', lead.agent2LastAction);
   };
@@ -1335,7 +1319,6 @@ const Agent2Dashboard = () => {
 
     try {
       console.log('Agent2 Lead creation started');
-      console.log('Form data:', createFormData);
       
       // Build complete form data (same structure as Agent 1)
       const cleanFormData = {
@@ -1426,10 +1409,7 @@ const Agent2Dashboard = () => {
         cleanFormData.notes = createFormData.notes.trim();
       }
 
-      console.log('Submitting clean form data:', cleanFormData);
-
       const response = await axios.post('/api/leads', cleanFormData);
-      console.log('Agent2 Lead creation response:', response.data);
 
       if (response.data && response.data.success) {
         toast.success('Lead created and assigned successfully!');

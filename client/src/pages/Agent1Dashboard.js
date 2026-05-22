@@ -230,7 +230,6 @@ const Agent1Dashboard = () => {
 
   // Handler for VicidialCallQueue — loads call data into the Add Lead form
   const handleVicidialCallLoad = useCallback((callData) => {
-    console.log('🚀 handleVicidialCallLoad called with:', callData);
     console.log('🎯 This is a LIVE CALL from ViciDial - agent is currently talking to customer');
     
     // Reset form data completely to ensure clean state for new call
@@ -282,13 +281,11 @@ const Agent1Dashboard = () => {
       // Add cache-busting parameter to force fresh data
       const timestamp = new Date().getTime();
       const response = await axios.get(`/api/leads?page=${page}&limit=${pagination.limit}&dateFilterType=today&_t=${timestamp}`);
-      console.log('Fetch leads response:', response.data);
       const responseData = response.data?.data;
       const leadsData = responseData?.leads;
       const paginationData = responseData?.pagination;
       
       const validLeads = Array.isArray(leadsData) ? leadsData : [];
-      console.log('Valid leads found:', validLeads.length, validLeads);
       setLeads(validLeads);
       
       // Update pagination state if we have pagination data
@@ -580,7 +577,6 @@ const Agent1Dashboard = () => {
 
     try {
       console.log('Form submission started');
-      console.log('Form data:', formData);
       console.log('Auth token:', localStorage.getItem('token') ? 'Present' : 'Missing');
       console.log('User role:', user?.role);
       const selectedDisposition = (gtiDispositionState.dispositionReason || '').trim();
@@ -699,13 +695,10 @@ const Agent1Dashboard = () => {
         cleanFormData.disposition1 = resolvedDisposition;
       }
 
-      console.log('Agent1 sending create request with cleaned data:', cleanFormData);
       console.log('Axios defaults:', { baseURL: axios.defaults.baseURL, timeout: axios.defaults.timeout });
       console.log('Making request to:', '/api/leads');
 
       const response = await axios.post('/api/leads', cleanFormData);
-      console.log('Lead creation response:', response);
-      console.log('Lead creation response data:', response.data);
       
       const responsePayload = response.data?.data || {};
       const createdLead = responsePayload.lead || responsePayload;
@@ -878,7 +871,6 @@ const Agent1Dashboard = () => {
 
     try {
       console.log('Edit lead submission started');
-      console.log('Edit form data:', formData);
       console.log('Editing lead ID:', editingLead.leadId);
       
       // Build complete form data for editing
@@ -970,10 +962,7 @@ const Agent1Dashboard = () => {
       // Add updater information
       cleanFormData.lastUpdatedBy = user?.name || 'Agent1';
 
-      console.log('Agent1 sending edit request with cleaned data:', cleanFormData);
-      
       const response = await axios.put(`/api/leads/${editingLead.leadId}`, cleanFormData);
-      console.log('Lead update response:', response);
       toast.success('Lead updated successfully!');
 
       // Reset form and close modal
