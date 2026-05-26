@@ -822,6 +822,102 @@ router.get('/sales-export-day', protect, requireRoles('data_vendor', 'admin', 's
 });
 
 // ─────────────────────────────────────────────────────────────────
+// PUT /api/data-vendor-uploads/runs/:runBatchId/replace
+// Replace ALL data in an existing run with a new CSV upload.
+// Preserves runBatchId, runNumber, listName, sharedWith.
+// Optionally updates runDate and runLabel.
+// Access: admin, superadmin
+// ─────────────────────────────────────────────────────────────────
+router.put(
+  '/runs/:runBatchId/replace',
+  express.json({ limit: '50mb' }),
+  protect,
+  requireAdminOrSuper,
+  async (req, res) => {
+    try {
+      const { runBatchId } = req.params;
+      const { fileData, runDate, runLabel } = req.body;
+
+      if (!fileData) {
+        return res.status(400).json({ success: false, message: 'fileData (base64) is required' });
+      }
+
+      // Find the existing run to get its identity metadata
+      const existingDoc = await DataVendorUpload.findOne({ runBatchId }).lean();
+      if (!existingDoc) {
+        return res.status(404).json({ success: false, message: 'Run not found' });
+      }
+
+      const { listName, runNumber, sharedWith } = existingDoc;
+
+      // Decode base64 → parse workbook
+      const buffer = Buffer.from(fileData, 'base64');
+      const workbook = XLSX.read(buffer, { type: 'buffer' });
+      const sheetName = workbook.SheetNames[0];
+      if (!sheetName) {
+        return res.status(400).json({ success: false, message: 'Empty workbook' });
+      }
+
+      const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: '' });
+      if (!rows.length) {
+        return res.status(400).json({ success: false, message: 'No data rows found in file' });
+      }
+
+      // Map raw CSV headers to model fields
+      const rawHeaders = Object.keys(rows[0]);
+      const columnMap = {};
+      rawHeaders.forEach(h => {
+        const field = normaliseHeader(h);
+        if (field) columnMap[h] = field;
+      });
+
+      const parsedRunDate = runDate ? new Date(runDate) : existingDoc.runDate;
+      const resolvedRunLabel = (runLabel !== undefined && runLabel !== null)
+        ? String(runLabel).trim()
+        : (existingDoc.runLabel || '');
+
+      const docs = rows.map(row => {
+        const doc = {
+          sharedWith,
+          uploadedBy:   req.user._id,
+          organization: req.user.organization || null,
+          listName,
+          runBatchId,
+          runNumber,
+          runDate:      parsedRunDate,
+          runLabel:     resolvedRunLabel
+        };
+
+        for (const [rawH, modelField] of Object.entries(columnMap)) {
+          const rawValue = row[rawH];
+          doc[modelField] = DATE_FIELDS.has(modelField)
+            ? formatExcelDate(rawValue)
+            : String(rawValue ?? '').trim();
+        }
+
+        doc.entryDateParsed = parseEntryDate(doc.entry_date);
+        return doc;
+      });
+
+      // Delete old records, then insert new ones
+      await DataVendorUpload.deleteMany({ runBatchId });
+      const inserted = await DataVendorUpload.insertMany(docs, { ordered: false });
+
+      res.json({
+        success: true,
+        message: `Run #${runNumber} replaced — ${inserted.length.toLocaleString()} records for list "${listName}"`,
+        runBatchId,
+        runNumber,
+        count: inserted.length
+      });
+    } catch (err) {
+      console.error('Data vendor replace run error:', err);
+      res.status(500).json({ success: false, message: err.message || 'Replace failed' });
+    }
+  }
+);
+
+// ─────────────────────────────────────────────────────────────────
 // DELETE /api/data-vendor-uploads/runs/:runBatchId
 // Delete an entire run (admin/superadmin only)
 // ─────────────────────────────────────────────────────────────────
