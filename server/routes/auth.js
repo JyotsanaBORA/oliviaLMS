@@ -488,10 +488,12 @@ router.get('/me', protect, async (req, res) => {
       await user.populate('organization', 'name');
     }
 
+    const mainOrgAdmin = user.role === 'admin' ? await isMainOrgAdminUser(user) : false;
+
     res.status(200).json({
       success: true,
       data: {
-        user: user.toJSON()
+        user: { ...user.toJSON(), isMainOrgAdmin: mainOrgAdmin }
       }
     });
 

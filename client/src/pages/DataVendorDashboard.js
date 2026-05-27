@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { flushSync } from 'react-dom';
 import {
   Download, RefreshCw, Search, ChevronLeft, ChevronRight,
   List, BarChart2, FileSpreadsheet, ArrowLeft, Calendar,
@@ -139,6 +140,10 @@ const DataVendorDashboard = () => {
   const [salesStartDate, setSalesStartDate] = useState('');
   const [salesEndDate, setSalesEndDate] = useState('');
   const [showDailyBreakdown, setShowDailyBreakdown] = useState(false);
+  const [expandedDay, setExpandedDay] = useState(null);
+  const [dayRecords, setDayRecords] = useState({});
+  const [loadingDay, setLoadingDay] = useState(null);
+  const [downloadingId, setDownloadingId] = useState(null);
 
   const searchRef = useRef('');
 
@@ -211,7 +216,12 @@ const DataVendorDashboard = () => {
       if (startDate) params.startDate = startDate;
       if (endDate) params.endDate = endDate;
       const res = await axios.get('/api/data-vendor-uploads/sales-stats', { params });
-      if (res.data?.success) setSalesStats(res.data.data);
+      if (res.data?.success) {
+        setSalesStats(res.data.data);
+        // Clear expanded state when new stats are fetched
+        setExpandedDay(null);
+        setDayRecords({});
+      }
     } catch { toast.error('Failed to load sales stats'); }
     finally { setSalesLoading(false); }
   }, []);
@@ -258,6 +268,7 @@ const DataVendorDashboard = () => {
 
   // ── Download helpers ─────────────────────────────────────────
   const downloadRun = async (run) => {
+    flushSync(() => setDownloadingId(`run-${run.runBatchId}`));
     try {
       const res = await axios.get(`/api/data-vendor-uploads/runs/${run.runBatchId}/export`, { responseType: 'blob' });
       const url = window.URL.createObjectURL(new Blob([res.data]));
@@ -268,31 +279,29 @@ const DataVendorDashboard = () => {
       window.URL.revokeObjectURL(url);
       toast.success('CSV downloaded');
     } catch { toast.error('Download failed'); }
+    finally { setDownloadingId(null); }
   };
 
-  const downloadList = async (list) => {
+  const downloadAllSales = async () => {
+    flushSync(() => setDownloadingId('sales-all'));
     try {
-      const res = await axios.get(`/api/data-vendor-uploads/lists/${encodeURIComponent(list.listName)}/export`, { responseType: 'blob' });
+      const params = {};
+      if (salesStartDate) params.startDate = salesStartDate;
+      if (salesEndDate) params.endDate = salesEndDate;
+      const res = await axios.get('/api/data-vendor-uploads/sales-export', { params, responseType: 'blob' });
       const url = window.URL.createObjectURL(new Blob([res.data]));
       const a = document.createElement('a'); a.href = url;
-      const safeList = list.listName.replace(/[^a-zA-Z0-9_-]/g, '_');
-      a.download = `${safeList}_all_runs_${new Date().toISOString().slice(0,10)}.csv`;
+      const suffix = salesStartDate || salesEndDate
+        ? `_${salesStartDate || 'start'}_to_${salesEndDate || 'end'}`
+        : `_all_${new Date().toISOString().slice(0, 10)}`;
+      a.download = `sales${suffix}.csv`;
       document.body.appendChild(a); a.click(); a.remove();
       window.URL.revokeObjectURL(url);
-      toast.success('CSV downloaded');
-    } catch { toast.error('Download failed'); }
-  };
-
-  const downloadAllData = async () => {
-    try {
-      const res = await axios.get('/api/data-vendor-uploads/export', { responseType: 'blob' });
-      const url = window.URL.createObjectURL(new Blob([res.data]));
-      const a = document.createElement('a'); a.href = url;
-      a.download = `vendor_all_data_${new Date().toISOString().slice(0,10)}.csv`;
-      document.body.appendChild(a); a.click(); a.remove();
-      window.URL.revokeObjectURL(url);
-      toast.success('Full data downloaded');
-    } catch { toast.error('Download failed'); }
+      toast.success('Sales CSV downloaded');
+    } catch (err) {
+      if (err.response?.status === 404) toast.error('No SALE records found');
+      else toast.error('Download failed');
+    } finally { setDownloadingId(null); }
   };
 
   const downloadCurrentRecords = async () => {
@@ -301,6 +310,7 @@ const DataVendorDashboard = () => {
   };
 
   const downloadSalesByDay = async (date) => {
+    flushSync(() => setDownloadingId(`day-${date}`));
     try {
       const res = await axios.get('/api/data-vendor-uploads/sales-export-day', {
         params: { date },
@@ -313,10 +323,21 @@ const DataVendorDashboard = () => {
       window.URL.revokeObjectURL(url);
       toast.success(`Sales for ${date} downloaded`);
     } catch (err) {
-      // 404 means no records for that day
       if (err.response?.status === 404) toast.error(`No SALE records found for ${date}`);
       else toast.error('Download failed');
-    }
+    } finally { setDownloadingId(null); }
+  };
+
+  const toggleDayExpand = async (date) => {
+    if (expandedDay === date) { setExpandedDay(null); return; }
+    setExpandedDay(date);
+    if (dayRecords[date]) return; // already loaded
+    setLoadingDay(date);
+    try {
+      const res = await axios.get('/api/data-vendor-uploads/sales-records-day', { params: { date } });
+      if (res.data?.success) setDayRecords(prev => ({ ...prev, [date]: res.data.data }));
+    } catch { toast.error(`Failed to load deals for ${date}`); }
+    finally { setLoadingDay(null); }
   };
 
   // ── Search handler (records) ─────────────────────────────────
@@ -402,16 +423,11 @@ const DataVendorDashboard = () => {
               <RefreshCw size={14} className={listsRefreshing ? 'animate-spin' : ''} /> Refresh
             </button>
           )}
-          {view === 'lists' && lists.length > 0 && (
-            <button onClick={downloadAllData}
-              className="px-5 py-2.5 text-sm font-semibold bg-gradient-to-r from-yellow-400 to-yellow-500 text-slate-900 rounded-xl hover:from-yellow-300 hover:to-yellow-400 shadow-lg shadow-yellow-400/20 flex items-center gap-2 transition-all">
-              <Download size={14} /> Download All
-            </button>
-          )}
           {view === 'records' && (
-            <button onClick={downloadCurrentRecords}
-              className="px-5 py-2.5 text-sm font-semibold bg-gradient-to-r from-yellow-400 to-yellow-500 text-slate-900 rounded-xl hover:from-yellow-300 hover:to-yellow-400 shadow-lg shadow-yellow-400/20 flex items-center gap-2 transition-all">
-              <Download size={14} /> Download Run
+            <button onClick={downloadCurrentRecords} disabled={!!downloadingId}
+              className="px-5 py-2.5 text-sm font-semibold bg-gradient-to-r from-yellow-400 to-yellow-500 text-slate-900 rounded-xl hover:from-yellow-300 hover:to-yellow-400 shadow-lg shadow-yellow-400/20 flex items-center gap-2 transition-all disabled:opacity-60 disabled:cursor-not-allowed">
+              {downloadingId && downloadingId.startsWith('run-') ? <RefreshCw size={14} className="animate-spin" /> : <Download size={14} />}
+              {downloadingId && downloadingId.startsWith('run-') ? 'Downloading…' : 'Download Run'}
             </button>
           )}
         </div>
@@ -475,6 +491,15 @@ const DataVendorDashboard = () => {
                     ✕ Clear
                   </button>
                 )}
+                {salesStats.totalSales > 0 && (
+                  <button
+                    onClick={downloadAllSales}
+                    disabled={!!downloadingId}
+                    className="px-3 py-1.5 text-xs font-bold text-emerald-800 bg-gradient-to-r from-emerald-100 to-teal-100 border border-emerald-300 rounded-lg hover:from-emerald-200 hover:to-teal-200 flex items-center gap-1.5 transition-all disabled:opacity-60 disabled:cursor-not-allowed">
+                    {downloadingId === 'sales-all' ? <RefreshCw size={11} className="animate-spin" /> : <Download size={11} />}
+                    {downloadingId === 'sales-all' ? 'Downloading…' : 'Download Sales'}
+                  </button>
+                )}
               </div>
             </div>
 
@@ -533,27 +558,112 @@ const DataVendorDashboard = () => {
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-gray-100">
-                            {salesStats.dailyBreakdown.map((row, idx) => (
-                              <tr key={row.date} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
-                                <td className="px-4 py-2 text-sm font-medium text-slate-700">{row.date}</td>
-                                <td className="px-4 py-2 text-sm font-bold text-emerald-700 text-right">
-                                  <span className="inline-flex items-center justify-center min-w-[2rem] px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-lg text-xs">
-                                    {row.sales.toLocaleString()}
-                                  </span>
-                                </td>
-                                <td className="px-4 py-2 text-sm font-bold text-violet-700 text-right">
-                                  {fmtCurrency(row.enrolledDebt)}
-                                </td>
-                                <td className="px-4 py-2 text-center">
-                                  <button
-                                    onClick={() => downloadSalesByDay(row.date)}
-                                    title={`Download all SALE leads for ${row.date}`}
-                                    className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 rounded-lg hover:bg-emerald-100 border border-emerald-200 transition-all">
-                                    <Download size={11} /> CSV
-                                  </button>
-                                </td>
-                              </tr>
-                            ))}
+                            {salesStats.dailyBreakdown.map((row, idx) => {
+                              const isExpanded = expandedDay === row.date;
+                              const isLoadingThis = loadingDay === row.date;
+                              const deals = dayRecords[row.date] || [];
+                              return (
+                                <React.Fragment key={row.date}>
+                                  {/* Summary row — click to expand */}
+                                  <tr
+                                    onClick={() => toggleDayExpand(row.date)}
+                                    className={`cursor-pointer transition-colors ${isExpanded ? 'bg-emerald-50' : idx % 2 === 0 ? 'bg-white hover:bg-slate-50' : 'bg-slate-50 hover:bg-slate-100'}`}
+                                  >
+                                    <td className="px-4 py-2.5 text-sm font-medium text-slate-700">
+                                      <span className="inline-flex items-center gap-1.5">
+                                        {isExpanded ? <ChevronUp size={13} className="text-emerald-600 shrink-0" /> : <ChevronDown size={13} className="text-slate-400 shrink-0" />}
+                                        {row.date}
+                                      </span>
+                                    </td>
+                                    <td className="px-4 py-2.5 text-sm font-bold text-emerald-700 text-right">
+                                      <span className="inline-flex items-center justify-center min-w-[2rem] px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-lg text-xs">
+                                        {row.sales.toLocaleString()}
+                                      </span>
+                                    </td>
+                                    <td className="px-4 py-2.5 text-sm font-bold text-violet-700 text-right">
+                                      {fmtCurrency(row.enrolledDebt)}
+                                    </td>
+                                    <td className="px-4 py-2.5 text-center" onClick={e => e.stopPropagation()}>
+                                      <button
+                                        onClick={() => downloadSalesByDay(row.date)}
+                                        disabled={!!downloadingId}
+                                        title={`Download all SALE leads for ${row.date}`}
+                                        className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 rounded-lg hover:bg-emerald-100 border border-emerald-200 transition-all disabled:opacity-60 disabled:cursor-not-allowed">
+                                        {downloadingId === `day-${row.date}` ? <RefreshCw size={11} className="animate-spin" /> : <Download size={11} />}
+                                        {downloadingId === `day-${row.date}` ? 'Downloading…' : 'CSV'}
+                                      </button>
+                                    </td>
+                                  </tr>
+
+                                  {/* Expanded deals rows */}
+                                  {isExpanded && (
+                                    <tr>
+                                      <td colSpan={4} className="p-0 border-b border-emerald-100">
+                                        <div className="bg-emerald-50/60 border-t border-emerald-100">
+                                          {isLoadingThis ? (
+                                            <div className="flex items-center justify-center gap-2 py-4 text-sm text-emerald-600">
+                                              <RefreshCw size={14} className="animate-spin" /> Loading deals…
+                                            </div>
+                                          ) : deals.length === 0 ? (
+                                            <p className="text-center text-xs text-slate-400 py-3">No records found</p>
+                                          ) : (
+                                            <div className="overflow-x-auto">
+                                              <table className="min-w-full text-xs">
+                                                <thead>
+                                                  <tr className="bg-emerald-800/10">
+                                                    <th className="px-4 py-2 text-left font-bold text-emerald-800 uppercase tracking-wider">#</th>
+                                                    <th className="px-4 py-2 text-left font-bold text-emerald-800 uppercase tracking-wider">Name</th>
+                                                    <th className="px-4 py-2 text-left font-bold text-emerald-800 uppercase tracking-wider">Phone</th>
+                                                    <th className="px-4 py-2 text-right font-bold text-emerald-800 uppercase tracking-wider">Debt</th>
+                                                    <th className="px-4 py-2 text-right font-bold text-violet-700 uppercase tracking-wider">Enrolled Debt</th>
+                                                    <th className="px-4 py-2 text-left font-bold text-emerald-800 uppercase tracking-wider">List / Run</th>
+                                                    <th className="px-4 py-2 text-left font-bold text-indigo-700 uppercase tracking-wider">Payment</th>
+                                                  </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-emerald-100/60">
+                                                  {deals.map((deal, di) => (
+                                                    <tr key={di} className="hover:bg-emerald-100/40 transition-colors">
+                                                      <td className="px-4 py-1.5 text-slate-400 font-medium">{di + 1}</td>
+                                                      <td className="px-4 py-1.5 font-semibold text-slate-800">
+                                                        {[deal.first_name, deal.last_name].filter(Boolean).join(' ') || <span className="text-slate-400">—</span>}
+                                                      </td>
+                                                      <td className="px-4 py-1.5 text-slate-600 font-mono">
+                                                        {deal.phone_number ? `${deal.phone_code ? deal.phone_code + ' ' : ''}${deal.phone_number}` : <span className="text-slate-400">—</span>}
+                                                      </td>
+                                                      <td className="px-4 py-1.5 text-right text-slate-600">
+                                                        {deal.debt ? fmtCurrency(parseFloat(deal.debt) || 0) : <span className="text-slate-400">—</span>}
+                                                      </td>
+                                                      <td className="px-4 py-1.5 text-right font-bold text-violet-700">
+                                                        {deal.enrolled_debt ? fmtCurrency(parseFloat(deal.enrolled_debt) || 0) : <span className="text-slate-400">—</span>}
+                                                      </td>
+                                                      <td className="px-4 py-1.5 text-slate-600">
+                                                        <span className="font-medium">{deal.listName}</span>
+                                                        <span className="text-slate-400 ml-1">
+                                                          Run #{deal.runNumber}{deal.runLabel ? ` · ${deal.runLabel}` : ''}
+                                                        </span>
+                                                      </td>
+                                                      <td className="px-4 py-1.5">
+                                                        {deal.paymentStatus === 'First Payment Complete' ? (
+                                                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-700 border border-emerald-200 whitespace-nowrap">✓ 1st Paid</span>
+                                                        ) : deal.paymentStatus === 'NFC' ? (
+                                                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-100 text-rose-700 border border-rose-200">NFC</span>
+                                                        ) : (
+                                                          <span className="text-slate-400 text-[10px]">—</span>
+                                                        )}
+                                                      </td>
+                                                    </tr>
+                                                  ))}
+                                                </tbody>
+                                              </table>
+                                            </div>
+                                          )}
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  )}
+                                </React.Fragment>
+                              );
+                            })}
                           </tbody>
                           <tfoot className="bg-slate-100 border-t-2 border-slate-200">
                             <tr>
@@ -623,10 +733,6 @@ const DataVendorDashboard = () => {
                     <button onClick={() => goToRuns(list)}
                       className="flex-1 px-3 py-2 text-xs font-bold text-white bg-gradient-to-r from-purple-600 to-violet-600 rounded-xl hover:from-purple-500 hover:to-violet-500 flex items-center justify-center gap-1.5 transition-all shadow-md shadow-purple-500/20">
                       <BarChart2 size={13} /> View Runs
-                    </button>
-                    <button onClick={() => downloadList(list)}
-                      className="px-3 py-2 text-xs font-bold text-purple-700 bg-purple-50 rounded-xl hover:bg-purple-100 flex items-center gap-1.5 transition-all border border-purple-200">
-                      <Download size={13} /> CSV
                     </button>
                   </div>
                 </div>
@@ -710,9 +816,10 @@ const DataVendorDashboard = () => {
                               className="px-3 py-1.5 text-xs font-bold text-white bg-purple-600 rounded-lg hover:bg-purple-500 transition-colors flex items-center gap-1">
                               <Search size={11} /> Records
                             </button>
-                            <button onClick={() => downloadRun(run)}
-                              className="px-3 py-1.5 text-xs font-bold text-purple-700 bg-purple-50 rounded-lg hover:bg-purple-100 transition-colors flex items-center gap-1 border border-purple-200">
-                              <Download size={11} /> CSV
+                            <button onClick={() => downloadRun(run)} disabled={!!downloadingId}
+                              className="px-3 py-1.5 text-xs font-bold text-purple-700 bg-purple-50 rounded-lg hover:bg-purple-100 transition-colors flex items-center gap-1 border border-purple-200 disabled:opacity-60 disabled:cursor-not-allowed">
+                              {downloadingId === `run-${run.runBatchId}` ? <RefreshCw size={11} className="animate-spin" /> : <Download size={11} />}
+                              {downloadingId === `run-${run.runBatchId}` ? 'Downloading…' : 'CSV'}
                             </button>
                           </div>
                         </td>

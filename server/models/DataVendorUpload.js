@@ -62,6 +62,20 @@ const dataVendorUploadSchema = new mongoose.Schema({
   runDate:    { type: Date },
   runLabel:   { type: String, trim: true, default: '' },
 
+  // ── Payment Status (set by main org admin) ────────────────────
+  paymentStatus: {
+    type: String,
+    enum: ['', 'NFC', 'First Payment Complete'],
+    default: ''
+  },
+  paymentStatusUpdatedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
+  paymentStatusUpdatedAt: {
+    type: Date
+  },
+
   // ── System / meta fields ───────────────────────────────────────
   sharedWith: {
     type: mongoose.Schema.Types.ObjectId,

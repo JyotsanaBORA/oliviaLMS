@@ -20,7 +20,8 @@ import {
   Download,
   KeyRound,
   CheckCircle2,
-  Trash2
+  Trash2,
+  CreditCard
 } from 'lucide-react';
 import LoadingSpinner from './LoadingSpinner';
 import toast from 'react-hot-toast';
@@ -196,12 +197,15 @@ const Layout = ({ onDashboardRefresh }) => {
         ...baseItems
       ];
     } else if (user.role === 'admin') {
-      return [
+      const adminItems = [
         { name: 'Dashboard', href: '/admin', icon: BarChart3 },
         { name: 'Today Leads', href: '/leads', icon: Users },
         { name: 'Chat', href: '/chat', icon: MessageSquare },
-        ...baseItems
       ];
+      if (user.isMainOrgAdmin) {
+        adminItems.push({ name: 'Payment Status', href: '/payment-status', icon: CreditCard });
+      }
+      return [...adminItems, ...baseItems];
     } else if (user.role === 'agent2') {
       return [
         { name: 'Leads', href: '/leads', icon: Users },

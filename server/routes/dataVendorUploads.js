@@ -760,6 +760,108 @@ router.get('/sales-stats', protect, requireRoles('data_vendor', 'admin', 'supera
 });
 
 // ─────────────────────────────────────────────────────────────────
+// GET /api/data-vendor-uploads/sales-export
+// Download ALL SALE records (optional date range) as CSV
+// Query params: startDate, endDate (YYYY-MM-DD, optional)
+// Access: data_vendor (own), admin/superadmin
+// ─────────────────────────────────────────────────────────────────
+router.get('/sales-export', protect, requireRoles('data_vendor', 'admin', 'superadmin'), async (req, res) => {
+  try {
+    const match = buildVendorMatch(req);
+    match.status = { $regex: /^SALE$/i };
+
+    if (req.query.startDate || req.query.endDate) {
+      const dateFilter = {};
+      if (req.query.startDate) {
+        const start = new Date(req.query.startDate);
+        if (!isNaN(start.getTime())) dateFilter.$gte = start;
+      }
+      if (req.query.endDate) {
+        const end = new Date(req.query.endDate);
+        if (!isNaN(end.getTime())) {
+          end.setDate(end.getDate() + 1);
+          dateFilter.$lt = end;
+        }
+      }
+      if (Object.keys(dateFilter).length) match.entryDateParsed = dateFilter;
+    }
+
+    const CSV_FIELDS = [
+      'lead_id','entry_date','modify_date','status','user','vendor_lead_code',
+      'source_id','list_id','gmt_offset_now','called_since_last_reset',
+      'phone_code','phone_number','title','first_name','middle_initial',
+      'last_name','address1','address2','address3','city','state','province',
+      'postal_code','country_code','gender','date_of_birth','alt_phone',
+      'email','security_phrase','comments','called_count','last_local_call_time',
+      'rank','owner','entry_id','debt','ccount','monthly_payment','remark',
+      'custom1','custom2','custom3','custom4','custom5','custom6','enrolled_debt',
+      'listName','runNumber','runLabel'
+    ];
+
+    const records = await DataVendorUpload.find(match)
+      .select(CSV_FIELDS.join(' ') + ' -_id')
+      .sort({ listName: 1, runNumber: 1, entryDateParsed: 1 })
+      .lean();
+
+    if (!records.length) {
+      return res.status(404).json({ success: false, message: 'No SALE records found' });
+    }
+
+    const escape = v => {
+      const s = String(v ?? '');
+      return (s.includes(',') || s.includes('"') || s.includes('\n'))
+        ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+
+    const suffix = req.query.startDate || req.query.endDate
+      ? `_${req.query.startDate || 'start'}_to_${req.query.endDate || 'end'}`
+      : `_all_${new Date().toISOString().slice(0, 10)}`;
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="sales${suffix}.csv"`);
+    const header = CSV_FIELDS.join(',');
+    const rows = records.map(r => CSV_FIELDS.map(f => escape(r[f])).join(','));
+    res.send([header, ...rows].join('\n'));
+  } catch (err) {
+    console.error('Sales export error:', err);
+    res.status(500).json({ success: false, message: 'Export failed' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────
+// GET /api/data-vendor-uploads/sales-records-day
+// Return individual SALE records for a specific date as JSON
+// Query param: date (YYYY-MM-DD, required)
+// Access: data_vendor (own), admin/superadmin
+// ─────────────────────────────────────────────────────────────────
+router.get('/sales-records-day', protect, requireRoles('data_vendor', 'admin', 'superadmin'), async (req, res) => {
+  try {
+    const { date } = req.query;
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return res.status(400).json({ success: false, message: 'date param required (YYYY-MM-DD)' });
+    }
+
+    const match = buildVendorMatch(req);
+    match.status = { $regex: /^SALE$/i };
+
+    const dayStart = new Date(date + 'T00:00:00.000Z');
+    const dayEnd   = new Date(date + 'T00:00:00.000Z');
+    dayEnd.setUTCDate(dayEnd.getUTCDate() + 1);
+    match.entryDateParsed = { $gte: dayStart, $lt: dayEnd };
+
+    const records = await DataVendorUpload.find(match)
+      .select('first_name last_name phone_code phone_number debt enrolled_debt listName runNumber runLabel entry_date paymentStatus')
+      .sort({ listName: 1, runNumber: 1, first_name: 1 })
+      .lean();
+
+    res.json({ success: true, data: records });
+  } catch (err) {
+    console.error('Sales records day error:', err);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────
 // GET /api/data-vendor-uploads/sales-export-day
 // Download all SALE records for a specific date as CSV
 // Query param: date (YYYY-MM-DD, required)
@@ -932,6 +1034,99 @@ router.delete('/runs/:runBatchId', protect, requireAdminOrSuper, async (req, res
   } catch (err) {
     console.error('Delete run error:', err);
     res.status(500).json({ success: false, message: 'Delete failed' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────
+// GET /api/data-vendor-uploads/payment-status/sales
+// List SALE records for the Payment Status page (main org admin)
+// Query: vendorId, search, startDate, endDate, page, limit
+// Access: admin, superadmin
+// ─────────────────────────────────────────────────────────────────
+router.get('/payment-status/sales', protect, requireAdminOrSuper, async (req, res) => {
+  try {
+    const { vendorId, search, startDate, endDate, page = 1, limit = 50 } = req.query;
+
+    const match = { status: { $regex: /^SALE$/i } };
+
+    if (vendorId) {
+      if (!mongoose.Types.ObjectId.isValid(vendorId)) {
+        return res.status(400).json({ success: false, message: 'Invalid vendorId' });
+      }
+      match.sharedWith = new mongoose.Types.ObjectId(vendorId);
+    }
+
+    if (startDate || endDate) {
+      match.entryDateParsed = {};
+      if (startDate) match.entryDateParsed.$gte = new Date(startDate + 'T00:00:00.000Z');
+      if (endDate)   match.entryDateParsed.$lte = new Date(endDate   + 'T23:59:59.999Z');
+    }
+
+    if (search && search.trim()) {
+      const s = search.trim();
+      match.$or = [
+        { first_name:   { $regex: s, $options: 'i' } },
+        { last_name:    { $regex: s, $options: 'i' } },
+        { phone_number: { $regex: s, $options: 'i' } },
+        { email:        { $regex: s, $options: 'i' } },
+        { listName:     { $regex: s, $options: 'i' } },
+      ];
+    }
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const [total, records] = await Promise.all([
+      DataVendorUpload.countDocuments(match),
+      DataVendorUpload.find(match)
+        .select('first_name last_name phone_code phone_number email debt enrolled_debt listName runNumber runLabel entryDateParsed paymentStatus paymentStatusUpdatedAt sharedWith')
+        .populate('sharedWith', 'name email')
+        .sort({ entryDateParsed: -1 })
+        .skip(skip)
+        .limit(parseInt(limit))
+        .lean()
+    ]);
+
+    res.json({ success: true, data: records, total, page: parseInt(page), limit: parseInt(limit) });
+  } catch (err) {
+    console.error('Payment status sales fetch error:', err);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────
+// PATCH /api/data-vendor-uploads/:id/payment-status
+// Update paymentStatus for a single SALE record
+// Access: admin, superadmin
+// ─────────────────────────────────────────────────────────────────
+router.patch('/:id/payment-status', protect, requireAdminOrSuper, async (req, res) => {
+  try {
+    const { paymentStatus } = req.body;
+    const allowed = ['', 'NFC', 'First Payment Complete'];
+    if (!allowed.includes(paymentStatus)) {
+      return res.status(400).json({ success: false, message: 'Invalid paymentStatus value' });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ success: false, message: 'Invalid record ID' });
+    }
+
+    const record = await DataVendorUpload.findByIdAndUpdate(
+      req.params.id,
+      {
+        paymentStatus,
+        paymentStatusUpdatedBy: req.user._id,
+        paymentStatusUpdatedAt: new Date()
+      },
+      { new: true, select: 'paymentStatus paymentStatusUpdatedAt' }
+    );
+
+    if (!record) {
+      return res.status(404).json({ success: false, message: 'Record not found' });
+    }
+
+    res.json({ success: true, data: record });
+  } catch (err) {
+    console.error('Payment status update error:', err);
+    res.status(500).json({ success: false, message: 'Server error' });
   }
 });
 
