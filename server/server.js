@@ -14,7 +14,8 @@ const socketIo = require('socket.io');
 const path = require('path');
 require('dotenv').config();
 
-const { formatEasternTime, getEasternNow } = require('./utils/timeFilters');
+const { formatEasternTime, getEasternNow, getEasternStartOfDay } = require('./utils/timeFilters');
+const cron = require('node-cron');
 const SocketOptimizer = require('./utils/socketOptimizer');
 const { pubClient, subClient, isRedisReady } = require('./utils/redisClient');
 const { createAdapter } = require('@socket.io/redis-adapter');
@@ -253,6 +254,28 @@ connectDB().then(() => {
   server.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running in ${process.env.NODE_ENV} on port ${PORT}`);
   });
+
+  // ── Nightly cleanup: dismiss all stale pending/active VicidialCall records
+  // from previous days so they don't carry over to the next day's queue.
+  // Runs at midnight Eastern Time (00:00) every day.
+  const VicidialCall = require('./models/VicidialCall');
+  cron.schedule('0 0 * * *', async () => {
+    try {
+      const todayStart = getEasternStartOfDay();
+      const result = await VicidialCall.updateMany(
+        {
+          queueStatus: { $in: ['pending', 'active'] },
+          receivedAt: { $lt: todayStart },
+        },
+        { $set: { queueStatus: 'dismissed' } }
+      );
+      if (result.modifiedCount > 0) {
+        console.log(`[Daily Reset] Dismissed ${result.modifiedCount} stale VicidialCall record(s) from previous days.`);
+      }
+    } catch (err) {
+      console.error('[Daily Reset] Error dismissing stale VicidialCalls:', err.message);
+    }
+  }, { timezone: 'America/New_York' });
 });
 
 // Graceful Shutdown

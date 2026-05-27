@@ -1,6 +1,6 @@
 const express = require('express');
 const querystring = require('querystring');
-const VicidialCall = require('../models/VicidialCall');
+const { getEasternStartOfDay, getEasternEndOfDay } = require('../utils/timeFilters');
 const User = require('../models/User');
 const Organization = require('../models/Organization');
 const { protect, authorize } = require('../middleware/auth');
@@ -443,9 +443,13 @@ router.get('/call-data', async (req, res) => {
 // ============================================================
 router.get('/queue', protect, authorize('agent1', 'admin', 'superadmin'), async (req, res) => {
   try {
+    const todayStart = getEasternStartOfDay();
+    const todayEnd   = getEasternEndOfDay();
+
     const pendingCalls = await VicidialCall.find({
       agent: req.user._id,
       queueStatus: { $in: ['pending', 'active'] },
+      receivedAt: { $gte: todayStart, $lte: todayEnd },
     })
       .sort({ priority: -1, receivedAt: 1 }) // High priority first, then oldest first
       .limit(50)
@@ -474,9 +478,13 @@ router.get('/queue', protect, authorize('agent1', 'admin', 'superadmin'), async 
 // ============================================================
 router.get('/queue/count', protect, authorize('agent1', 'admin', 'superadmin'), async (req, res) => {
   try {
+    const todayStart = getEasternStartOfDay();
+    const todayEnd   = getEasternEndOfDay();
+
     const count = await VicidialCall.countDocuments({
       agent: req.user._id,
       queueStatus: { $in: ['pending', 'active'] },
+      receivedAt: { $gte: todayStart, $lte: todayEnd },
     });
 
     return res.status(200).json({
@@ -501,10 +509,14 @@ router.get('/queue/next', protect, authorize('agent1', 'admin', 'superadmin'), a
   try {
     console.log('🔍 Fetching next ViciDial call for user:', req.user._id);
     
-    // Find the next pending call (oldest first, high priority first)
+    // Find the next pending call (oldest first, high priority first) — today only
+    const todayStart = getEasternStartOfDay();
+    const todayEnd   = getEasternEndOfDay();
+
     const nextCall = await VicidialCall.findOne({
       agent: req.user._id,
       queueStatus: 'pending',
+      receivedAt: { $gte: todayStart, $lte: todayEnd },
     })
       .sort({ priority: -1, receivedAt: 1 }) // High priority first, then oldest first
       .lean();
