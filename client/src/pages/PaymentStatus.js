@@ -1,29 +1,38 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   CreditCard, Search, RefreshCw, ChevronLeft, ChevronRight,
-  Calendar, User, CheckCircle2, XCircle, Clock
+  Calendar, User, CheckCircle2, XCircle, Clock, TrendingUp, DollarSign
 } from 'lucide-react';
 import axios from '../utils/axios';
 import toast from 'react-hot-toast';
 
-const STATUS_OPTIONS = ['', 'NFC', 'First Payment Complete'];
+const STATUS_OPTIONS = ['', 'Cleared', 'Pending', 'NSF', 'Cancellation', 'Refunded'];
 
 const STATUS_BADGE = {
-  'NFC': 'bg-rose-100 text-rose-700 border border-rose-200',
-  'First Payment Complete': 'bg-emerald-100 text-emerald-700 border border-emerald-200',
-  '': 'bg-gray-100 text-gray-500 border border-gray-200',
+  'Cleared':      'bg-emerald-100 text-emerald-700 border border-emerald-200',
+  'Pending':      'bg-yellow-100 text-yellow-700 border border-yellow-200',
+  'NSF':          'bg-rose-100 text-rose-700 border border-rose-200',
+  'Cancellation': 'bg-orange-100 text-orange-700 border border-orange-200',
+  'Refunded':     'bg-purple-100 text-purple-700 border border-purple-200',
+  '':             'bg-gray-100 text-gray-500 border border-gray-200',
 };
 
 const STATUS_ICON = {
-  'NFC': <XCircle size={12} />,
-  'First Payment Complete': <CheckCircle2 size={12} />,
-  '': <Clock size={12} />,
+  'Cleared':      <CheckCircle2 size={12} />,
+  'Pending':      <Clock size={12} />,
+  'NSF':          <XCircle size={12} />,
+  'Cancellation': <XCircle size={12} />,
+  'Refunded':     <RefreshCw size={12} />,
+  '':             <Clock size={12} />,
 };
 
 const STATUS_LABEL = {
-  '': 'Not Set',
-  'NFC': 'NFC',
-  'First Payment Complete': 'First Payment Complete',
+  '':             'Not Set',
+  'Cleared':      'Cleared',
+  'Pending':      'Pending',
+  'NSF':          'NSF',
+  'Cancellation': 'Cancellation',
+  'Refunded':     'Refunded',
 };
 
 export default function PaymentStatus() {
@@ -38,10 +47,13 @@ export default function PaymentStatus() {
   const [searchInput, setSearchInput] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState('');
 
   const [loading, setLoading] = useState(false);
   const [vendorLoading, setVendorLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState(null);
+  const [totalEnrolledDebt, setTotalEnrolledDebt] = useState(0);
+  const [totalRevenue, setTotalRevenue] = useState(0);
 
   // ── Fetch vendors list ─────────────────────────────────────────
   useEffect(() => {
@@ -64,43 +76,46 @@ export default function PaymentStatus() {
     setLoading(true);
     try {
       const params = { page, limit: LIMIT };
-      if (selectedVendorId) params.vendorId = selectedVendorId;
-      if (search)    params.search    = search;
-      if (startDate) params.startDate = startDate;
-      if (endDate)   params.endDate   = endDate;
+      if (selectedVendorId)       params.vendorId           = selectedVendorId;
+      if (search)                   params.search             = search;
+      if (startDate)                params.startDate          = startDate;
+      if (endDate)                  params.endDate            = endDate;
+      if (paymentStatusFilter !== '') params.paymentStatusFilter = paymentStatusFilter;
 
       const res = await axios.get('/api/data-vendor-uploads/payment-status/sales', { params });
       setRecords(res.data.data || []);
       setTotal(res.data.total || 0);
+      setTotalEnrolledDebt(res.data.totalEnrolledDebt || 0);
+      setTotalRevenue(res.data.totalRevenue || 0);
     } catch {
       toast.error('Failed to load SALE records');
     } finally {
       setLoading(false);
     }
-  }, [selectedVendorId, search, startDate, endDate, page]);
+  }, [selectedVendorId, search, startDate, endDate, paymentStatusFilter, page]);
 
   useEffect(() => {
     fetchRecords();
   }, [fetchRecords]);
 
-  // ── Update payment status ──────────────────────────────────────
-  const handleStatusChange = async (record, newStatus) => {
+  // ── Update any payment status field ───────────────────────────
+  const handleFieldChange = async (record, field, value) => {
     setUpdatingId(record._id);
     try {
       const res = await axios.patch(
         `/api/data-vendor-uploads/${record._id}/payment-status`,
-        { paymentStatus: newStatus }
+        { [field]: value }
       );
       setRecords((prev) =>
         prev.map((r) =>
           r._id === record._id
-            ? { ...r, paymentStatus: res.data.data.paymentStatus, paymentStatusUpdatedAt: res.data.data.paymentStatusUpdatedAt }
+            ? { ...r, ...res.data.data }
             : r
         )
       );
-      toast.success('Payment status updated');
+      toast.success('Updated');
     } catch {
-      toast.error('Failed to update status');
+      toast.error('Failed to update');
     } finally {
       setUpdatingId(null);
     }
@@ -118,6 +133,7 @@ export default function PaymentStatus() {
     setStartDate('');
     setEndDate('');
     setSelectedVendorId('');
+    setPaymentStatusFilter('');
     setPage(1);
   };
 
@@ -192,6 +208,26 @@ export default function PaymentStatus() {
             />
           </div>
 
+          {/* Payment Status Filter */}
+          <div className="flex flex-col gap-1 min-w-[160px]">
+            <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+              <CreditCard size={11} /> Payment Status
+            </label>
+            <select
+              value={paymentStatusFilter}
+              onChange={(e) => { setPaymentStatusFilter(e.target.value); setPage(1); }}
+              className="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="">All Statuses</option>
+              <option value="not_set">Not Set</option>
+              <option value="Cleared">Cleared</option>
+              <option value="Pending">Pending</option>
+              <option value="NSF">NSF</option>
+              <option value="Cancellation">Cancellation</option>
+              <option value="Refunded">Refunded</option>
+            </select>
+          </div>
+
           {/* Search */}
           <form onSubmit={handleSearch} className="flex flex-col gap-1 flex-1 min-w-[200px]">
             <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1">
@@ -200,7 +236,7 @@ export default function PaymentStatus() {
             <div className="flex gap-2">
               <input
                 type="text"
-                placeholder="Name, phone, email, list…"
+                placeholder="Name, phone, email, list, status…"
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
                 className="flex-1 bg-slate-700 border border-slate-600 text-white text-sm rounded-lg px-3 py-2 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
@@ -233,6 +269,32 @@ export default function PaymentStatus() {
           </button>
         </div>
       </div>
+
+      {/* Revenue summary card */}
+      {!loading && totalRevenue > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+          <div className="bg-slate-800/60 backdrop-blur border border-slate-700/50 rounded-xl p-4 flex items-center gap-4 shadow">
+            <div className="p-2.5 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-lg shadow">
+              <TrendingUp size={18} className="text-white" />
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Total Enrolled Debt</p>
+              <p className="text-xl font-bold text-white">${totalEnrolledDebt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+              <p className="text-xs text-slate-500">{total} SALE records</p>
+            </div>
+          </div>
+          <div className="bg-slate-800/60 backdrop-blur border border-emerald-700/40 rounded-xl p-4 flex items-center gap-4 shadow">
+            <div className="p-2.5 bg-gradient-to-br from-violet-500 to-indigo-600 rounded-lg shadow">
+              <CreditCard size={18} className="text-white" />
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Total Revenue</p>
+              <p className="text-xl font-bold text-emerald-400">${totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+              <p className="text-xs text-slate-500">Across all matching records</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Stats bar */}
       <div className="flex items-center justify-between mb-4">
@@ -283,11 +345,15 @@ export default function PaymentStatus() {
                 <tr className="border-b border-slate-700">
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Lead</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Phone</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Debt / Enrolled</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Enrolled Debt</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Revenue</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">List / Run</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Vendor</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Entry Date</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Enrollment Date</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Payment Status</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Payment Type</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Draft Date 1</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Draft Date 2</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-700/50">
@@ -306,12 +372,18 @@ export default function PaymentStatus() {
                       {rec.phone_code && rec.phone_code !== '1' ? `+${rec.phone_code} ` : ''}{rec.phone_number || '—'}
                     </td>
 
-                    {/* Debt */}
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <div className="text-slate-300">{rec.debt ? `$${Number(rec.debt).toLocaleString()}` : '—'}</div>
-                      {rec.enrolled_debt && (
-                        <div className="text-xs text-emerald-400">${Number(rec.enrolled_debt).toLocaleString()} enrolled</div>
-                      )}
+                    {/* Enrolled debt only */}
+                    <td className="px-4 py-3">
+                      {rec.enrolled_debt
+                        ? <span className="text-emerald-400 font-semibold">${Number(rec.enrolled_debt).toLocaleString()}</span>
+                        : <span className="text-slate-500">—</span>}
+                    </td>
+
+                    {/* Revenue: 2.5% of enrolled_debt */}
+                    <td className="px-4 py-3">
+                      {rec.enrolled_debt && !isNaN(Number(rec.enrolled_debt)) && Number(rec.enrolled_debt) > 0
+                        ? <span className="text-violet-400 font-semibold">${(Number(rec.enrolled_debt) * 0.025).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                        : <span className="text-slate-500">—</span>}
                     </td>
 
                     {/* List / Run */}
@@ -334,7 +406,7 @@ export default function PaymentStatus() {
 
                     {/* Payment status dropdown */}
                     <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-col gap-1.5">
                         {updatingId === rec._id ? (
                           <RefreshCw size={14} className="animate-spin text-indigo-400" />
                         ) : (
@@ -347,7 +419,7 @@ export default function PaymentStatus() {
                             {/* Dropdown */}
                             <select
                               value={rec.paymentStatus || ''}
-                              onChange={(e) => handleStatusChange(rec, e.target.value)}
+                              onChange={(e) => handleFieldChange(rec, 'paymentStatus', e.target.value)}
                               className="bg-slate-700 border border-slate-600 text-white text-xs rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
                             >
                               {STATUS_OPTIONS.map((opt) => (
@@ -364,6 +436,42 @@ export default function PaymentStatus() {
                           </span>
                         )}
                       </div>
+                    </td>
+
+                    {/* Payment Type */}
+                    <td className="px-4 py-3">
+                      <select
+                        value={rec.paymentType || ''}
+                        onChange={(e) => handleFieldChange(rec, 'paymentType', e.target.value)}
+                        disabled={updatingId === rec._id}
+                        className="bg-slate-700 border border-slate-600 text-white text-xs rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer disabled:opacity-50 min-w-[120px]"
+                      >
+                        <option value="">Not Set</option>
+                        <option value="Monthly">Monthly</option>
+                        <option value="Semi Monthly">Semi Monthly</option>
+                      </select>
+                    </td>
+
+                    {/* Draft Date 1 */}
+                    <td className="px-4 py-3">
+                      <input
+                        type="date"
+                        defaultValue={rec.draftDate1 ? rec.draftDate1.slice(0, 10) : ''}
+                        onBlur={(e) => handleFieldChange(rec, 'draftDate1', e.target.value)}
+                        disabled={updatingId === rec._id}
+                        className="bg-slate-700 border border-slate-600 text-white text-xs rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
+                      />
+                    </td>
+
+                    {/* Draft Date 2 */}
+                    <td className="px-4 py-3">
+                      <input
+                        type="date"
+                        defaultValue={rec.draftDate2 ? rec.draftDate2.slice(0, 10) : ''}
+                        onBlur={(e) => handleFieldChange(rec, 'draftDate2', e.target.value)}
+                        disabled={updatingId === rec._id}
+                        className="bg-slate-700 border border-slate-600 text-white text-xs rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
+                      />
                     </td>
                   </tr>
                 ))}

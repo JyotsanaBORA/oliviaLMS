@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { flushSync } from 'react-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Download, RefreshCw, Search, ChevronLeft, ChevronRight,
   List, BarChart2, FileSpreadsheet, ArrowLeft, Calendar,
   Hash, Users, Filter, TrendingUp, ChevronDown, ChevronUp,
-  DollarSign, ShoppingCart, Activity
+  DollarSign, ShoppingCart, Activity, CreditCard
 } from 'lucide-react';
 import axios from '../utils/axios';
 import toast from 'react-hot-toast';
@@ -109,11 +110,26 @@ function fmtCurrency(val) {
 // ─────────────────────────────────────────────────────────────────
 const DataVendorDashboard = () => {
   const { user } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
 
   // Three-level navigation state
-  const [view, setView] = useState('lists'); // 'lists' | 'runs' | 'records'
+  const [view, setView] = useState(
+    location.pathname === '/vendor-payment-status' ? 'payment-status' : 'lists'
+  );
   const [selectedList, setSelectedList] = useState(null);   // list object
   const [selectedRun, setSelectedRun]   = useState(null);   // run object
+
+  // Sync view state when URL changes (sidebar navigation reuses the same component instance)
+  useEffect(() => {
+    if (location.pathname === '/vendor-payment-status') {
+      setView('payment-status');
+    } else if (location.pathname === '/vendor-dashboard') {
+      setView('lists');
+      setSelectedList(null);
+      setSelectedRun(null);
+    }
+  }, [location.pathname]);
 
   // ── LISTS VIEW ───────────────────────────────────────────────
   const [lists, setLists] = useState([]);
@@ -144,6 +160,21 @@ const DataVendorDashboard = () => {
   const [dayRecords, setDayRecords] = useState({});
   const [loadingDay, setLoadingDay] = useState(null);
   const [downloadingId, setDownloadingId] = useState(null);
+
+  // ── PAYMENT STATUS TAB ───────────────────────────────────────
+  const [psRecords, setPsRecords] = useState([]);
+  const [psTotal, setPsTotal] = useState(0);
+  const [psPage, setPsPage] = useState(1);
+  const PS_LIMIT = 50;
+  const [psLoading, setPsLoading] = useState(false);
+  const [psSearch, setPsSearch] = useState('');
+  const [psSearchInput, setPsSearchInput] = useState('');
+  const [psStartDate, setPsStartDate] = useState('');
+  const [psEndDate, setPsEndDate] = useState('');
+  const [psPaymentFilter, setPsPaymentFilter] = useState('');
+  const [psTotalEnrolledDebt, setPsTotalEnrolledDebt] = useState(0);
+  const [psTotalRevenue, setPsTotalRevenue] = useState(0);
+  const [psDownloading, setPsDownloading] = useState(false);
 
   const searchRef = useRef('');
 
@@ -226,6 +257,29 @@ const DataVendorDashboard = () => {
     finally { setSalesLoading(false); }
   }, []);
 
+  // ── Fetch payment status records (vendor's own SALE leads) ────
+  const fetchPaymentStatus = useCallback(async () => {
+    setPsLoading(true);
+    try {
+      const params = { page: psPage, limit: PS_LIMIT };
+      if (psSearch)               params.search             = psSearch;
+      if (psStartDate)            params.startDate          = psStartDate;
+      if (psEndDate)              params.endDate            = psEndDate;
+      if (psPaymentFilter !== '') params.paymentStatusFilter = psPaymentFilter;
+      const res = await axios.get('/api/data-vendor-uploads/payment-status/vendor-sales', { params });
+      setPsRecords(res.data.data || []);
+      setPsTotal(res.data.total || 0);
+      setPsTotalEnrolledDebt(res.data.totalEnrolledDebt || 0);
+      setPsTotalRevenue(res.data.totalRevenue || 0);
+    } catch { toast.error('Failed to load payment status records'); }
+    finally { setPsLoading(false); }
+  }, [psPage, psSearch, psStartDate, psEndDate, psPaymentFilter]);
+
+  useEffect(() => {
+    if (view === 'payment-status') fetchPaymentStatus();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, fetchPaymentStatus]);
+
   // Load sales stats once the lists have loaded (lists view only)
   useEffect(() => {
     if (!listsLoading) fetchSalesStats();
@@ -264,6 +318,7 @@ const DataVendorDashboard = () => {
   const goBack = () => {
     if (view === 'records') { setView('runs'); setSelectedRun(null); }
     else if (view === 'runs') { setView('lists'); setSelectedList(null); }
+    else if (view === 'payment-status') { navigate('/vendor-dashboard'); }
   };
 
   // ── Download helpers ─────────────────────────────────────────
@@ -326,6 +381,27 @@ const DataVendorDashboard = () => {
       if (err.response?.status === 404) toast.error(`No SALE records found for ${date}`);
       else toast.error('Download failed');
     } finally { setDownloadingId(null); }
+  };
+
+  const downloadPaymentStatusCSV = async () => {
+    setPsDownloading(true);
+    try {
+      const params = {};
+      if (psSearch)               params.search             = psSearch;
+      if (psStartDate)            params.startDate          = psStartDate;
+      if (psEndDate)              params.endDate            = psEndDate;
+      if (psPaymentFilter !== '') params.paymentStatusFilter = psPaymentFilter;
+      const res = await axios.get('/api/data-vendor-uploads/payment-status/vendor-sales-export', { params, responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const a = document.createElement('a'); a.href = url;
+      a.download = `payment_status_${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a); a.click(); a.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success('CSV downloaded');
+    } catch (err) {
+      if (err.response?.status === 404) toast.error('No records found');
+      else toast.error('Download failed');
+    } finally { setPsDownloading(false); }
   };
 
   const toggleDayExpand = async (date) => {
@@ -399,11 +475,13 @@ const DataVendorDashboard = () => {
             </div>
             <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
               {view === 'lists' ? 'Data Vendor Dashboard' :
+               view === 'payment-status' ? 'Payment Status' :
                view === 'runs' ? selectedList?.listName :
                `Run #${selectedRun?.runNumber}${selectedRun?.runLabel ? ` — ${selectedRun.runLabel}` : ''}`}
             </h1>
             <p className="text-sm text-slate-400 mt-0.5">
               {view === 'lists' && <><span className="text-yellow-400 font-semibold">{lists.length}</span> list{lists.length !== 1 ? 's' : ''}</>}
+              {view === 'payment-status' && <><span className="text-yellow-400 font-semibold">{psTotal.toLocaleString()}</span> SALE records</>}
               {view === 'runs' && <><span className="text-yellow-400 font-semibold">{runs.length}</span> run{runs.length !== 1 ? 's' : ''}</>}
               {view === 'records' && <><span className="text-yellow-400 font-semibold">{pagination.total.toLocaleString()}</span> records</>}
             </p>
@@ -428,6 +506,13 @@ const DataVendorDashboard = () => {
               className="px-5 py-2.5 text-sm font-semibold bg-gradient-to-r from-yellow-400 to-yellow-500 text-slate-900 rounded-xl hover:from-yellow-300 hover:to-yellow-400 shadow-lg shadow-yellow-400/20 flex items-center gap-2 transition-all disabled:opacity-60 disabled:cursor-not-allowed">
               {downloadingId && downloadingId.startsWith('run-') ? <RefreshCw size={14} className="animate-spin" /> : <Download size={14} />}
               {downloadingId && downloadingId.startsWith('run-') ? 'Downloading…' : 'Download Run'}
+            </button>
+          )}
+          {view === 'payment-status' && (
+            <button onClick={downloadPaymentStatusCSV} disabled={psDownloading || psTotal === 0}
+              className="px-5 py-2.5 text-sm font-semibold bg-gradient-to-r from-indigo-500 to-violet-600 text-white rounded-xl hover:from-indigo-400 hover:to-violet-500 shadow-lg shadow-indigo-400/20 flex items-center gap-2 transition-all disabled:opacity-60 disabled:cursor-not-allowed">
+              {psDownloading ? <RefreshCw size={14} className="animate-spin" /> : <Download size={14} />}
+              {psDownloading ? 'Downloading…' : 'Download CSV'}
             </button>
           )}
         </div>
@@ -643,10 +728,16 @@ const DataVendorDashboard = () => {
                                                         </span>
                                                       </td>
                                                       <td className="px-4 py-1.5">
-                                                        {deal.paymentStatus === 'First Payment Complete' ? (
-                                                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-700 border border-emerald-200 whitespace-nowrap">✓ 1st Paid</span>
-                                                        ) : deal.paymentStatus === 'NFC' ? (
-                                                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-100 text-rose-700 border border-rose-200">NFC</span>
+                                                        {deal.paymentStatus === 'Cleared' ? (
+                                                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-700 border border-emerald-200">Cleared</span>
+                                                        ) : deal.paymentStatus === 'Pending' ? (
+                                                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-yellow-100 text-yellow-700 border border-yellow-200">Pending</span>
+                                                        ) : deal.paymentStatus === 'NSF' ? (
+                                                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-100 text-rose-700 border border-rose-200">NSF</span>
+                                                        ) : deal.paymentStatus === 'Cancellation' ? (
+                                                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-orange-100 text-orange-700 border border-orange-200">Cancellation</span>
+                                                        ) : deal.paymentStatus === 'Refunded' ? (
+                                                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-purple-100 text-purple-700 border border-purple-200">Refunded</span>
                                                         ) : (
                                                           <span className="text-slate-400 text-[10px]">—</span>
                                                         )}
@@ -737,6 +828,252 @@ const DataVendorDashboard = () => {
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // VIEW: PAYMENT STATUS (vendor read-only)
+  // ─────────────────────────────────────────────────────────────
+  if (view === 'payment-status') {
+    const psTotalPages = Math.ceil(psTotal / PS_LIMIT);
+    const psFormatDate = (d) => {
+      if (!d) return '—';
+      return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+    };
+    const PS_STATUS_COLORS = {
+      'Cleared':      'bg-emerald-100 text-emerald-700 border border-emerald-200',
+      'Pending':      'bg-yellow-100 text-yellow-700 border border-yellow-200',
+      'NSF':          'bg-rose-100 text-rose-700 border border-rose-200',
+      'Cancellation': 'bg-orange-100 text-orange-700 border border-orange-200',
+      'Refunded':     'bg-purple-100 text-purple-700 border border-purple-200',
+    };
+
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-gray-50 to-purple-50">
+        <div className="max-w-[1920px] mx-auto px-4 sm:px-6 py-6 space-y-5">
+          <Header />
+
+          {/* Filters */}
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+            <div className="flex flex-wrap gap-3 items-end">
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                  <Calendar size={11} /> From
+                </label>
+                <input type="date" value={psStartDate}
+                  onChange={e => { setPsStartDate(e.target.value); setPsPage(1); }}
+                  className="border border-gray-200 text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">To</label>
+                <input type="date" value={psEndDate}
+                  onChange={e => { setPsEndDate(e.target.value); setPsPage(1); }}
+                  className="border border-gray-200 text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+              </div>
+              <div className="flex flex-col gap-1 min-w-[160px]">
+                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                  <CreditCard size={11} /> Payment Status
+                </label>
+                <select value={psPaymentFilter}
+                  onChange={e => { setPsPaymentFilter(e.target.value); setPsPage(1); }}
+                  className="border border-gray-200 text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400">
+                  <option value="">All Statuses</option>
+                  <option value="not_set">Not Set</option>
+                  <option value="Cleared">Cleared</option>
+                  <option value="Pending">Pending</option>
+                  <option value="NSF">NSF</option>
+                  <option value="Cancellation">Cancellation</option>
+                  <option value="Refunded">Refunded</option>
+                </select>
+              </div>
+              <div className="flex flex-col gap-1 flex-1 min-w-[200px]">
+                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                  <Search size={11} /> Search
+                </label>
+                <div className="flex gap-2">
+                  <input type="text" placeholder="Name, phone, email, list…"
+                    value={psSearchInput}
+                    onChange={e => setPsSearchInput(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') { setPsSearch(psSearchInput.trim()); setPsPage(1); } }}
+                    className="flex-1 border border-gray-200 text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400 placeholder-slate-400" />
+                  <button onClick={() => { setPsSearch(psSearchInput.trim()); setPsPage(1); }}
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold rounded-lg transition-colors">
+                    Go
+                  </button>
+                </div>
+              </div>
+              <button
+                onClick={() => { setPsSearchInput(''); setPsSearch(''); setPsStartDate(''); setPsEndDate(''); setPsPaymentFilter(''); setPsPage(1); }}
+                className="px-4 py-2 text-sm text-slate-400 hover:text-slate-700 border border-gray-200 hover:border-gray-300 rounded-lg transition-colors self-end">
+                Clear
+              </button>
+              <button onClick={fetchPaymentStatus} disabled={psLoading}
+                className="px-3 py-2 text-slate-400 hover:text-slate-700 border border-gray-200 hover:border-gray-300 rounded-lg transition-colors self-end disabled:opacity-50" title="Refresh">
+                <RefreshCw size={15} className={psLoading ? 'animate-spin' : ''} />
+              </button>
+            </div>
+          </div>
+
+          {/* Revenue summary cards */}
+          {!psLoading && psTotalRevenue > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex items-center gap-4">
+                <div className="p-2.5 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-lg shadow">
+                  <TrendingUp size={18} className="text-white" />
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Total Enrolled Debt</p>
+                  <p className="text-xl font-extrabold text-slate-900">
+                    ${psTotalEnrolledDebt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </p>
+                  <p className="text-xs text-slate-400">{psTotal} SALE records</p>
+                </div>
+              </div>
+              <div className="bg-white rounded-2xl shadow-sm border border-emerald-200 p-4 flex items-center gap-4">
+                <div className="p-2.5 bg-gradient-to-br from-violet-500 to-indigo-600 rounded-lg shadow">
+                  <DollarSign size={18} className="text-white" />
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Total Revenue</p>
+                  <p className="text-xl font-extrabold text-emerald-600">
+                    ${psTotalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </p>
+                  <p className="text-xs text-slate-400">Across matching records</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Stats bar + top pagination */}
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-slate-500 font-medium">
+              {psLoading ? 'Loading…' : (
+                <>Showing <span className="font-bold text-slate-700">{psRecords.length}</span> of <span className="font-bold text-slate-700">{psTotal}</span> SALE records</>
+              )}
+            </p>
+            {psTotalPages > 1 && (
+              <div className="flex items-center gap-2">
+                <button onClick={() => setPsPage(p => Math.max(1, p - 1))} disabled={psPage === 1 || psLoading}
+                  className="p-1.5 rounded-lg bg-white border border-gray-200 hover:bg-gray-50 text-slate-400 disabled:opacity-40 transition-colors">
+                  <ChevronLeft size={16} />
+                </button>
+                <span className="text-sm text-slate-500 font-medium">{psPage} / {psTotalPages}</span>
+                <button onClick={() => setPsPage(p => Math.min(psTotalPages, p + 1))} disabled={psPage === psTotalPages || psLoading}
+                  className="p-1.5 rounded-lg bg-white border border-gray-200 hover:bg-gray-50 text-slate-400 disabled:opacity-40 transition-colors">
+                  <ChevronRight size={16} />
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Table */}
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+            {psLoading ? (
+              <div className="flex items-center justify-center py-20">
+                <RefreshCw size={24} className="animate-spin text-indigo-400" />
+              </div>
+            ) : psRecords.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-20 gap-3">
+                <CreditCard size={40} className="text-gray-300" />
+                <p className="text-gray-400 text-sm font-medium">No SALE records found</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead>
+                    <tr className="bg-slate-900">
+                      <th className="px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase tracking-wider">Lead</th>
+                      <th className="px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase tracking-wider">Phone</th>
+                      <th className="px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase tracking-wider">Enrolled Debt</th>
+                      <th className="px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase tracking-wider">Revenue</th>
+                      <th className="px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase tracking-wider">List / Run</th>
+                      <th className="px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase tracking-wider">Enrollment Date</th>
+                      <th className="px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase tracking-wider">Payment Status</th>
+                      <th className="px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase tracking-wider">Payment Type</th>
+                      <th className="px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase tracking-wider">Draft Date 1</th>
+                      <th className="px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase tracking-wider">Draft Date 2</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {psRecords.map(rec => (
+                      <tr key={rec._id} className="hover:bg-indigo-50 transition-colors">
+                        <td className="px-4 py-3">
+                          <div className="font-medium text-slate-800">
+                            {[rec.first_name, rec.last_name].filter(Boolean).join(' ') || '—'}
+                          </div>
+                          {rec.email && <div className="text-xs text-slate-400 truncate max-w-[160px]">{rec.email}</div>}
+                        </td>
+                        <td className="px-4 py-3 text-slate-600 whitespace-nowrap text-xs">
+                          {rec.phone_code && rec.phone_code !== '1' ? `+${rec.phone_code} ` : ''}{rec.phone_number || '—'}
+                        </td>
+                        <td className="px-4 py-3">
+                          {rec.enrolled_debt
+                            ? <span className="text-emerald-600 font-bold text-xs">${Number(rec.enrolled_debt).toLocaleString()}</span>
+                            : <span className="text-slate-300">—</span>}
+                        </td>
+                        <td className="px-4 py-3">
+                          {rec.enrolled_debt && !isNaN(Number(rec.enrolled_debt)) && Number(rec.enrolled_debt) > 0
+                            ? <span className="text-violet-600 font-bold text-xs">${(Number(rec.enrolled_debt) * 0.025).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                            : <span className="text-slate-300">—</span>}
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="text-slate-600 text-xs font-medium">{rec.listName}</div>
+                          <div className="text-slate-400 text-xs">Run #{rec.runNumber}{rec.runLabel ? ` · ${rec.runLabel}` : ''}</div>
+                        </td>
+                        <td className="px-4 py-3 text-slate-400 text-xs whitespace-nowrap">
+                          {psFormatDate(rec.entryDateParsed)}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${PS_STATUS_COLORS[rec.paymentStatus] || 'bg-gray-100 text-gray-500 border border-gray-200'}`}>
+                            {rec.paymentStatus || 'Not Set'}
+                          </span>
+                          {rec.paymentStatusUpdatedAt && (
+                            <div className="text-[10px] text-slate-400 mt-0.5 whitespace-nowrap">
+                              {psFormatDate(rec.paymentStatusUpdatedAt)}
+                            </div>
+                          )}
+                        </td>
+
+                        {/* Payment Type — read-only */}
+                        <td className="px-4 py-3">
+                          {rec.paymentType
+                            ? <span className="inline-flex items-center px-2 py-0.5 rounded-lg text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">{rec.paymentType}</span>
+                            : <span className="text-slate-300 text-xs">—</span>}
+                        </td>
+
+                        {/* Draft Date 1 — read-only */}
+                        <td className="px-4 py-3 text-slate-500 text-xs whitespace-nowrap">
+                          {rec.draftDate1 ? psFormatDate(rec.draftDate1) : '—'}
+                        </td>
+
+                        {/* Draft Date 2 — read-only */}
+                        <td className="px-4 py-3 text-slate-500 text-xs whitespace-nowrap">
+                          {rec.draftDate2 ? psFormatDate(rec.draftDate2) : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* Bottom pagination */}
+          {psTotalPages > 1 && (
+            <div className="flex items-center justify-center gap-3">
+              <button onClick={() => setPsPage(p => Math.max(1, p - 1))} disabled={psPage === 1 || psLoading}
+                className="flex items-center gap-1.5 px-4 py-2 bg-white border border-gray-200 hover:bg-gray-50 text-slate-500 rounded-xl disabled:opacity-40 transition-colors text-sm font-medium">
+                <ChevronLeft size={15} /> Prev
+              </button>
+              <span className="text-slate-400 text-sm">Page {psPage} of {psTotalPages}</span>
+              <button onClick={() => setPsPage(p => Math.min(psTotalPages, p + 1))} disabled={psPage === psTotalPages || psLoading}
+                className="flex items-center gap-1.5 px-4 py-2 bg-white border border-gray-200 hover:bg-gray-50 text-slate-500 rounded-xl disabled:opacity-40 transition-colors text-sm font-medium">
+                Next <ChevronRight size={15} />
+              </button>
             </div>
           )}
         </div>

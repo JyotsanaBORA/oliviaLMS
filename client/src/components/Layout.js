@@ -221,7 +221,8 @@ const Layout = ({ onDashboardRefresh }) => {
       ];
     } else if (user.role === 'data_vendor') {
       return [
-        { name: 'Dashboard', href: '/vendor-dashboard', icon: BarChart3 }
+        { name: 'Dashboard', href: '/vendor-dashboard', icon: BarChart3 },
+        { name: 'Payment Status', href: '/vendor-payment-status', icon: CreditCard }
       ];
     } else {
       return [

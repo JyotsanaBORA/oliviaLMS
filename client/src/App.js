@@ -116,6 +116,12 @@ function App() {
                   </ProtectedRoute>
                 } />
 
+                <Route path="vendor-payment-status" element={
+                  <ProtectedRoute roles={['data_vendor', 'superadmin']}>
+                    <DataVendorDashboard />
+                  </ProtectedRoute>
+                } />
+
                 <Route path="payment-status" element={
                   <ProtectedRoute roles={['admin', 'superadmin']}>
                     <PaymentStatus />

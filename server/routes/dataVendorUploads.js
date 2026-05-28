@@ -1045,9 +1045,17 @@ router.delete('/runs/:runBatchId', protect, requireAdminOrSuper, async (req, res
 // ─────────────────────────────────────────────────────────────────
 router.get('/payment-status/sales', protect, requireAdminOrSuper, async (req, res) => {
   try {
-    const { vendorId, search, startDate, endDate, page = 1, limit = 50 } = req.query;
+    const { vendorId, search, startDate, endDate, paymentStatusFilter, page = 1, limit = 50 } = req.query;
 
     const match = { status: { $regex: /^SALE$/i } };
+
+    if (paymentStatusFilter !== undefined && paymentStatusFilter !== '') {
+      if (paymentStatusFilter === 'not_set') {
+        match.$and = [{ $or: [{ paymentStatus: '' }, { paymentStatus: { $exists: false } }] }];
+      } else {
+        match.paymentStatus = paymentStatusFilter;
+      }
+    }
 
     if (vendorId) {
       if (!mongoose.Types.ObjectId.isValid(vendorId)) {
@@ -1065,29 +1073,198 @@ router.get('/payment-status/sales', protect, requireAdminOrSuper, async (req, re
     if (search && search.trim()) {
       const s = search.trim();
       match.$or = [
-        { first_name:   { $regex: s, $options: 'i' } },
-        { last_name:    { $regex: s, $options: 'i' } },
-        { phone_number: { $regex: s, $options: 'i' } },
-        { email:        { $regex: s, $options: 'i' } },
-        { listName:     { $regex: s, $options: 'i' } },
+        { first_name:    { $regex: s, $options: 'i' } },
+        { last_name:     { $regex: s, $options: 'i' } },
+        { phone_number:  { $regex: s, $options: 'i' } },
+        { email:         { $regex: s, $options: 'i' } },
+        { listName:      { $regex: s, $options: 'i' } },
+        { paymentStatus: { $regex: s, $options: 'i' } },
       ];
     }
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
-    const [total, records] = await Promise.all([
+
+    // Helper: safely convert enrolled_debt (string or number) → numeric value
+    const toDebtExpr = {
+      $cond: {
+        if: {
+          $and: [
+            { $ne: [{ $ifNull: ['$enrolled_debt', ''] }, ''] },
+            { $ne: ['$enrolled_debt', null] }
+          ]
+        },
+        then: {
+          $convert: { input: '$enrolled_debt', to: 'double', onError: 0, onNull: 0 }
+        },
+        else: 0
+      }
+    };
+
+    const [total, records, revenueAgg] = await Promise.all([
       DataVendorUpload.countDocuments(match),
       DataVendorUpload.find(match)
-        .select('first_name last_name phone_code phone_number email debt enrolled_debt listName runNumber runLabel entryDateParsed paymentStatus paymentStatusUpdatedAt sharedWith')
+        .select('first_name last_name phone_code phone_number email debt enrolled_debt listName runNumber runLabel entryDateParsed paymentStatus paymentType draftDate1 draftDate2 paymentStatusUpdatedAt sharedWith')
         .populate('sharedWith', 'name email')
-        .sort({ entryDateParsed: -1 })
+        .sort({ entryDateParsed: 1 })
         .skip(skip)
         .limit(parseInt(limit))
-        .lean()
+        .lean(),
+      DataVendorUpload.aggregate([
+        { $match: match },
+        { $group: { _id: null, totalEnrolledDebt: { $sum: toDebtExpr } } },
+        { $project: { _id: 0, totalEnrolledDebt: { $round: ['$totalEnrolledDebt', 2] } } }
+      ])
     ]);
 
-    res.json({ success: true, data: records, total, page: parseInt(page), limit: parseInt(limit) });
+    const totalEnrolledDebt = revenueAgg[0]?.totalEnrolledDebt || 0;
+    const totalRevenue = Math.round(totalEnrolledDebt * 0.025 * 100) / 100;
+
+    res.json({ success: true, data: records, total, page: parseInt(page), limit: parseInt(limit), totalEnrolledDebt, totalRevenue });
   } catch (err) {
     console.error('Payment status sales fetch error:', err);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────
+// GET /api/data-vendor-uploads/payment-status/vendor-sales
+// List SALE records for data vendor's own Payment Status view (read-only).
+// Data vendors are automatically filtered to records shared with them.
+// Access: data_vendor, admin, superadmin
+// ─────────────────────────────────────────────────────────────────
+router.get('/payment-status/vendor-sales', protect, requireRoles('data_vendor', 'admin', 'superadmin'), async (req, res) => {
+  try {
+    const { search, startDate, endDate, paymentStatusFilter, page = 1, limit = 50 } = req.query;
+
+    const match = { status: { $regex: /^SALE$/i }, ...buildVendorMatch(req) };
+
+    if (paymentStatusFilter !== undefined && paymentStatusFilter !== '') {
+      if (paymentStatusFilter === 'not_set') {
+        match.$and = [{ $or: [{ paymentStatus: '' }, { paymentStatus: { $exists: false } }] }];
+      } else {
+        match.paymentStatus = paymentStatusFilter;
+      }
+    }
+
+    if (startDate || endDate) {
+      match.entryDateParsed = {};
+      if (startDate) match.entryDateParsed.$gte = new Date(startDate + 'T00:00:00.000Z');
+      if (endDate)   match.entryDateParsed.$lte = new Date(endDate   + 'T23:59:59.999Z');
+    }
+
+    if (search && search.trim()) {
+      const s = search.trim();
+      match.$or = [
+        { first_name:    { $regex: s, $options: 'i' } },
+        { last_name:     { $regex: s, $options: 'i' } },
+        { phone_number:  { $regex: s, $options: 'i' } },
+        { email:         { $regex: s, $options: 'i' } },
+        { listName:      { $regex: s, $options: 'i' } },
+        { paymentStatus: { $regex: s, $options: 'i' } },
+      ];
+    }
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    const toDebtExpr = {
+      $cond: {
+        if: { $and: [{ $ne: [{ $ifNull: ['$enrolled_debt', ''] }, ''] }, { $ne: ['$enrolled_debt', null] }] },
+        then: { $convert: { input: '$enrolled_debt', to: 'double', onError: 0, onNull: 0 } },
+        else: 0
+      }
+    };
+
+    const [total, records, revenueAgg] = await Promise.all([
+      DataVendorUpload.countDocuments(match),
+      DataVendorUpload.find(match)
+        .select('first_name last_name phone_code phone_number email debt enrolled_debt listName runNumber runLabel entryDateParsed paymentStatus paymentType draftDate1 draftDate2 paymentStatusUpdatedAt')
+        .sort({ entryDateParsed: 1 })
+        .skip(skip)
+        .limit(parseInt(limit))
+        .lean(),
+      DataVendorUpload.aggregate([
+        { $match: match },
+        { $group: { _id: null, totalEnrolledDebt: { $sum: toDebtExpr } } },
+        { $project: { _id: 0, totalEnrolledDebt: { $round: ['$totalEnrolledDebt', 2] } } }
+      ])
+    ]);
+
+    const totalEnrolledDebt = revenueAgg[0]?.totalEnrolledDebt || 0;
+    const totalRevenue = Math.round(totalEnrolledDebt * 0.025 * 100) / 100;
+
+    res.json({ success: true, data: records, total, page: parseInt(page), limit: parseInt(limit), totalEnrolledDebt, totalRevenue });
+  } catch (err) {
+    console.error('Vendor payment status sales fetch error:', err);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────
+// GET /api/data-vendor-uploads/payment-status/vendor-sales-export
+// CSV export of data vendor's SALE records with payment status
+// Access: data_vendor, admin, superadmin
+// ─────────────────────────────────────────────────────────────────
+router.get('/payment-status/vendor-sales-export', protect, requireRoles('data_vendor', 'admin', 'superadmin'), async (req, res) => {
+  try {
+    const { search, startDate, endDate, paymentStatusFilter } = req.query;
+
+    const match = { status: { $regex: /^SALE$/i }, ...buildVendorMatch(req) };
+
+    if (paymentStatusFilter && paymentStatusFilter !== '') {
+      if (paymentStatusFilter === 'not_set') {
+        match.$and = [{ $or: [{ paymentStatus: '' }, { paymentStatus: { $exists: false } }] }];
+      } else {
+        match.paymentStatus = paymentStatusFilter;
+      }
+    }
+
+    if (startDate || endDate) {
+      match.entryDateParsed = {};
+      if (startDate) match.entryDateParsed.$gte = new Date(startDate + 'T00:00:00.000Z');
+      if (endDate)   match.entryDateParsed.$lte = new Date(endDate   + 'T23:59:59.999Z');
+    }
+
+    if (search && search.trim()) {
+      const s = search.trim();
+      match.$or = [
+        { first_name:    { $regex: s, $options: 'i' } },
+        { last_name:     { $regex: s, $options: 'i' } },
+        { phone_number:  { $regex: s, $options: 'i' } },
+        { email:         { $regex: s, $options: 'i' } },
+        { listName:      { $regex: s, $options: 'i' } },
+        { paymentStatus: { $regex: s, $options: 'i' } },
+      ];
+    }
+
+    const records = await DataVendorUpload.find(match)
+      .select('first_name last_name phone_code phone_number email debt enrolled_debt listName runNumber runLabel entryDateParsed paymentStatus paymentStatusUpdatedAt')
+      .sort({ entryDateParsed: 1 })
+      .lean();
+
+    if (records.length === 0) {
+      return res.status(404).json({ success: false, message: 'No records found' });
+    }
+
+    const headers = ['First Name','Last Name','Phone','Email','Enrolled Debt','Revenue','List','Run','Enrollment Date','Payment Status','Status Updated'];
+    const rows = records.map(r => {
+      const enrolledDebt = parseFloat(r.enrolled_debt) || 0;
+      const revenue = (enrolledDebt * 0.025).toFixed(2);
+      const phone = [r.phone_code && r.phone_code !== '1' ? `+${r.phone_code}` : '', r.phone_number].filter(Boolean).join(' ');
+      const runLabel = `Run #${r.runNumber}${r.runLabel ? ` · ${r.runLabel}` : ''}`;
+      const enrollDate = r.entryDateParsed ? new Date(r.entryDateParsed).toISOString().slice(0, 10) : '';
+      const statusUpdated = r.paymentStatusUpdatedAt ? new Date(r.paymentStatusUpdatedAt).toISOString().slice(0, 10) : '';
+      return [r.first_name||'', r.last_name||'', phone, r.email||'', enrolledDebt||'', revenue, r.listName||'', runLabel, enrollDate, r.paymentStatus||'', statusUpdated]
+        .map(v => `"${String(v).replace(/"/g, '""')}"`)
+        .join(',');
+    });
+
+    const csv = [headers.join(','), ...rows].join('\n');
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="payment_status_${new Date().toISOString().slice(0, 10)}.csv"`);
+    res.send(csv);
+  } catch (err) {
+    console.error('Vendor payment status export error:', err);
     res.status(500).json({ success: false, message: 'Server error' });
   }
 });
@@ -1099,24 +1276,35 @@ router.get('/payment-status/sales', protect, requireAdminOrSuper, async (req, re
 // ─────────────────────────────────────────────────────────────────
 router.patch('/:id/payment-status', protect, requireAdminOrSuper, async (req, res) => {
   try {
-    const { paymentStatus } = req.body;
-    const allowed = ['', 'NFC', 'First Payment Complete'];
-    if (!allowed.includes(paymentStatus)) {
+    const { paymentStatus, paymentType, draftDate1, draftDate2 } = req.body;
+
+    const allowedStatus = ['', 'Cleared', 'Pending', 'NSF', 'Cancellation', 'Refunded'];
+    if (paymentStatus !== undefined && !allowedStatus.includes(paymentStatus)) {
       return res.status(400).json({ success: false, message: 'Invalid paymentStatus value' });
+    }
+
+    const allowedType = ['', 'Monthly', 'Semi Monthly'];
+    if (paymentType !== undefined && !allowedType.includes(paymentType)) {
+      return res.status(400).json({ success: false, message: 'Invalid paymentType value' });
     }
 
     if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
       return res.status(400).json({ success: false, message: 'Invalid record ID' });
     }
 
+    const updateFields = {
+      paymentStatusUpdatedBy: req.user._id,
+      paymentStatusUpdatedAt: new Date()
+    };
+    if (paymentStatus !== undefined) updateFields.paymentStatus = paymentStatus;
+    if (paymentType   !== undefined) updateFields.paymentType   = paymentType;
+    if (draftDate1    !== undefined) updateFields.draftDate1    = draftDate1 ? new Date(draftDate1) : null;
+    if (draftDate2    !== undefined) updateFields.draftDate2    = draftDate2 ? new Date(draftDate2) : null;
+
     const record = await DataVendorUpload.findByIdAndUpdate(
       req.params.id,
-      {
-        paymentStatus,
-        paymentStatusUpdatedBy: req.user._id,
-        paymentStatusUpdatedAt: new Date()
-      },
-      { new: true, select: 'paymentStatus paymentStatusUpdatedAt' }
+      updateFields,
+      { new: true, select: 'paymentStatus paymentType draftDate1 draftDate2 paymentStatusUpdatedAt' }
     );
 
     if (!record) {

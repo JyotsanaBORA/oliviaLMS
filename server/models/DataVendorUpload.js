@@ -65,7 +65,7 @@ const dataVendorUploadSchema = new mongoose.Schema({
   // ── Payment Status (set by main org admin) ────────────────────
   paymentStatus: {
     type: String,
-    enum: ['', 'NFC', 'First Payment Complete'],
+    enum: ['', 'Cleared', 'Pending', 'NSF', 'Cancellation', 'Refunded'],
     default: ''
   },
   paymentStatusUpdatedBy: {
@@ -75,6 +75,13 @@ const dataVendorUploadSchema = new mongoose.Schema({
   paymentStatusUpdatedAt: {
     type: Date
   },
+  paymentType: {
+    type: String,
+    enum: ['', 'Monthly', 'Semi Monthly'],
+    default: ''
+  },
+  draftDate1: { type: Date, default: null },
+  draftDate2: { type: Date, default: null },
 
   // ── System / meta fields ───────────────────────────────────────
   sharedWith: {
