@@ -3,6 +3,7 @@ const querystring = require('querystring');
 const { getEasternStartOfDay, getEasternEndOfDay } = require('../utils/timeFilters');
 const User = require('../models/User');
 const Organization = require('../models/Organization');
+const VicidialCall = require('../models/VicidialCall');
 const { protect, authorize } = require('../middleware/auth');
 
 const router = express.Router();
