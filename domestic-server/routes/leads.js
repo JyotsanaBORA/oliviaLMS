@@ -1,0 +1,659 @@
+'use strict';
+const express        = require('express');
+const path           = require('path');
+const fs             = require('fs');
+const archiver       = require('archiver');
+const XLSX           = require('xlsx');
+const DomLead        = require('../models/DomLead');
+const DomWebsiteLead = require('../models/DomWebsiteLead');
+const { protect, authorize } = require('../middleware/auth');
+
+const router = express.Router();
+
+const UPLOAD_DIR = path.join(__dirname, '..', process.env.UPLOAD_PATH || 'uploads');
+
+// ── POST /domestic-api/leads ───────────────────────────────────────────────
+// Domagent submits a worked lead — can be from a website lead OR manual entry
+router.post('/', protect, authorize('domagent', 'dom_admin', 'dom_superadmin'), async (req, res) => {
+  try {
+    const { sourceWebsiteLead, ...fields } = req.body;
+
+    // ── Website-lead path ──────────────────────────────────────────────────
+    if (sourceWebsiteLead) {
+      const websiteLead = await DomWebsiteLead.findById(sourceWebsiteLead).lean();
+      if (!websiteLead) {
+        return res.status(404).json({ success: false, message: 'Website lead not found.' });
+      }
+
+      if (
+        req.user.role === 'domagent' &&
+        websiteLead.loadedBy?.toString() !== req.user._id.toString()
+      ) {
+        return res.status(403).json({ success: false, message: 'You did not load this lead.' });
+      }
+
+      const existing = await DomLead.findOne({ sourceWebsiteLead }).lean();
+      if (existing) {
+        return res.status(409).json({
+          success: false,
+          message: 'A worked lead already exists for this website lead. Use PATCH to update it.',
+          domLeadId: existing._id,
+        });
+      }
+
+      const sanitized = sanitizeLeadFields(fields);
+      const domLead = await DomLead.create({
+        sourceWebsiteLead,
+        assignedTo:    websiteLead.loadedBy || req.user._id,
+        createdBy:     req.user._id,
+        lastUpdatedBy: req.user._id,
+        leadRef:       generateLeadRef(sanitized.productType || ''),
+        ...sanitized,
+      });
+
+      await DomWebsiteLead.findByIdAndUpdate(sourceWebsiteLead, {
+        status:      'completed',
+        completedAt: new Date(),
+        domLeadId:   domLead._id,
+      });
+
+      return res.status(201).json({ success: true, data: domLead });
+    }
+
+    // ── Manual lead path (no website lead) ────────────────────────────────
+    const sanitizedManual = sanitizeLeadFields(fields);
+    const domLead = await DomLead.create({
+      assignedTo:    req.user._id,
+      createdBy:     req.user._id,
+      lastUpdatedBy: req.user._id,
+      isManual:      true,
+      leadRef:       generateLeadRef(sanitizedManual.productType || ''),
+      ...sanitizedManual,
+    });
+
+    return res.status(201).json({ success: true, data: domLead });
+  } catch (err) {
+    console.error('[Leads] Create error:', err.message);
+    return res.status(500).json({ success: false, message: 'Failed to create lead.' });
+  }
+});
+
+// ── PATCH /domestic-api/leads/:id ─────────────────────────────────────────
+// Domagent edits their worked lead (corrections, additional info)
+router.patch('/:id', protect, authorize('domagent', 'dom_admin', 'dom_superadmin'), async (req, res) => {
+  try {
+    const lead = await DomLead.findById(req.params.id).lean();
+    if (!lead) return res.status(404).json({ success: false, message: 'Lead not found.' });
+
+    // Domagent can only edit their own leads
+    if (
+      req.user.role === 'domagent' &&
+      lead.assignedTo?.toString() !== req.user._id.toString()
+    ) {
+      return res.status(403).json({ success: false, message: 'Not authorized to edit this lead.' });
+    }
+
+    const updates = {
+      ...sanitizeLeadFields(req.body),
+      lastUpdatedBy: req.user._id,
+    };
+
+    // If productType changed, swap the leadRef prefix (keep the date+rand suffix)
+    if (updates.productType && updates.productType !== lead.productType) {
+      updates.leadRef = swapLeadRefPrefix(lead.leadRef, updates.productType);
+    }
+    // If lead has no ref yet (old record), generate one now
+    if (!lead.leadRef) {
+      updates.leadRef = generateLeadRef(updates.productType || lead.productType || '');
+    }
+
+    const updated = await DomLead.findByIdAndUpdate(req.params.id, updates, {
+      new: true,
+      runValidators: true,
+    })
+      .populate('assignedTo', 'name email')
+      .lean();
+
+    return res.status(200).json({ success: true, data: updated });
+  } catch (err) {
+    console.error('[Leads] Update error:', err.message);
+    return res.status(500).json({ success: false, message: 'Failed to update lead.' });
+  }
+});
+
+// ── GET /domestic-api/leads ────────────────────────────────────────────────
+// Domagent: their own leads. Admin/SuperAdmin: all leads with filters.
+router.get('/', protect, async (req, res) => {
+  try {
+    const { role, _id: userId } = req.user;
+    const page   = Math.max(1, parseInt(req.query.page)  || 1);
+    const limit  = Math.min(100, parseInt(req.query.limit) || 50);
+    const skip   = (page - 1) * limit;
+    const status = req.query.status;
+    const search = (req.query.search || '').trim();
+
+    const filter = {};
+
+    if (role === 'domagent') {
+      filter.assignedTo = userId;
+    } else if (req.query.agentId) {
+      filter.assignedTo = req.query.agentId;
+    }
+
+    if (status && ['pending', 'completed', 'rejected'].includes(status)) {
+      filter.status = status;
+    }
+    if (search) {
+      // Search by leadRef directly if it looks like a ref code (contains a dash)
+      if (search.includes('-')) {
+        filter.$or = [
+          { leadRef: { $regex: search.replace(/-/g, '\\-'), $options: 'i' } },
+          { name:    { $regex: search, $options: 'i' } },
+          { mobile:  { $regex: search, $options: 'i' } },
+        ];
+      } else {
+        filter.$or = [
+          { leadRef: { $regex: search, $options: 'i' } },
+          { name:    { $regex: search, $options: 'i' } },
+          { mobile:  { $regex: search, $options: 'i' } },
+          { pan:     { $regex: search, $options: 'i' } },
+          { email:   { $regex: search, $options: 'i' } },
+          { city:    { $regex: search, $options: 'i' } },
+        ];
+      }
+    }
+
+    const [leads, total] = await Promise.all([
+      DomLead.find(filter)
+        .populate('assignedTo', 'name email')
+        .populate('createdBy', 'name')
+        .populate('sourceWebsiteLead', 'name mobile productType status')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      DomLead.countDocuments(filter),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      data: leads,
+      pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+    });
+  } catch (err) {
+    console.error('[Leads] GET error:', err.message);
+    return res.status(500).json({ success: false, message: 'Failed to fetch leads.' });
+  }
+});
+
+// ── GET /domestic-api/leads/export ────────────────────────────────────────
+// Admin/SuperAdmin: export all filtered leads as CSV download.
+// Accepts same query params as GET / (status, search, productType, agentId).
+router.get('/export', protect, authorize('dom_admin', 'dom_superadmin'), async (req, res) => {
+  try {
+    const status      = req.query.status;
+    const search      = (req.query.search || '').trim();
+    const productType = req.query.productType;
+    const agentId     = req.query.agentId;
+
+    const filter = {};
+    if (agentId)    filter.assignedTo = agentId;
+    if (status && ['pending', 'completed', 'rejected'].includes(status)) filter.status = status;
+    if (productType) filter.productType = productType;
+    if (search) {
+      filter.$or = [
+        { leadRef: { $regex: search, $options: 'i' } },
+        { name:    { $regex: search, $options: 'i' } },
+        { mobile:  { $regex: search, $options: 'i' } },
+        { pan:     { $regex: search, $options: 'i' } },
+        { email:   { $regex: search, $options: 'i' } },
+        { city:    { $regex: search, $options: 'i' } },
+      ];
+    }
+
+    const leads = await DomLead.find(filter)
+      .populate('assignedTo', 'name email')
+      .sort({ createdAt: -1 })
+      .limit(5000)
+      .lean();
+
+    const headers = [
+      'Lead ID', 'Name', 'Mobile', 'Alternate Mobile', 'Email', 'DOB', 'PAN', 'Aadhaar',
+      'City', 'State', 'Pincode', 'Address',
+      'Employment Type', 'Company Name', 'Monthly Salary (₹)',
+      'Product / Service', 'Loan Amount Required (₹)',
+      'Existing Bank', 'Salary Account Bank',
+      'CIBIL Score Range', 'Existing EMI (₹)',
+      'Call Outcome', 'Callback Date', 'Notes',
+      'Status', 'Agent Name', 'Agent Email',
+      'Documents Uploaded', 'Document Types',
+      'Created On',
+    ];
+
+    const rows = leads.map((l) => [
+      l.leadRef || '',
+      l.name || '', l.mobile || '', l.alternateMobile || '', l.email || '',
+      l.dob || '', l.pan || '', l.aadhaar || '',
+      l.city || '', l.state || '', l.pincode || '', l.address || '',
+      (l.employmentType || '').replace(/_/g, ' '),
+      l.companyName || '',
+      l.monthlySalary ? Number(l.monthlySalary) : '',
+      (l.productType || '').replace(/_/g, ' '),
+      l.loanAmountRequired ? Number(l.loanAmountRequired) : '',
+      l.existingBank || '', l.salaryAccountBank || '',
+      (l.cibilScoreRange || '').replace(/_/g, ' '),
+      l.existingEMI ? Number(l.existingEMI) : '',
+      (l.callOutcome || '').replace(/_/g, ' '),
+      l.callbackDate || '',
+      l.notes || '',
+      l.status || '',
+      l.assignedTo?.name || '', l.assignedTo?.email || '',
+      (l.documents || []).length,
+      (l.documents || []).map((d) => d.docType.replace(/_/g, ' ')).join('; '),
+      l.createdAt ? new Date(l.createdAt).toLocaleString('en-IN', { hour12: true }) : '',
+    ]);
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+
+    // Column widths
+    ws['!cols'] = [
+      { wch: 16 }, { wch: 20 }, { wch: 16 }, { wch: 16 }, { wch: 26 },
+      { wch: 12 }, { wch: 12 }, { wch: 16 }, { wch: 14 }, { wch: 14 },
+      { wch: 10 }, { wch: 30 }, { wch: 16 }, { wch: 22 }, { wch: 16 },
+      { wch: 18 }, { wch: 20 }, { wch: 18 }, { wch: 18 }, { wch: 16 },
+      { wch: 14 }, { wch: 16 }, { wch: 14 }, { wch: 30 }, { wch: 12 },
+      { wch: 20 }, { wch: 26 }, { wch: 8 }, { wch: 30 }, { wch: 22 },
+    ];
+
+    XLSX.utils.book_append_sheet(wb, ws, 'Leads');
+    const xlsBuf  = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    const xlsName = `domestic-leads-${new Date().toISOString().slice(0,10)}.xlsx`;
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${xlsName}"`);
+    return res.send(xlsBuf);
+  } catch (err) {
+    console.error('[Leads] Export error:', err.message);
+    return res.status(500).json({ success: false, message: 'Failed to export leads.' });
+  }
+});
+
+// ── GET /domestic-api/leads/export-zip ────────────────────────────────────
+// Admin/SuperAdmin: bulk ZIP — master Excel with all filtered leads + every
+// lead's uploaded documents organised in per-lead subfolders.
+router.get('/export-zip', protect, authorize('dom_admin', 'dom_superadmin'), async (req, res) => {
+  try {
+    const status      = req.query.status;
+    const search      = (req.query.search || '').trim();
+    const productType = req.query.productType;
+    const agentId     = req.query.agentId;
+
+    const filter = {};
+    if (agentId)    filter.assignedTo = agentId;
+    if (status && ['pending', 'completed', 'rejected'].includes(status)) filter.status = status;
+    if (productType) filter.productType = productType;
+    if (search) {
+      filter.$or = [
+        { leadRef: { $regex: search, $options: 'i' } },
+        { name:    { $regex: search, $options: 'i' } },
+        { mobile:  { $regex: search, $options: 'i' } },
+        { pan:     { $regex: search, $options: 'i' } },
+        { email:   { $regex: search, $options: 'i' } },
+        { city:    { $regex: search, $options: 'i' } },
+      ];
+    }
+
+    const leads = await DomLead.find(filter)
+      .populate('assignedTo', 'name email')
+      .sort({ createdAt: -1 })
+      .limit(1000)
+      .lean();
+
+    const dateTag  = new Date().toISOString().slice(0, 10);
+    const zipName  = `domestic-leads-${dateTag}.zip`;
+
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="${zipName}"`);
+
+    const archive = archiver('zip', { zlib: { level: 6 } });
+    archive.on('error', (err) => {
+      console.error('[Export ZIP] Archiver error:', err.message);
+      if (!res.headersSent) res.status(500).json({ success: false, message: 'Archive error.' });
+      else res.destroy();
+    });
+    archive.pipe(res);
+
+    // ── Master Excel sheet ────────────────────────────────────────────────
+    const headers = [
+      'Lead ID', 'Name', 'Mobile', 'Alternate Mobile', 'Email', 'DOB', 'PAN', 'Aadhaar',
+      'City', 'State', 'Pincode', 'Address',
+      'Employment Type', 'Company Name', 'Monthly Salary (₹)',
+      'Product / Service', 'Loan Amount Required (₹)',
+      'Existing Bank', 'Salary Account Bank',
+      'CIBIL Score Range', 'Existing EMI (₹)',
+      'Call Outcome', 'Callback Date', 'Notes',
+      'Status', 'Agent Name', 'Agent Email',
+      'Documents Uploaded', 'Document Types',
+      'Created On',
+    ];
+    const rows = leads.map((l) => [
+      l.leadRef || '',
+      l.name || '', l.mobile || '', l.alternateMobile || '', l.email || '',
+      l.dob || '', l.pan || '', l.aadhaar || '',
+      l.city || '', l.state || '', l.pincode || '', l.address || '',
+      (l.employmentType || '').replace(/_/g, ' '),
+      l.companyName || '',
+      l.monthlySalary ? Number(l.monthlySalary) : '',
+      (l.productType || '').replace(/_/g, ' '),
+      l.loanAmountRequired ? Number(l.loanAmountRequired) : '',
+      l.existingBank || '', l.salaryAccountBank || '',
+      (l.cibilScoreRange || '').replace(/_/g, ' '),
+      l.existingEMI ? Number(l.existingEMI) : '',
+      (l.callOutcome || '').replace(/_/g, ' '),
+      l.callbackDate || '',
+      l.notes || '',
+      l.status || '',
+      l.assignedTo?.name || '', l.assignedTo?.email || '',
+      (l.documents || []).length,
+      (l.documents || []).map((d) => d.docType.replace(/_/g, ' ')).join('; '),
+      l.createdAt ? new Date(l.createdAt).toLocaleString('en-IN', { hour12: true }) : '',
+    ]);
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+    ws['!cols'] = [
+      { wch: 16 }, { wch: 20 }, { wch: 16 }, { wch: 16 }, { wch: 26 },
+      { wch: 12 }, { wch: 12 }, { wch: 16 }, { wch: 14 }, { wch: 14 },
+      { wch: 10 }, { wch: 30 }, { wch: 16 }, { wch: 22 }, { wch: 16 },
+      { wch: 18 }, { wch: 20 }, { wch: 18 }, { wch: 18 }, { wch: 16 },
+      { wch: 14 }, { wch: 16 }, { wch: 14 }, { wch: 30 }, { wch: 12 },
+      { wch: 20 }, { wch: 26 }, { wch: 8  }, { wch: 30 }, { wch: 22 },
+    ];
+    XLSX.utils.book_append_sheet(wb, ws, 'All Leads');
+    const masterBuf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    archive.append(masterBuf, { name: `All-Leads-${dateTag}.xlsx` });
+
+    // ── Per-lead document folders ─────────────────────────────────────────
+    for (const lead of leads) {
+      if (!(lead.documents || []).length) continue;
+      const safeName = (lead.leadRef || lead._id.toString()).replace(/[^A-Za-z0-9\-_]/g, '_');
+      const leadDir  = path.join(UPLOAD_DIR, lead._id.toString());
+      for (const doc of lead.documents) {
+        const filePath = path.join(leadDir, doc.filename);
+        if (fs.existsSync(filePath)) {
+          const docLabel    = doc.docType.replace(/_/g, '-');
+          const ext         = path.extname(doc.filename) || path.extname(doc.originalName || '');
+          archive.file(filePath, { name: `documents/${safeName}/${docLabel}${ext}` });
+        }
+      }
+    }
+
+    await archive.finalize();
+  } catch (err) {
+    console.error('[Leads] Export ZIP error:', err.message);
+    if (!res.headersSent) {
+      return res.status(500).json({ success: false, message: 'Failed to generate export.' });
+    }
+  }
+});
+
+// ── GET /domestic-api/leads/:id/download ──────────────────────────────────
+// Admin/SuperAdmin: download a ZIP containing lead info (CSV) + all uploaded documents.
+router.get('/:id/download', protect, authorize('dom_admin', 'dom_superadmin'), async (req, res) => {
+  try {
+    const lead = await DomLead.findById(req.params.id)
+      .populate('assignedTo', 'name email')
+      .lean();
+
+    if (!lead) return res.status(404).json({ success: false, message: 'Lead not found.' });
+
+    const leadRef  = lead.leadRef || lead._id.toString();
+    const safeName = leadRef.replace(/[^A-Za-z0-9\-_]/g, '_');
+    const filename = `${safeName}.zip`;
+
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+    const archive = archiver('zip', { zlib: { level: 6 } });
+    archive.on('error', (err) => {
+      console.error('[Download ZIP] Archiver error:', err.message);
+      if (!res.headersSent) res.status(500).json({ success: false, message: 'Archive error.' });
+      else res.destroy();
+    });
+    archive.pipe(res);
+
+    // Build lead info as Excel (.xlsx)
+    const infoRows = [
+      ['Field', 'Value'],
+      ['Lead ID',              lead.leadRef || ''],
+      ['Name',                 lead.name || ''],
+      ['Mobile',               lead.mobile || ''],
+      ['Alternate Mobile',     lead.alternateMobile || ''],
+      ['Email',                lead.email || ''],
+      ['Date of Birth',        lead.dob || ''],
+      ['PAN',                  lead.pan || ''],
+      ['Aadhaar',              lead.aadhaar || ''],
+      ['Address',              lead.address || ''],
+      ['City',                 lead.city || ''],
+      ['State',                lead.state || ''],
+      ['Pincode',              lead.pincode || ''],
+      ['Employment Type',      (lead.employmentType || '').replace(/_/g, ' ')],
+      ['Company Name',         lead.companyName || ''],
+      ['Monthly Salary (₹)',   lead.monthlySalary ? Number(lead.monthlySalary) : ''],
+      ['Product / Service',    (lead.productType || '').replace(/_/g, ' ')],
+      ['Loan Amount (₹)',      lead.loanAmountRequired ? Number(lead.loanAmountRequired) : ''],
+      ['Existing Bank',        lead.existingBank || ''],
+      ['Salary Account Bank',  lead.salaryAccountBank || ''],
+      ['CIBIL Score Range',    (lead.cibilScoreRange || '').replace(/_/g, ' ')],
+      ['Existing EMI (₹)',     lead.existingEMI ? Number(lead.existingEMI) : ''],
+      ['Call Outcome',         (lead.callOutcome || '').replace(/_/g, ' ')],
+      ['Callback Date',        lead.callbackDate || ''],
+      ['Notes',                lead.notes || ''],
+      ['Status',               lead.status || ''],
+      ['Agent Name',           lead.assignedTo?.name || ''],
+      ['Agent Email',          lead.assignedTo?.email || ''],
+      ['Documents Count',      (lead.documents || []).length],
+      ['Document Types',       (lead.documents || []).map(d => d.docType.replace(/_/g, ' ')).join(', ')],
+      ['Created On',           lead.createdAt ? new Date(lead.createdAt).toLocaleString('en-IN', { hour12: true }) : ''],
+    ];
+    const infoWb = XLSX.utils.book_new();
+    const infoWs = XLSX.utils.aoa_to_sheet(infoRows);
+    infoWs['!cols'] = [{ wch: 22 }, { wch: 40 }];
+    XLSX.utils.book_append_sheet(infoWb, infoWs, 'Lead Info');
+    const infoBuf = XLSX.write(infoWb, { type: 'buffer', bookType: 'xlsx' });
+
+    archive.append(infoBuf, { name: `${safeName}-info.xlsx` });
+
+    // Add each document file
+    const leadDir = path.join(UPLOAD_DIR, lead._id.toString());
+    console.log(`[ZIP] leadDir=${leadDir}, docs=${(lead.documents||[]).length}`);
+    for (const doc of (lead.documents || [])) {
+      const filePath = path.join(leadDir, doc.filename);
+      const exists   = fs.existsSync(filePath);
+      console.log(`[ZIP]   ${doc.filename} exists=${exists}`);
+      if (exists) {
+        const docLabel    = doc.docType.replace(/_/g, '-');
+        const ext         = path.extname(doc.filename) || path.extname(doc.originalName || '');
+        const archiveName = `documents/${docLabel}${ext}`;
+        archive.file(filePath, { name: archiveName });
+      }
+    }
+
+    await archive.finalize();
+  } catch (err) {
+    console.error('[Leads] Download ZIP error:', err.message);
+    if (!res.headersSent) {
+      return res.status(500).json({ success: false, message: 'Failed to generate download.' });
+    }
+  }
+});
+
+// ── GET /domestic-api/leads/:id ────────────────────────────────────────────
+router.get('/:id', protect, async (req, res) => {
+  try {
+    const lead = await DomLead.findById(req.params.id)
+      .populate('assignedTo', 'name email')
+      .populate('sourceWebsiteLead')
+      .lean();
+
+    if (!lead) return res.status(404).json({ success: false, message: 'Lead not found.' });
+
+    // Domagent can only view their own
+    if (req.user.role === 'domagent' && lead.assignedTo?._id?.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ success: false, message: 'Not authorized.' });
+    }
+
+    return res.status(200).json({ success: true, data: lead });
+  } catch (err) {
+    console.error('[Leads] GET /:id error:', err.message);
+    return res.status(500).json({ success: false, message: 'Failed to fetch lead.' });
+  }
+});
+
+// ── Lead Reference ID helpers ──────────────────────────────────────────────
+// Format: {PREFIX}-{YYMMDD}-{4CHAR}
+// e.g. PL-260611-A3F7, HL-260611-B9XK, CC-260611-M2QW
+// The date+random suffix is immutable; prefix updates if productType changes.
+const PRODUCT_PREFIX = {
+  personal_loan:         'PL',
+  home_loan:             'HL',
+  car_loan:              'CL',
+  business_loan:         'BL',
+  loan_against_property: 'LAP',
+  education_loan:        'EL',
+  gold_loan:             'GL',
+  credit_card:           'CC',
+  health_insurance:      'HI',
+  life_insurance:        'LI',
+  motor_insurance:       'MI',
+  travel_insurance:      'TI',
+  mutual_fund:           'MF',
+  sip:                   'SIP',
+  demat:                 'DM',
+  general:               'GEN',
+  other:                 'OTH',
+  '':                    'GEN',
+};
+
+const REF_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O/I/1 (ambiguous)
+
+function generateLeadRef(productType) {
+  const prefix = PRODUCT_PREFIX[productType] || 'GEN';
+  const d      = new Date();
+  const date   = `${String(d.getFullYear()).slice(-2)}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
+  let rand = '';
+  for (let i = 0; i < 4; i++) rand += REF_CHARS[Math.floor(Math.random() * REF_CHARS.length)];
+  return `${prefix}-${date}-${rand}`;
+}
+
+// When productType changes we swap the prefix but keep the date+rand suffix
+// so the same unique code still tracks the same customer.
+function swapLeadRefPrefix(existingRef, newProductType) {
+  if (!existingRef) return generateLeadRef(newProductType);
+  const parts = existingRef.split('-');
+  // parts: [PREFIX, DATE(6), RAND(4)] — but PREFIX could be multi-char (LAP, SIP)
+  // Last two segments are always DATE and RAND, everything before is the prefix
+  if (parts.length < 3) return generateLeadRef(newProductType);
+  const suffix    = parts.slice(-2).join('-');        // "YYMMDD-XXXX"
+  const newPrefix = PRODUCT_PREFIX[newProductType] || 'GEN';
+  return `${newPrefix}-${suffix}`;
+}
+
+// ── Helper: whitelist allowed fields ──────────────────────────────────────
+// Also normalizes employmentType and productType to lowercase enum values
+// so that intake leads from mycashbridge (which may use different casing/names)
+// don't fail Mongoose validation.
+const EMPLOYMENT_MAP = {
+  salaried:         'salaried',
+  'self-employed':  'self_employed',
+  self_employed:    'self_employed',
+  selfemployed:     'self_employed',
+  business:         'business',
+  'business owner': 'business',
+};
+
+const PRODUCT_MAP = {
+  personal_loan:         'personal_loan',
+  'personal loan':       'personal_loan',
+  personalloan:          'personal_loan',
+  home_loan:             'home_loan',
+  'home loan':           'home_loan',
+  homeloan:              'home_loan',
+  car_loan:              'car_loan',
+  'car loan':            'car_loan',
+  carloan:               'car_loan',
+  business_loan:         'business_loan',
+  'business loan':       'business_loan',
+  businessloan:          'business_loan',
+  loan_against_property: 'loan_against_property',
+  'loan against property': 'loan_against_property',
+  loanagainstproperty:   'loan_against_property',
+  lap:                   'loan_against_property',
+  education_loan:        'education_loan',
+  'education loan':      'education_loan',
+  educationloan:         'education_loan',
+  gold_loan:             'gold_loan',
+  'gold loan':           'gold_loan',
+  goldloan:              'gold_loan',
+  credit_card:           'credit_card',
+  'credit card':         'credit_card',
+  creditcard:            'credit_card',
+  health_insurance:      'health_insurance',
+  'health insurance':    'health_insurance',
+  healthinsurance:       'health_insurance',
+  life_insurance:        'life_insurance',
+  'life insurance':      'life_insurance',
+  lifeinsurance:         'life_insurance',
+  motor_insurance:       'motor_insurance',
+  'motor insurance':     'motor_insurance',
+  motorinsurance:        'motor_insurance',
+  travel_insurance:      'travel_insurance',
+  'travel insurance':    'travel_insurance',
+  travelinsurance:       'travel_insurance',
+  mutual_fund:           'mutual_fund',
+  'mutual fund':         'mutual_fund',
+  mutualfund:            'mutual_fund',
+  mf:                    'mutual_fund',
+  sip:                   'sip',
+  demat:                 'demat',
+  'demat account':       'demat',
+  general:               'general',
+  'general enquiry':     'general',
+  other:                 'other',
+};
+
+function normalizeEmployment(val) {
+  if (!val) return '';
+  const key = val.toString().trim().toLowerCase();
+  return EMPLOYMENT_MAP[key] || '';
+}
+
+function normalizeProduct(val) {
+  if (!val) return '';
+  const key = val.toString().trim().toLowerCase();
+  return PRODUCT_MAP[key] || 'other';
+}
+
+function sanitizeLeadFields(body) {
+  const allowed = [
+    'name', 'dob', 'pan', 'aadhaar',
+    'mobile', 'alternateMobile', 'email', 'address', 'city', 'state', 'pincode',
+    'employmentType', 'companyName', 'monthlySalary',
+    'productType', 'loanAmountRequired',
+    'existingBank', 'salaryAccountBank',
+    'cibilScoreRange', 'existingLoans', 'existingEMI',
+    'callOutcome', 'callbackDate', 'notes',
+    'status',
+  ];
+  const clean = {};
+  allowed.forEach((k) => {
+    if (body[k] !== undefined) clean[k] = body[k];
+  });
+  // Normalize enum fields to prevent Mongoose validation errors
+  if (clean.employmentType !== undefined) clean.employmentType = normalizeEmployment(clean.employmentType);
+  if (clean.productType    !== undefined) clean.productType    = normalizeProduct(clean.productType);
+  return clean;
+}
+
+module.exports = router;
