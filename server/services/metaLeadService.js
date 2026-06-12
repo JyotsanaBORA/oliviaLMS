@@ -11,7 +11,7 @@ const https = require('https');
 
 const GRAPH_VERSION = 'v19.0';
 const GRAPH_BASE    = 'https://graph.facebook.com';
-const LEAD_FIELDS   = 'field_data,created_time,ad_id,ad_name,adset_name,campaign_name,form_id,page_id';
+const LEAD_FIELDS   = 'field_data,created_time,ad_id,ad_name,adset_name,campaign_name,form_id';
 
 // Graph API error codes that are safe to retry
 const RETRYABLE_CODES = new Set([1, 2, 17, 341, 368]);

@@ -28,11 +28,11 @@ router.use(cors({
   allowedHeaders: ['Content-Type', 'x-loop-secret'],
 }));
 
-// ── Rate limiting — 500 requests / 15 min per IP
+// ── Rate limiting — 1500 requests / 15 min per IP
 //    (campaigns can be high-volume; tighten if needed)
 const loopWebhookLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 500,
+  max: 1500,
   standardHeaders: true,
   legacyHeaders: false,
   message: { success: false, message: 'Too many requests, please try again later.' },
