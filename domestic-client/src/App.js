@@ -71,7 +71,7 @@ const AppRoutes = () => {
 };
 
 const App = () => (
-  <BrowserRouter>
+  <BrowserRouter basename={process.env.PUBLIC_URL || ''}>
     <AuthProvider>
       <Toaster
         position="top-right"
