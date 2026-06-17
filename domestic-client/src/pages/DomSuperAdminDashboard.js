@@ -114,7 +114,7 @@ const DomSuperAdminDashboard = () => {
         <header className="bg-white shadow-sm sticky top-0 z-30 border-b-2 border-[#E8FFF5]">
           <div className="px-6 flex items-center justify-between h-14">
             <div className="flex items-center gap-3">
-              <img src="/mcb-logo.png" alt="MyCashBridge" className="h-8 object-contain" />
+              <img src={`${process.env.PUBLIC_URL}/mcb-logo.png`} alt="MyCashBridge" className="h-8 object-contain" />
               <div className="border-l border-gray-200 pl-3 hidden sm:flex items-center gap-2">
                 <Users className="h-4 w-4 text-[#065F36]/70" />
                 <h1 className="text-[#065F36] font-bold text-sm">User Management</h1>
@@ -178,7 +178,7 @@ const DomSuperAdminDashboard = () => {
             {usersLoading ? (
               <div className="flex flex-col items-center justify-center py-16 text-gray-400">
                 <span className="w-8 h-8 border-2 border-gray-200 border-t-[#065F36] rounded-full animate-spin mb-3" />
-                <span className="text-sm">Loading users…text-gray-300">|</span>
+                <span className="text-sm">Loading users…</span>
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -207,7 +207,7 @@ const DomSuperAdminDashboard = () => {
                             </div>
                             <div>
                               <p className="font-semibold text-gray-800">{u.name}</p>
-                              {u._id === user._id && <span className="text-xs text-[#065F36] font-medium">(You)text-gray-300">|</span>}
+                              {u._id === user._id && <span className="text-xs text-[#065F36] font-medium">(You)</span>}
                             </div>
                           </div>
                         </td>
@@ -215,7 +215,7 @@ const DomSuperAdminDashboard = () => {
                         <td className="px-3 py-4">
                           <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${ROLE_COLORS[u.role]}`}>
                             {ROLE_LABELS[u.role] || u.role}
-                          text-gray-300">|</span>
+                          </span>
                         </td>
                         <td className="px-3 py-4">
                           <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${
@@ -223,7 +223,7 @@ const DomSuperAdminDashboard = () => {
                           }`}>
                             <span className={`w-1.5 h-1.5 rounded-full ${u.isActive ? 'bg-emerald-500' : 'bg-red-400'}`} />
                             {u.isActive ? 'Active' : 'Inactive'}
-                          text-gray-300">|</span>
+                          </span>
                         </td>
                         <td className="px-3 py-4 text-gray-400 text-xs">{fmtShort(u.lastLogin)}</td>
                         <td className="px-3 pr-6 py-4">
@@ -274,7 +274,7 @@ const DomSuperAdminDashboard = () => {
       <header className="bg-white shadow-sm sticky top-0 z-30 border-b-2 border-[#E8FFF5]">
         <div className="px-6 flex items-center justify-between h-14">
           <div className="flex items-center gap-3">
-            <img src="/mcb-logo.png" alt="MyCashBridge" className="h-8 object-contain" />
+            <img src={`${process.env.PUBLIC_URL}/mcb-logo.png`} alt="MyCashBridge" className="h-8 object-contain" />
             <div className="border-l border-gray-200 pl-3 hidden sm:flex items-center gap-2">
               <Key className="h-4 w-4 text-[#065F36]/70" />
               <h1 className="text-[#065F36] font-bold text-sm">Website Intake API Key</h1>
@@ -309,7 +309,7 @@ const DomSuperAdminDashboard = () => {
                 <div className="flex items-center gap-2 bg-gray-900 rounded-xl px-4 py-3">
                   <span className="flex-1 font-mono text-sm text-emerald-400 break-all leading-relaxed">
                     {apiKeyVisible ? apiKey : '•'.repeat(Math.min(apiKey.length, 48))}
-                  text-gray-300">|</span>
+                  </span>
                   <button onClick={() => setApiKeyVisible(!apiKeyVisible)}
                     className="text-gray-400 hover:text-white flex-shrink-0 p-1 rounded transition-colors" title={apiKeyVisible ? 'Hide' : 'Show'}>
                     {apiKeyVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -397,7 +397,7 @@ const UserFormModal = ({ title, user: existingUser, onClose, onSaved }) => {
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           <div>
             <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
-              Full Name {!isEdit && <span className="text-red-500">*text-gray-300">|</span>}
+              Full Name {!isEdit && <span className="text-red-500">*</span>}
             </label>
             <input value={form.name} onChange={set('name')} autoFocus
               className="w-full px-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent"
@@ -406,7 +406,7 @@ const UserFormModal = ({ title, user: existingUser, onClose, onSaved }) => {
           {!isEdit && (
             <div>
               <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
-                Email <span className="text-red-500">*text-gray-300">|</span>
+                Email <span className="text-red-500">*</span>
               </label>
               <input type="email" value={form.email} onChange={set('email')}
                 className="w-full px-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent"
@@ -415,7 +415,7 @@ const UserFormModal = ({ title, user: existingUser, onClose, onSaved }) => {
           )}
           <div>
             <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
-              {isEdit ? 'New Password (leave blank to keep current)' : <>Password <span className="text-red-500">*text-gray-300">|</span></>}
+              {isEdit ? 'New Password (leave blank to keep current)' : <>Password <span className="text-red-500">*</span></>}
             </label>
             <input type="password" value={form.password} onChange={set('password')}
               className="w-full px-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent"

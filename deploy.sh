@@ -23,7 +23,7 @@ docker build -t domestic-backend ./domestic-server
 
 echo ">> Building Domestic LMS frontend..."
 docker build \
-  --build-arg REACT_APP_DOM_API_URL= \
+  --build-arg REACT_APP_DOM_API_URL=https://olivialms.cloud \
   --build-arg REACT_APP_INTERNATIONAL_URL=https://olivialms.cloud \
   -t domestic-frontend ./domestic-client
 

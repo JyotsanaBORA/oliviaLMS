@@ -107,7 +107,7 @@ const DomAgentDashboard = () => {
       <header className="bg-white shadow-sm sticky top-0 z-30 border-b-2 border-[#E8FFF5]">
         <div className="px-5 py-0 flex items-center justify-between h-14">
           <div className="flex items-center gap-3">
-            <img src="/mcb-logo.png" alt="MyCashBridge" className="h-8 object-contain" />
+            <img src={`${process.env.PUBLIC_URL}/mcb-logo.png`} alt="MyCashBridge" className="h-8 object-contain" />
             <div className="border-l border-gray-200 pl-3 hidden sm:block">
               <h1 className="text-[#065F36] font-bold text-sm leading-tight">Domestic LMS</h1>
               <p className="text-gray-400 text-xs">Agent Portal</p>
