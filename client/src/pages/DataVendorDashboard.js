@@ -173,7 +173,7 @@ const DataVendorDashboard = () => {
   const [psEndDate, setPsEndDate] = useState('');
   const [psPaymentFilter, setPsPaymentFilter] = useState('');
   const [psTotalEnrolledDebt, setPsTotalEnrolledDebt] = useState(0);
-  const [psTotalRevenue, setPsTotalRevenue] = useState(0);
+  const [psStatusBreakdown, setPsStatusBreakdown] = useState({});
   const [psDownloading, setPsDownloading] = useState(false);
 
   const searchRef = useRef('');
@@ -270,7 +270,7 @@ const DataVendorDashboard = () => {
       setPsRecords(res.data.data || []);
       setPsTotal(res.data.total || 0);
       setPsTotalEnrolledDebt(res.data.totalEnrolledDebt || 0);
-      setPsTotalRevenue(res.data.totalRevenue || 0);
+      setPsStatusBreakdown(res.data.statusBreakdown || {});
     } catch { toast.error('Failed to load payment status records'); }
     finally { setPsLoading(false); }
   }, [psPage, psSearch, psStartDate, psEndDate, psPaymentFilter]);
@@ -862,14 +862,14 @@ const DataVendorDashboard = () => {
             <div className="flex flex-wrap gap-3 items-end">
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                  <Calendar size={11} /> From
+                  <Calendar size={11} /> Draft Date From
                 </label>
                 <input type="date" value={psStartDate}
                   onChange={e => { setPsStartDate(e.target.value); setPsPage(1); }}
                   className="border border-gray-200 text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400" />
               </div>
               <div className="flex flex-col gap-1">
-                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">To</label>
+                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Draft Date To</label>
                 <input type="date" value={psEndDate}
                   onChange={e => { setPsEndDate(e.target.value); setPsPage(1); }}
                   className="border border-gray-200 text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400" />
@@ -919,8 +919,9 @@ const DataVendorDashboard = () => {
           </div>
 
           {/* Revenue summary cards */}
-          {!psLoading && psTotalRevenue > 0 && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {!psLoading && psTotal > 0 && (
+            <div className="space-y-3">
+              {/* Total Enrolled Debt */}
               <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex items-center gap-4">
                 <div className="p-2.5 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-lg shadow">
                   <TrendingUp size={18} className="text-white" />
@@ -933,18 +934,48 @@ const DataVendorDashboard = () => {
                   <p className="text-xs text-slate-400">{psTotal} SALE records</p>
                 </div>
               </div>
-              <div className="bg-white rounded-2xl shadow-sm border border-emerald-200 p-4 flex items-center gap-4">
-                <div className="p-2.5 bg-gradient-to-br from-violet-500 to-indigo-600 rounded-lg shadow">
-                  <DollarSign size={18} className="text-white" />
-                </div>
-                <div>
-                  <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Total Revenue</p>
-                  <p className="text-xl font-extrabold text-emerald-600">
-                    ${psTotalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </p>
-                  <p className="text-xs text-slate-400">Across matching records</p>
-                </div>
-              </div>
+
+              {/* Per-status revenue breakdown */}
+              {(() => {
+                const STATUS_META = {
+                  'Cleared':      { label: 'Cleared',      bg: 'bg-emerald-50',  border: 'border-emerald-200', badge: 'bg-emerald-100 text-emerald-700', dot: 'bg-emerald-500' },
+                  'Pending':      { label: 'Pending',      bg: 'bg-yellow-50',   border: 'border-yellow-200',  badge: 'bg-yellow-100  text-yellow-700',  dot: 'bg-yellow-400' },
+                  'NSF':          { label: 'NSF',          bg: 'bg-rose-50',     border: 'border-rose-200',    badge: 'bg-rose-100    text-rose-700',    dot: 'bg-rose-500' },
+                  'Cancellation': { label: 'Cancellation', bg: 'bg-orange-50',   border: 'border-orange-200',  badge: 'bg-orange-100  text-orange-700',  dot: 'bg-orange-500' },
+                  'Refunded':     { label: 'Refunded',     bg: 'bg-purple-50',   border: 'border-purple-200',  badge: 'bg-purple-100  text-purple-700',  dot: 'bg-purple-500' },
+                  '':             { label: 'Not Set',      bg: 'bg-slate-50',    border: 'border-slate-200',   badge: 'bg-slate-100   text-slate-500',   dot: 'bg-slate-400' },
+                };
+                const ORDER = ['Cleared', 'Pending', 'NSF', 'Cancellation', 'Refunded', ''];
+                const activeStatuses = ORDER.filter(s => psStatusBreakdown[s]?.count > 0);
+                if (activeStatuses.length === 0) return null;
+                return (
+                  <div>
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 px-1">Revenue by Payment Status</p>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                      {activeStatuses.map(s => {
+                        const meta = STATUS_META[s] || STATUS_META[''];
+                        const { count, revenue } = psStatusBreakdown[s];
+                        return (
+                          <div key={s || 'not_set'} className={`rounded-xl border p-3 ${meta.bg} ${meta.border}`}>
+                            <div className="flex items-center gap-1.5 mb-2">
+                              <span className={`w-2 h-2 rounded-full shrink-0 ${meta.dot}`} />
+                              <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded-full ${meta.badge}`}>
+                                {meta.label}
+                              </span>
+                            </div>
+                            <p className="text-base font-extrabold text-slate-800 leading-tight">
+                              ${revenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </p>
+                            <p className="text-[11px] text-slate-500 mt-0.5">
+                              {count} lead{count !== 1 ? 's' : ''}
+                            </p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           )}
 

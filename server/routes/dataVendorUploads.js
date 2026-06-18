@@ -1148,9 +1148,15 @@ router.get('/payment-status/vendor-sales', protect, requireRoles('data_vendor', 
     }
 
     if (startDate || endDate) {
-      match.entryDateParsed = {};
-      if (startDate) match.entryDateParsed.$gte = new Date(startDate + 'T00:00:00.000Z');
-      if (endDate)   match.entryDateParsed.$lte = new Date(endDate   + 'T23:59:59.999Z');
+      const dateCondition = {};
+      if (startDate) dateCondition.$gte = new Date(startDate + 'T00:00:00.000Z');
+      if (endDate)   dateCondition.$lte = new Date(endDate   + 'T23:59:59.999Z');
+      const draftDateFilter = { $or: [{ draftDate1: dateCondition }, { draftDate2: dateCondition }] };
+      if (match.$and) {
+        match.$and.push(draftDateFilter);
+      } else {
+        match.$and = [draftDateFilter];
+      }
     }
 
     if (search && search.trim()) {
@@ -1175,7 +1181,7 @@ router.get('/payment-status/vendor-sales', protect, requireRoles('data_vendor', 
       }
     };
 
-    const [total, records, revenueAgg] = await Promise.all([
+    const [total, records, statusBreakdownAgg] = await Promise.all([
       DataVendorUpload.countDocuments(match),
       DataVendorUpload.find(match)
         .select('first_name last_name phone_code phone_number email debt enrolled_debt listName runNumber runLabel entryDateParsed paymentStatus paymentType draftDate1 draftDate2 paymentStatusUpdatedAt')
@@ -1185,15 +1191,28 @@ router.get('/payment-status/vendor-sales', protect, requireRoles('data_vendor', 
         .lean(),
       DataVendorUpload.aggregate([
         { $match: match },
-        { $group: { _id: null, totalEnrolledDebt: { $sum: toDebtExpr } } },
-        { $project: { _id: 0, totalEnrolledDebt: { $round: ['$totalEnrolledDebt', 2] } } }
+        { $group: {
+          _id: { $ifNull: ['$paymentStatus', ''] },
+          count: { $sum: 1 },
+          enrolledDebt: { $sum: toDebtExpr }
+        }},
+        { $project: {
+          _id: 0,
+          status: '$_id',
+          count: 1,
+          enrolledDebt: { $round: ['$enrolledDebt', 2] },
+          revenue: { $round: [{ $multiply: ['$enrolledDebt', 0.025] }, 2] }
+        }}
       ])
     ]);
 
-    const totalEnrolledDebt = revenueAgg[0]?.totalEnrolledDebt || 0;
-    const totalRevenue = Math.round(totalEnrolledDebt * 0.025 * 100) / 100;
+    const totalEnrolledDebt = Math.round(statusBreakdownAgg.reduce((s, g) => s + g.enrolledDebt, 0) * 100) / 100;
+    const statusBreakdown = {};
+    for (const g of statusBreakdownAgg) {
+      statusBreakdown[g.status || ''] = { count: g.count, revenue: g.revenue, enrolledDebt: g.enrolledDebt };
+    }
 
-    res.json({ success: true, data: records, total, page: parseInt(page), limit: parseInt(limit), totalEnrolledDebt, totalRevenue });
+    res.json({ success: true, data: records, total, page: parseInt(page), limit: parseInt(limit), totalEnrolledDebt, statusBreakdown });
   } catch (err) {
     console.error('Vendor payment status sales fetch error:', err);
     res.status(500).json({ success: false, message: 'Server error' });
@@ -1220,9 +1239,15 @@ router.get('/payment-status/vendor-sales-export', protect, requireRoles('data_ve
     }
 
     if (startDate || endDate) {
-      match.entryDateParsed = {};
-      if (startDate) match.entryDateParsed.$gte = new Date(startDate + 'T00:00:00.000Z');
-      if (endDate)   match.entryDateParsed.$lte = new Date(endDate   + 'T23:59:59.999Z');
+      const dateCondition = {};
+      if (startDate) dateCondition.$gte = new Date(startDate + 'T00:00:00.000Z');
+      if (endDate)   dateCondition.$lte = new Date(endDate   + 'T23:59:59.999Z');
+      const draftDateFilter = { $or: [{ draftDate1: dateCondition }, { draftDate2: dateCondition }] };
+      if (match.$and) {
+        match.$and.push(draftDateFilter);
+      } else {
+        match.$and = [draftDateFilter];
+      }
     }
 
     if (search && search.trim()) {
