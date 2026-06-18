@@ -111,8 +111,9 @@ const Login = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [domError,     setDomError]     = useState('');
   const [intlError,    setIntlError]    = useState('');
-  const [cardTilt,     setCardTilt]     = useState({ rx: 0, ry: 0, active: false });
-  const [borderAngle,  setBorderAngle]  = useState(0);
+  const borderElemRef = useRef(null);
+  const modeRef       = useRef(mode);
+  useEffect(() => { modeRef.current = mode; }, [mode]);
   const [typeText,     setTypeText]     = useState('');
   const [typeCursor,   setTypeCursor]   = useState(true);
 
@@ -186,7 +187,16 @@ const Login = () => {
 
   useEffect(() => {
     let angle = 0;
-    const step = () => { angle = (angle + 0.6) % 360; setBorderAngle(angle); borderRafRef.current = requestAnimationFrame(step); };
+    const step = () => {
+      angle = (angle + 0.6) % 360;
+      if (borderElemRef.current) {
+        const dom = modeRef.current === 'domestic';
+        borderElemRef.current.style.background = dom
+          ? `conic-gradient(from ${angle}deg at 50% 50%, rgba(249,115,22,0.9), rgba(251,146,60,0.5), rgba(129,140,248,0.4), rgba(249,115,22,0.9))`
+          : `conic-gradient(from ${angle}deg at 50% 50%, rgba(56,189,248,0.9), rgba(129,140,248,0.7), rgba(56,189,248,0.25), rgba(56,189,248,0.9))`;
+      }
+      borderRafRef.current = requestAnimationFrame(step);
+    };
     borderRafRef.current = requestAnimationFrame(step);
     return () => cancelAnimationFrame(borderRafRef.current);
   }, []);
@@ -214,16 +224,8 @@ const Login = () => {
     const r  = cardRef.current.getBoundingClientRect();
     const rx = ((e.clientY - r.top)  / r.height - 0.5) * -16;
     const ry = ((e.clientX - r.left) / r.width  - 0.5) *  16;
-    setCardTilt({ rx, ry, active: true });
+    cardRef.current.style.transform = `perspective(900px) rotateX(${rx}deg) rotateY(${ry}deg) scale(1.028)`;
   }, []);
-
-  useEffect(() => {
-    if (!cardRef.current) return;
-    const { rx, ry, active } = cardTilt;
-    cardRef.current.style.transform = active
-      ? `perspective(900px) rotateX(${rx}deg) rotateY(${ry}deg) scale(1.028)`
-      : `perspective(900px) rotateX(0deg) rotateY(0deg) scale(1)`;
-  }, [cardTilt]);
 
   const createRipple = (e) => {
     const btn = e.currentTarget, rect = btn.getBoundingClientRect();
@@ -269,9 +271,6 @@ const Login = () => {
   };
 
   const activeErr   = isDom ? domError : intlError;
-  const borderGrad  = isDom
-    ? `conic-gradient(from ${borderAngle}deg at 50% 50%, rgba(249,115,22,0.9), rgba(251,146,60,0.5), rgba(129,140,248,0.4), rgba(249,115,22,0.9))`
-    : `conic-gradient(from ${borderAngle}deg at 50% 50%, rgba(56,189,248,0.9), rgba(129,140,248,0.7), rgba(56,189,248,0.25), rgba(56,189,248,0.9))`;
 
   return (
     <div style={{ minHeight:'100vh', display:'flex', overflow:'hidden', background:'#04090f', fontFamily:"'Inter','Segoe UI',system-ui,sans-serif" }}>
@@ -335,10 +334,10 @@ const Login = () => {
         <div style={{ position:'absolute', bottom:'30%',right:'2%',  width:160, height:160, borderRadius:'50%', pointerEvents:'none', animation:'lms-blob-drift 22s ease-in-out infinite 7s',  background:'radial-gradient(circle,rgba(56,189,248,0.04) 0%,transparent 68%)' }} />
 
         <div ref={cardRef} className="lms-card-3d" style={{ width:'100%', maxWidth:428 }}
-          onMouseMove={handleCardMouse} onMouseLeave={() => setCardTilt({ rx:0, ry:0, active:false })}>
+          onMouseMove={handleCardMouse} onMouseLeave={() => { if (cardRef.current) cardRef.current.style.transform = 'perspective(900px) rotateX(0deg) rotateY(0deg) scale(1)'; }}>
 
           {/* rotating gradient border */}
-          <div style={{ padding:1.5, borderRadius:25, background:borderGrad, transition:'background 0.5s ease' }}>
+          <div ref={borderElemRef} style={{ padding:1.5, borderRadius:25, transition:'background 0.5s ease' }}>
             <div style={{ background:'linear-gradient(150deg,rgba(7,16,30,0.98) 0%,rgba(5,12,22,1) 100%)', borderRadius:24, padding:'38px', backdropFilter:'blur(24px)', boxShadow:`0 32px 72px rgba(0,0,0,0.6), 0 0 80px ${isDom ? 'rgba(249,115,22,0.05)' : 'rgba(56,189,248,0.05)'}`, transformStyle:'preserve-3d' }}>
 
               <div className="lms-mobile-brand" style={{ textAlign:'center', marginBottom:22, display:'none', transform:'translateZ(5px)' }}>

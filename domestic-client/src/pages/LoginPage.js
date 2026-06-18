@@ -113,8 +113,7 @@ const LoginPage = () => {
   const [form,         setForm]         = useState({ email: '', password: '' });
   const [showPass,     setShowPass]     = useState(false);
   const [loading,      setLoading]      = useState(false);
-  const [cardTilt,     setCardTilt]     = useState({ rx: 0, ry: 0, active: false });
-  const [borderAngle,  setBorderAngle]  = useState(0);
+  const borderElemRef = useRef(null);
   const [typeText,     setTypeText]     = useState('');
   const [typeCursor,   setTypeCursor]   = useState(true);
 
@@ -186,7 +185,13 @@ const LoginPage = () => {
   /* rotating border */
   useEffect(() => {
     let angle = 0;
-    const step = () => { angle = (angle + 0.6) % 360; setBorderAngle(angle); borderRafRef.current = requestAnimationFrame(step); };
+    const step = () => {
+      angle = (angle + 0.6) % 360;
+      if (borderElemRef.current) {
+        borderElemRef.current.style.background = `conic-gradient(from ${angle}deg at 50% 50%, rgba(22,163,74,0.9), rgba(74,222,128,0.55), rgba(134,239,172,0.35), rgba(22,163,74,0.9))`;
+      }
+      borderRafRef.current = requestAnimationFrame(step);
+    };
     borderRafRef.current = requestAnimationFrame(step);
     return () => cancelAnimationFrame(borderRafRef.current);
   }, []);
@@ -216,16 +221,8 @@ const LoginPage = () => {
     const r  = cardRef.current.getBoundingClientRect();
     const rx = ((e.clientY - r.top)  / r.height - 0.5) * -16;
     const ry = ((e.clientX - r.left) / r.width  - 0.5) *  16;
-    setCardTilt({ rx, ry, active: true });
+    cardRef.current.style.transform = `perspective(900px) rotateX(${rx}deg) rotateY(${ry}deg) scale(1.028)`;
   }, []);
-
-  useEffect(() => {
-    if (!cardRef.current) return;
-    const { rx, ry, active } = cardTilt;
-    cardRef.current.style.transform = active
-      ? `perspective(900px) rotateX(${rx}deg) rotateY(${ry}deg) scale(1.028)`
-      : `perspective(900px) rotateX(0deg) rotateY(0deg) scale(1)`;
-  }, [cardTilt]);
 
   /* ripple */
   const createRipple = (e) => {
@@ -264,8 +261,6 @@ const LoginPage = () => {
       setLoading(false);
     }
   };
-
-  const borderGrad = `conic-gradient(from ${borderAngle}deg at 50% 50%, rgba(22,163,74,0.9), rgba(74,222,128,0.55), rgba(134,239,172,0.35), rgba(22,163,74,0.9))`;
 
   /* ─── render ─── */
   return (
@@ -336,10 +331,10 @@ const LoginPage = () => {
         <div style={{ position:'absolute', bottom:'30%',right:'2%', width:160, height:160, borderRadius:'50%', pointerEvents:'none', animation:'dom-blob-drift 22s ease-in-out infinite 7s', background:'radial-gradient(circle,rgba(22,163,74,0.04) 0%,transparent 68%)' }} />
 
         <div ref={cardRef} className="dom-card-3d" style={{ width:'100%', maxWidth:428 }}
-          onMouseMove={handleCardMouse} onMouseLeave={() => setCardTilt({ rx:0, ry:0, active:false })}>
+          onMouseMove={handleCardMouse} onMouseLeave={() => { if (cardRef.current) cardRef.current.style.transform = 'perspective(900px) rotateX(0deg) rotateY(0deg) scale(1)'; }}>
 
           {/* rotating gradient border */}
-          <div style={{ padding:1.5, borderRadius:25, background:borderGrad }}>
+          <div ref={borderElemRef} style={{ padding:1.5, borderRadius:25 }}>
             <div style={{ background:'linear-gradient(150deg,rgba(7,16,30,0.98) 0%,rgba(5,12,22,1) 100%)', borderRadius:24, padding:'38px', backdropFilter:'blur(24px)', boxShadow:'0 32px 72px rgba(0,0,0,0.6), 0 0 80px rgba(22,163,74,0.06)', transformStyle:'preserve-3d' }}>
 
               {/* mobile brand */}
