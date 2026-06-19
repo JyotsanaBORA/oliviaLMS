@@ -79,7 +79,11 @@ const organizationValidation = [
         }
       }
       return true;
-    })
+    }),
+  body('showLoopLeads')
+    .optional()
+    .isBoolean()
+    .withMessage('showLoopLeads must be a boolean value')
 ];
 
 const organizationCreateValidation = [
@@ -332,7 +336,7 @@ router.put('/:id', protect, organizationValidation, handleValidationErrors, asyn
       });
     }
 
-    const { name, description, address, phone, email, website, isActive, sourceIds, inboundDids } = req.body;
+    const { name, description, address, phone, email, website, isActive, sourceIds, inboundDids, showLoopLeads } = req.body;
 
     // Check if organization exists
     const organization = await Organization.findById(req.params.id);
@@ -373,6 +377,11 @@ router.put('/:id', protect, organizationValidation, handleValidationErrors, asyn
       updateData.inboundDids = inboundDids
         .map(d => String(d).trim())
         .filter(d => d.length > 0);
+    }
+
+    // Only update showLoopLeads when explicitly provided
+    if (typeof showLoopLeads === 'boolean') {
+      updateData.showLoopLeads = showLoopLeads;
     }
 
     // Update organization

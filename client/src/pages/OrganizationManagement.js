@@ -32,7 +32,8 @@ const OrganizationManagement = () => {
     email: '',
     website: '',
     sourceIds: [],
-    inboundDids: []
+    inboundDids: [],
+    showLoopLeads: false,
   });
 
   // Controlled input for adding a new source ID
@@ -179,7 +180,8 @@ const OrganizationManagement = () => {
       email: org.email || '',
       website: org.website || '',
       sourceIds: Array.isArray(org.sourceIds) ? [...org.sourceIds] : [],
-      inboundDids: Array.isArray(org.inboundDids) ? [...org.inboundDids] : []
+      inboundDids: Array.isArray(org.inboundDids) ? [...org.inboundDids] : [],
+      showLoopLeads: org.showLoopLeads === true,
     });
     setShowEditModal(true);
   };
@@ -768,6 +770,24 @@ const OrganizationManagement = () => {
                             </span>
                           ))
                         )}
+                      </div>
+                    </div>
+
+                    {/* Loop Leads toggle */}
+                    <div className="col-span-6">
+                      <div className="flex items-center gap-3 mt-2">
+                        <input
+                          type="checkbox"
+                          id="showLoopLeads"
+                          checked={!!organizationForm.showLoopLeads}
+                          onChange={(e) =>
+                            setOrganizationForm(prev => ({ ...prev, showLoopLeads: e.target.checked }))
+                          }
+                          className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+                        />
+                        <label htmlFor="showLoopLeads" className="text-sm font-medium text-gray-700 cursor-pointer">
+                          Enable Loop Leads panel for this organisation's admin dashboard
+                        </label>
                       </div>
                     </div>
                   </div>

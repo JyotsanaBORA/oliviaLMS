@@ -75,6 +75,12 @@ const organizationSchema = new mongoose.Schema({
       message: 'Each inbound DID must be a non-empty string'
     }
   },
+  // When true, the Loop Leads panel is shown on this organisation's admin dashboard.
+  // Set via SuperAdmin → Organisation Management.
+  showLoopLeads: {
+    type: Boolean,
+    default: false,
+  },
   isActive: {
     type: Boolean,
     default: true
