@@ -2476,6 +2476,14 @@ router.get('/dashboard/stats', protect, async (req, res) => {
             byQualification: [
               { $group: { _id: '$qualificationStatus', count: { $sum: 1 } } }
             ],
+            pendingActive: [
+              { $match: { qualificationStatus: 'pending', isDisposed: { $ne: true } } },
+              { $count: 'count' }
+            ],
+            disposed: [
+              { $match: { isDisposed: true } },
+              { $count: 'count' }
+            ],
             sales: [
               { $match: { leadProgressStatus: { $in: ['SALE', 'Immediate Enrollment'] } } },
               { $count: 'count' }
@@ -2500,7 +2508,8 @@ router.get('/dashboard/stats', protect, async (req, res) => {
       const newLeads = statusMap.new || 0;
       const qualified = qualMap.qualified || 0;
       const notQualified = (qualMap['not-qualified'] || 0) + (qualMap.disqualified || 0) + (qualMap.unqualified || 0);
-      const pending = qualMap.pending || 0;
+      const pending = results.pendingActive[0]?.count || 0;
+      const disposedLeads = results.disposed[0]?.count || 0;
       const followUp = statusMap['follow-up'] || 0;
       const converted = statusMap.converted || 0;
       const closed = statusMap.closed || 0;
@@ -2522,6 +2531,7 @@ router.get('/dashboard/stats', protect, async (req, res) => {
         qualifiedLeads: qualified,
         notQualifiedLeads: notQualified,
         pendingLeads: pending,
+        disposedLeads,
         followUp,
         converted,
         closed,
@@ -2531,12 +2541,13 @@ router.get('/dashboard/stats', protect, async (req, res) => {
       };
     } else {
       // Get filtered stats for agents
-      const [total, newLeads, qualified, notQualified, pending, followUp, converted, closed, immediateEnrollment] = await Promise.all([
+      const [total, newLeads, qualified, notQualified, pending, disposedLeads, followUp, converted, closed, immediateEnrollment] = await Promise.all([
         Lead.countDocuments(filter),
         Lead.countDocuments({ ...filter, status: 'new' }),
         Lead.countDocuments({ ...filter, qualificationStatus: 'qualified' }),
         Lead.countDocuments({ ...filter, qualificationStatus: { $in: ['not-qualified', 'disqualified', 'unqualified'] } }),
-        Lead.countDocuments({ ...filter, qualificationStatus: 'pending' }),
+        Lead.countDocuments({ ...filter, qualificationStatus: 'pending', isDisposed: { $ne: true } }),
+        Lead.countDocuments({ ...filter, isDisposed: true }),
         Lead.countDocuments({ ...filter, status: 'follow-up' }),
         Lead.countDocuments({ ...filter, status: 'converted' }),
         Lead.countDocuments({ ...filter, status: 'closed' }),
@@ -2553,6 +2564,7 @@ router.get('/dashboard/stats', protect, async (req, res) => {
         qualifiedLeads: qualified,
         notQualifiedLeads: notQualified,
         pendingLeads: pending,
+        disposedLeads,
         followUp,
         converted,
         closed,

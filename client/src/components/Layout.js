@@ -38,7 +38,18 @@ const Layout = ({ onDashboardRefresh }) => {
   const [unreadCount, setUnreadCount]       = useState(0);
   const [notifOpen, setNotifOpen]           = useState(false);
   const [notifLoading, setNotifLoading]     = useState(false);
+  const [adminWebsiteLeadAlert, setAdminWebsiteLeadAlert] = useState(false);
+  const [alertColorIdx, setAlertColorIdx] = useState(0);
   const notifRef = useRef(null);
+
+  const ALERT_COLORS = [
+    { bg: '#dc2626', border: '#991b1b' }, // red-600
+    { bg: '#b91c1c', border: '#7f1d1d' }, // red-700
+    { bg: '#ef4444', border: '#dc2626' }, // red-500
+    { bg: '#c2410c', border: '#9a3412' }, // orange-700
+    { bg: '#991b1b', border: '#7f1d1d' }, // red-800
+    { bg: '#ef4444', border: '#dc2626' }, // red-500
+  ];
 
   const fetchNotifications = useCallback(async () => {
     if (!user) return;
@@ -138,6 +149,39 @@ const Layout = ({ onDashboardRefresh }) => {
       document.removeEventListener('contextmenu', block);
     };
   }, [user]);
+
+  const isAdminDashboard = user?.role === 'admin' && location.pathname === '/admin';
+  const showRedTopbarAlert = isAdminDashboard && adminWebsiteLeadAlert;
+
+  useEffect(() => {
+    const onWebsiteLeadAlert = (e) => {
+      const nextActive = Boolean(e?.detail?.active);
+      setAdminWebsiteLeadAlert(nextActive);
+    };
+
+    window.addEventListener('adminWebsiteLeadAlert', onWebsiteLeadAlert);
+    return () => window.removeEventListener('adminWebsiteLeadAlert', onWebsiteLeadAlert);
+  }, []);
+
+  useEffect(() => {
+    // Never keep the alert active outside admin dashboard.
+    if (!isAdminDashboard && adminWebsiteLeadAlert) {
+      setAdminWebsiteLeadAlert(false);
+    }
+  }, [isAdminDashboard, adminWebsiteLeadAlert]);
+
+  // Cycle through alert colors while alert is active
+  useEffect(() => {
+    if (!showRedTopbarAlert) {
+      setAlertColorIdx(0);
+      return;
+    }
+    const interval = setInterval(() => {
+      setAlertColorIdx(i => (i + 1) % ALERT_COLORS.length);
+    }, 450);
+    return () => clearInterval(interval);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showRedTopbarAlert]);
 
   // Show loading if user data is still being fetched
   if (loading || !user) {
@@ -338,22 +382,32 @@ const Layout = ({ onDashboardRefresh }) => {
       {/* Main content */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Top navigation */}
-        <header className="bg-white shadow-sm border-b border-gray-200">
+        <header
+          className={`shadow-sm border-b${showRedTopbarAlert ? '' : ' bg-white border-gray-200'}`}
+          style={showRedTopbarAlert ? {
+            backgroundColor: ALERT_COLORS[alertColorIdx].bg,
+            borderBottomColor: ALERT_COLORS[alertColorIdx].border,
+            transition: 'background-color 0.35s ease, border-color 0.35s ease'
+          } : {}}
+        >
           <div className="flex items-center justify-between h-16 px-6">
             <div className="flex items-center">
               <button
                 onClick={() => setSidebarOpen(true)}
-                className="text-gray-500 hover:text-gray-700 md:hidden"
+                className={`${showRedTopbarAlert ? 'text-red-100 hover:text-white' : 'text-gray-500 hover:text-gray-700'} md:hidden`}
               >
                 <Menu className="h-6 w-6" />
               </button>
               
               <div className="ml-4 md:ml-0">
-                <h2 className="text-xl font-semibold text-gray-900">
+                <h2 className={`text-xl font-semibold ${showRedTopbarAlert ? 'text-white' : 'text-gray-900'}`}>
                   {user.role === 'admin' ? 'Admin Dashboard' :
                    user.role === 'agent2' ? 'Leads Management' :
                    user.role === 'restricted_admin' ? 'Restricted Admin Dashboard' : 'Lead Generator'}
                 </h2>
+                {showRedTopbarAlert && (
+                  <p className="text-[11px] font-semibold text-red-100">New website lead waiting for review</p>
+                )}
               </div>
             </div>
 
@@ -363,7 +417,7 @@ const Layout = ({ onDashboardRefresh }) => {
                 <div className="relative" ref={notifRef}>
                   <button
                     onClick={handleOpenNotifPanel}
-                    className="relative p-2 text-gray-400 hover:text-gray-600 transition-colors"
+                    className={`relative p-2 transition-colors ${showRedTopbarAlert ? 'text-red-100 hover:text-white' : 'text-gray-400 hover:text-gray-600'}`}
                     title="Notifications"
                   >
                     <Bell className="h-5 w-5" />
@@ -447,7 +501,7 @@ const Layout = ({ onDashboardRefresh }) => {
               )}
 
               {/* Settings */}
-              <button className="p-2 text-gray-400 hover:text-gray-500">
+              <button className={`p-2 transition-colors ${showRedTopbarAlert ? 'text-red-100 hover:text-white' : 'text-gray-400 hover:text-gray-500'}`}>
                 <Settings className="h-5 w-5" />
               </button>
 

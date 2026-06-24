@@ -614,7 +614,21 @@ leadSchema.statics.getStatistics = async function() {
           $sum: { $cond: [{ $in: ['$qualificationStatus', ['not-qualified', 'disqualified', 'unqualified']] }, 1, 0] }
         },
         pendingLeads: {
-          $sum: { $cond: [{ $eq: ['$qualificationStatus', 'pending'] }, 1, 0] }
+          $sum: {
+            $cond: [
+              {
+                $and: [
+                  { $eq: ['$qualificationStatus', 'pending'] },
+                  { $ne: ['$isDisposed', true] }
+                ]
+              },
+              1,
+              0
+            ]
+          }
+        },
+        disposedLeads: {
+          $sum: { $cond: [{ $eq: ['$isDisposed', true] }, 1, 0] }
         },
         immediateEnrollmentLeads: {
           $sum: { 
@@ -640,6 +654,7 @@ leadSchema.statics.getStatistics = async function() {
     qualifiedLeads: 0,
     notQualifiedLeads: 0,
     pendingLeads: 0,
+    disposedLeads: 0,
     immediateEnrollmentLeads: 0
   };
 

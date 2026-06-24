@@ -150,6 +150,11 @@ const AdminDashboard = () => {
   // Website leads modal (Reddington admin only)
   const [showWebsiteLeads, setShowWebsiteLeads] = useState(false);
   const [websiteLeadsBadge, setWebsiteLeadsBadge] = useState(0);
+  const [showWebsiteLeadPopup, setShowWebsiteLeadPopup] = useState(false);
+  const [latestWebsiteLead, setLatestWebsiteLead] = useState(null);
+  const websiteLeadTotalRef = useRef(null);
+  const alertTimerRef = useRef(null);       // 10-min auto-clear timer
+  const alertStartTimeRef = useRef(null);   // When the current alert epoch started
 
   // Loop leads modal (orgs with showLoopLeads === true)
   const [showLoopLeads, setShowLoopLeads] = useState(false);
@@ -579,6 +584,127 @@ const AdminDashboard = () => {
     return user?.organization?.showLoopLeads === true;
   }, [user]);
 
+  // Clear the alert state and cancel any running timer.
+  const clearWebsiteLeadAlert = useCallback(() => {
+    setWebsiteLeadsBadge(0);
+    setShowWebsiteLeadPopup(false);
+    if (alertTimerRef.current) {
+      clearTimeout(alertTimerRef.current);
+      alertTimerRef.current = null;
+    }
+    alertStartTimeRef.current = null;
+  }, []);
+
+  const openWebsiteLeadsModal = useCallback(() => {
+    setShowWebsiteLeads(true);
+    clearWebsiteLeadAlert();
+  }, [clearWebsiteLeadAlert]);
+
+  // Start (or extend) the 10-minute auto-dismiss timer whenever the badge becomes > 0.
+  // The ONLY two ways the alert can clear are:
+  //   1. Admin opens Website Leads (clearWebsiteLeadAlert via openWebsiteLeadsModal)
+  //   2. 10 minutes elapse since the first unacknowledged lead arrived
+  useEffect(() => {
+    if (!isReddingtonAdmin || websiteLeadsBadge === 0) return;
+
+    // If a timer is already running, leave it – don't reset to a later deadline.
+    if (alertTimerRef.current) return;
+
+    alertStartTimeRef.current = Date.now();
+    alertTimerRef.current = setTimeout(() => {
+      alertTimerRef.current = null;
+      alertStartTimeRef.current = null;
+      setWebsiteLeadsBadge(0);
+      setShowWebsiteLeadPopup(false);
+    }, 10 * 60 * 1000); // 10 minutes
+  }, [isReddingtonAdmin, websiteLeadsBadge]);
+
+  // Fallback detector: compare current website-lead total with last known total.
+  // This guarantees alerts even if a socket event is missed.
+  const syncWebsiteLeadsAlert = useCallback(async ({ silent = true } = {}) => {
+    if (!isReddingtonAdmin) return;
+    try {
+      const res = await axios.get('/api/website-leads?page=1&limit=1');
+      const nextTotal = Number(res.data?.summary?.total || 0);
+
+      // First sync only sets baseline; no alert for historical leads.
+      if (websiteLeadTotalRef.current === null) {
+        websiteLeadTotalRef.current = nextTotal;
+        return;
+      }
+
+      if (nextTotal > websiteLeadTotalRef.current) {
+        const delta = nextTotal - websiteLeadTotalRef.current;
+        setWebsiteLeadsBadge(n => n + delta);
+        setLatestWebsiteLead({
+          name: delta === 1 ? '1 new website lead' : `${delta} new website leads`,
+          source: 'website'
+        });
+        setShowWebsiteLeadPopup(true);
+        toast.success(`${delta} new website ${delta === 1 ? 'lead' : 'leads'} received`, {
+          duration: 5000,
+          icon: '🌐'
+        });
+      }
+
+      websiteLeadTotalRef.current = nextTotal;
+    } catch (err) {
+      if (!silent) {
+        console.error('Website leads summary sync failed:', err);
+      }
+    }
+  }, [isReddingtonAdmin]);
+
+  useEffect(() => {
+    if (!isReddingtonAdmin) return;
+    syncWebsiteLeadsAlert({ silent: true });
+    const interval = setInterval(() => {
+      syncWebsiteLeadsAlert({ silent: true });
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [isReddingtonAdmin, syncWebsiteLeadsAlert]);
+
+  // Admin-only alert state for browser tab title + top header color in Layout.
+  // Cycles through attention-grabbing tab titles while badge is non-zero.
+  useEffect(() => {
+    if (!isReddingtonAdmin) return;
+    const hasUnread = websiteLeadsBadge > 0;
+    if (!hasUnread) {
+      document.title = 'Lead Management System';
+      window.dispatchEvent(new CustomEvent('adminWebsiteLeadAlert', { detail: { active: false } }));
+      return;
+    }
+
+    window.dispatchEvent(new CustomEvent('adminWebsiteLeadAlert', { detail: { active: true } }));
+
+    const TITLES = [
+      '🚨 NEW WEBSITE LEAD!',
+      '⚠️ Lead Management System',
+      '🔴 NEW WEBSITE LEAD!',
+      '⚡ Lead Management System',
+    ];
+    let idx = 0;
+    document.title = TITLES[0];
+    const interval = setInterval(() => {
+      idx = (idx + 1) % TITLES.length;
+      document.title = TITLES[idx];
+    }, 600);
+
+    return () => {
+      clearInterval(interval);
+    };
+  }, [isReddingtonAdmin, websiteLeadsBadge]);
+
+  useEffect(() => {
+    return () => {
+      document.title = 'Lead Management System';
+      window.dispatchEvent(new CustomEvent('adminWebsiteLeadAlert', {
+        detail: { active: false }
+      }));
+      if (alertTimerRef.current) clearTimeout(alertTimerRef.current);
+    };
+  }, []);
+
   // Periodic stats refresh — every 30 s ensures cards stay in sync with DB
   // even if a socket event is missed (e.g. connection drop, batch import)
   useEffect(() => {
@@ -647,8 +773,13 @@ const AdminDashboard = () => {
 
       const handleNewWebsiteLead = (data) => {
         if (isReddingtonAdmin) {
+          if (websiteLeadTotalRef.current !== null) {
+            websiteLeadTotalRef.current += 1;
+          }
           setWebsiteLeadsBadge(n => n + 1);
-          toast.success(`New website lead: ${data.name}`, { duration: 4000, icon: '🌐' });
+          setLatestWebsiteLead(data || null);
+          setShowWebsiteLeadPopup(true);
+          toast.success(`New website lead: ${data?.name || 'Unknown'}`, { duration: 5000, icon: '🌐' });
         }
       };
 
@@ -669,7 +800,7 @@ const AdminDashboard = () => {
       };
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [socket, showLeadsSection, stats]);
+  }, [socket, showLeadsSection, isReddingtonAdmin, fetchStats, fetchLeads]);
 
   // Search functionality with debouncing - triggers server-side search across all leads
   const searchTimeoutRef = useRef(null);
@@ -874,6 +1005,7 @@ const AdminDashboard = () => {
       ...stats,
       qualificationRate,
       pendingLeads: stats.pendingLeads || 0,
+      disposedLeads: stats.disposedLeads || 0,
       immediateEnrollmentLeads: stats.immediateEnrollmentLeads || 0
     };
   }, [stats]);
@@ -942,7 +1074,7 @@ const AdminDashboard = () => {
               {/* Website Leads button — Reddington org only */}
               {isReddingtonAdmin && (
                 <button
-                  onClick={() => { setShowWebsiteLeads(true); setWebsiteLeadsBadge(0); }}
+                  onClick={openWebsiteLeadsModal}
                   className="relative flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold text-white transition-all duration-200 active:scale-95 shadow-md"
                   style={{ background: 'linear-gradient(135deg,#0d9488,#0891b2)', boxShadow: '0 4px 12px rgba(8,145,178,0.4)' }}
                   title="View website form submissions"
@@ -1004,7 +1136,7 @@ const AdminDashboard = () => {
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
           {/* Total Leads Card */}
           <div className="group bg-white p-4 rounded-xl shadow-md hover:shadow-xl border border-gray-100 transition-all duration-300 hover:-translate-y-1 cursor-pointer">
             <div className="flex items-center gap-2">
@@ -1056,6 +1188,19 @@ const AdminDashboard = () => {
               <div className="flex-1">
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Pending</p>
                 <p className="text-xl font-bold text-gray-900">{realTimeStats.pendingLeads || 0}</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Disposed Card */}
+          <div className="group bg-white p-4 rounded-xl shadow-md hover:shadow-xl border border-gray-100 transition-all duration-300 hover:-translate-y-1 cursor-pointer">
+            <div className="flex items-center gap-2">
+              <div className="p-2 rounded-lg bg-gradient-to-br from-orange-100 to-orange-200 group-hover:from-orange-500 group-hover:to-orange-600 transition-all duration-300">
+                <AlertCircle className="h-5 w-5 text-orange-600 group-hover:text-white transition-colors duration-300" />
+              </div>
+              <div className="flex-1">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Disposed</p>
+                <p className="text-xl font-bold text-gray-900">{realTimeStats.disposedLeads || 0}</p>
               </div>
             </div>
           </div>
@@ -2648,6 +2793,40 @@ const AdminDashboard = () => {
       {/* Website Leads Modal — Reddington admin only */}
       {isReddingtonAdmin && showWebsiteLeads && (
         <WebsiteLeadsModal onClose={() => setShowWebsiteLeads(false)} />
+      )}
+
+      {/* New Website Lead Popup — admin dashboard only */}
+      {isReddingtonAdmin && showWebsiteLeadPopup && (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/55 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl border border-red-100 overflow-hidden">
+            <div className="px-5 py-4 bg-gradient-to-r from-red-600 to-rose-600 text-white">
+              <h3 className="text-lg font-bold">New Website Lead Received</h3>
+              <p className="text-xs text-red-100 mt-0.5">Immediate review recommended</p>
+            </div>
+
+            <div className="px-5 py-4 space-y-2">
+              <p className="text-sm text-gray-800"><span className="font-semibold">Name:</span> {latestWebsiteLead?.name || 'Unknown'}</p>
+              <p className="text-sm text-gray-800"><span className="font-semibold">Email:</span> {latestWebsiteLead?.email || '—'}</p>
+              <p className="text-sm text-gray-800"><span className="font-semibold">Phone:</span> {latestWebsiteLead?.phone || '—'}</p>
+              <p className="text-xs text-gray-500 pt-1">A red alert will stay active in the top header until you open Website Leads.</p>
+            </div>
+
+            <div className="px-5 py-4 bg-gray-50 border-t border-gray-100 flex items-center justify-end gap-2">
+              <button
+                onClick={() => setShowWebsiteLeadPopup(false)}
+                className="px-3 py-1.5 rounded-lg text-sm font-semibold border border-gray-200 text-gray-600 hover:bg-gray-100 transition-colors"
+              >
+                Dismiss
+              </button>
+              <button
+                onClick={openWebsiteLeadsModal}
+                className="px-3 py-1.5 rounded-lg text-sm font-semibold bg-red-600 text-white hover:bg-red-700 transition-colors"
+              >
+                Open Website Leads
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Loop Leads Modal — orgs with showLoopLeads enabled */}

@@ -13,6 +13,11 @@ import {
   FileText,
   Search,
   Calendar,
+  Clock,
+  CheckCircle,
+  XCircle,
+  AlertCircle,
+  TrendingUp,
   Edit,
   Trash,
   Filter,
@@ -33,6 +38,7 @@ const SuperAdminDashboard = () => {
   const [agents, setAgents] = useState([]);
   const [organizations, setOrganizations] = useState([]);
   const [leads, setLeads] = useState([]);
+  const [dashboardStats, setDashboardStats] = useState(null);
   const [activeTab, setActiveTab] = useState('overview');
   const [loading, setLoading] = useState(true);
   const [leadsLoading, setLeadsLoading] = useState(false);
@@ -146,9 +152,13 @@ const SuperAdminDashboard = () => {
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
-      const organizationsResponse = await axios.get('/api/organizations');
+      const [organizationsResponse, statsResponse] = await Promise.all([
+        axios.get('/api/organizations'),
+        axios.get('/api/leads/dashboard/stats')
+      ]);
       const organizationsData = Array.isArray(organizationsResponse.data?.data) ? organizationsResponse.data.data : [];
       setOrganizations(organizationsData);
+      setDashboardStats(statsResponse.data?.data || null);
       
       // Fetch admins and agents with their respective filters
       await Promise.all([fetchAdmins(), fetchAgents()]);
@@ -156,6 +166,7 @@ const SuperAdminDashboard = () => {
       console.error('Error fetching data:', error);
       toast.error('Failed to load dashboard data');
       setOrganizations([]);
+      setDashboardStats(null);
     } finally {
       setLoading(false);
     }
@@ -621,6 +632,14 @@ const SuperAdminDashboard = () => {
                      (Array.isArray(agents) ? agents.filter(agent => agent.isActive).length : 0);
   const totalOrganizations = Array.isArray(organizations) ? organizations.length : 0;
   const activeOrganizations = Array.isArray(organizations) ? organizations.filter(org => org.isActive).length : 0;
+  const leadStats = {
+    totalLeads: dashboardStats?.totalLeads || 0,
+    qualifiedLeads: dashboardStats?.qualifiedLeads || 0,
+    notQualifiedLeads: dashboardStats?.notQualifiedLeads || 0,
+    pendingLeads: dashboardStats?.pendingLeads || 0,
+    disposedLeads: dashboardStats?.disposedLeads || 0,
+    immediateEnrollmentLeads: dashboardStats?.immediateEnrollmentLeads || 0
+  };
 
   return (
     <div className="space-y-6">
@@ -737,6 +756,49 @@ const SuperAdminDashboard = () => {
                   <p className="text-2xl font-bold text-gray-900">{activeUsers}</p>
                 </div>
               </div>
+            </div>
+          </div>
+
+          {/* Lead Stats Cards */}
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+            <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Total Leads</p>
+              <p className="text-2xl font-bold text-gray-900 mt-1">{leadStats.totalLeads}</p>
+            </div>
+            <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+              <div className="flex items-center gap-2">
+                <CheckCircle className="h-4 w-4 text-emerald-600" />
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Qualified</p>
+              </div>
+              <p className="text-2xl font-bold text-gray-900 mt-1">{leadStats.qualifiedLeads}</p>
+            </div>
+            <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+              <div className="flex items-center gap-2">
+                <XCircle className="h-4 w-4 text-red-600" />
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Not Qualified</p>
+              </div>
+              <p className="text-2xl font-bold text-gray-900 mt-1">{leadStats.notQualifiedLeads}</p>
+            </div>
+            <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+              <div className="flex items-center gap-2">
+                <Clock className="h-4 w-4 text-amber-600" />
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Pending</p>
+              </div>
+              <p className="text-2xl font-bold text-gray-900 mt-1">{leadStats.pendingLeads}</p>
+            </div>
+            <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="h-4 w-4 text-orange-600" />
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Disposed</p>
+              </div>
+              <p className="text-2xl font-bold text-gray-900 mt-1">{leadStats.disposedLeads}</p>
+            </div>
+            <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+              <div className="flex items-center gap-2">
+                <TrendingUp className="h-4 w-4 text-green-600" />
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Sale</p>
+              </div>
+              <p className="text-2xl font-bold text-gray-900 mt-1">{leadStats.immediateEnrollmentLeads}</p>
             </div>
           </div>
 

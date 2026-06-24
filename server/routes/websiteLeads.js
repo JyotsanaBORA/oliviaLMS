@@ -173,4 +173,75 @@ router.post('/:id/import', protect, async (req, res) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// GET /api/website-leads/:id
+// Returns a single website lead (used to refresh detail pane with latest comments)
+// ---------------------------------------------------------------------------
+router.get('/:id', protect, async (req, res) => {
+  try {
+    if (!(await isReddingtonAdminOrSuper(req.user))) {
+      return res.status(403).json({ success: false, message: 'Access restricted to Reddington admin.' });
+    }
+
+    if (!req.params.id.match(/^[a-f\d]{24}$/i)) {
+      return res.status(400).json({ success: false, message: 'Invalid lead ID.' });
+    }
+
+    const lead = await WebsiteLead.findById(req.params.id)
+      .populate('organization', 'name')
+      .lean();
+
+    if (!lead) return res.status(404).json({ success: false, message: 'Website lead not found.' });
+    return res.status(200).json({ success: true, data: lead });
+  } catch (error) {
+    console.error('Get website lead detail error:', error);
+    return res.status(500).json({ success: false, message: 'Error fetching lead.' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/website-leads/:id/comments
+// Add a comment to a website lead
+// ---------------------------------------------------------------------------
+router.post('/:id/comments', protect, async (req, res) => {
+  try {
+    if (!(await isReddingtonAdminOrSuper(req.user))) {
+      return res.status(403).json({ success: false, message: 'Access restricted to Reddington admin.' });
+    }
+
+    if (!req.params.id.match(/^[a-f\d]{24}$/i)) {
+      return res.status(400).json({ success: false, message: 'Invalid lead ID.' });
+    }
+
+    const text = (req.body.text || '').trim();
+    if (!text) {
+      return res.status(400).json({ success: false, message: 'Comment text is required.' });
+    }
+    if (text.length > 1000) {
+      return res.status(400).json({ success: false, message: 'Comment must be 1000 characters or fewer.' });
+    }
+
+    const newComment = {
+      text,
+      authorId:   req.user._id,
+      authorName: req.user.name || req.user.email || 'Staff',
+      createdAt:  new Date(),
+    };
+
+    const lead = await WebsiteLead.findByIdAndUpdate(
+      req.params.id,
+      { $push: { comments: newComment } },
+      { new: true, runValidators: true }
+    ).lean();
+
+    if (!lead) return res.status(404).json({ success: false, message: 'Website lead not found.' });
+
+    const savedComment = lead.comments[lead.comments.length - 1];
+    return res.status(201).json({ success: true, data: savedComment });
+  } catch (error) {
+    console.error('Add website lead comment error:', error);
+    return res.status(500).json({ success: false, message: 'Error adding comment.' });
+  }
+});
+
 module.exports = router;

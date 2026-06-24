@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Globe,
   X,
@@ -18,6 +18,7 @@ import {
   ChevronRight,
   FileDown,
   Clock,
+  Send,
 } from 'lucide-react';
 import axios from '../utils/axios';
 import toast from 'react-hot-toast';
@@ -50,6 +51,26 @@ const WebsiteLeadsModal = ({ onClose }) => {
   const [detail, setDetail]         = useState(null);
   const [actionLoading, setActionLoading] = useState(null);
   const [exporting, setExporting]   = useState(false);
+  const [commentText, setCommentText]   = useState('');
+  const [commentSubmitting, setCommentSubmitting] = useState(false);
+  const commentSectionRef = useRef(null);
+
+  // Open detail pane — show cached data immediately then refresh for latest comments
+  const openDetail = useCallback(async (lead, scrollToComments = false) => {
+    setDetail(lead);
+    setCommentText('');
+    try {
+      const res = await axios.get(`/api/website-leads/${lead._id}`);
+      if (res.data?.success) {
+        setDetail(res.data.data);
+        if (scrollToComments) {
+          setTimeout(() => {
+            commentSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }, 100);
+        }
+      }
+    } catch { /* silently keep cached version */ }
+  }, []);
 
   const fetchLeads = useCallback(async (opts = {}) => {
     const { silent = false, page = pagination.page } = opts;
@@ -164,6 +185,30 @@ const WebsiteLeadsModal = ({ onClose }) => {
       toast.error(msg);
     } finally {
       setActionLoading(null);
+    }
+  };
+
+  const handleAddComment = async (e) => {
+    e.preventDefault();
+    const text = commentText.trim();
+    if (!text) return;
+    if (text.length > 1000) { toast.error('Comment must be 1000 characters or fewer.'); return; }
+    setCommentSubmitting(true);
+    try {
+      const res = await axios.post(`/api/website-leads/${detail._id}/comments`, { text });
+      if (res.data?.success) {
+        const newComment = res.data.data;
+        const updatedComments = [...(detail.comments || []), newComment];
+        setDetail(prev => ({ ...prev, comments: updatedComments }));
+        // also update the badge count in the list
+        setLeads(prev => prev.map(l => l._id === detail._id ? { ...l, comments: updatedComments } : l));
+        setCommentText('');
+        toast.success('Comment added');
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to add comment');
+    } finally {
+      setCommentSubmitting(false);
     }
   };
 
@@ -282,7 +327,7 @@ const WebsiteLeadsModal = ({ onClose }) => {
                       {/* Name */}
                       <td className="px-4 py-3">
                         <button
-                          onClick={() => setDetail(lead)}
+                          onClick={() => openDetail(lead)}
                           className="font-semibold text-gray-900 hover:text-teal-600 text-left transition-colors"
                         >
                           {lead.name}
@@ -329,7 +374,7 @@ const WebsiteLeadsModal = ({ onClose }) => {
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1">
                           <button
-                            onClick={() => setDetail(lead)}
+                            onClick={() => openDetail(lead)}
                             className="p-1.5 rounded-lg hover:bg-teal-100 text-teal-600 transition-colors"
                             title="View details"
                           >
@@ -398,7 +443,7 @@ const WebsiteLeadsModal = ({ onClose }) => {
       {detail && (
         <div
           className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 p-4"
-          onClick={() => setDetail(null)}
+          onClick={() => { setDetail(null); setCommentText(''); }}
         >
           <div
             className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden"
@@ -410,7 +455,7 @@ const WebsiteLeadsModal = ({ onClose }) => {
                 <h3 className="text-lg font-bold text-white">{detail.name}</h3>
                 <p className="text-xs text-teal-100">{fmtDate(detail.createdAt)}</p>
               </div>
-              <button onClick={() => setDetail(null)} className="text-white hover:text-teal-200 transition-colors">
+              <button onClick={() => { setDetail(null); setCommentText(''); }} className="text-white hover:text-teal-200 transition-colors">
                 <X className="h-5 w-5" />
               </button>
             </div>
@@ -477,6 +522,51 @@ const WebsiteLeadsModal = ({ onClose }) => {
                   <p className="text-sm text-gray-700 whitespace-pre-wrap">{detail.message}</p>
                 </div>
               )}
+
+              {/* Comments */}
+              <div ref={commentSectionRef} className="bg-gray-50 rounded-xl p-4 space-y-3">
+                <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                  <MessageSquare className="h-3.5 w-3.5" />
+                  Comments ({(detail.comments || []).length})
+                </h4>
+                {(detail.comments || []).length === 0 ? (
+                  <p className="text-xs text-gray-400 italic">No comments yet. Be the first to add one.</p>
+                ) : (
+                  <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                    {(detail.comments || []).map((c, i) => (
+                      <div key={c._id || i} className="bg-white rounded-lg p-3 border border-gray-100">
+                        <p className="text-xs text-gray-800 whitespace-pre-wrap break-words">{c.text}</p>
+                        <p className="text-xs text-gray-400 mt-1.5">
+                          {c.authorName || 'Staff'} &middot; {c.createdAt ? new Date(c.createdAt).toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {/* Add comment form */}
+                <form onSubmit={handleAddComment} className="flex flex-col gap-2 pt-1">
+                  <textarea
+                    value={commentText}
+                    onChange={e => setCommentText(e.target.value)}
+                    placeholder="Add a comment about what happened with this lead…"
+                    maxLength={1000}
+                    rows={2}
+                    className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-400 resize-none"
+                    disabled={commentSubmitting}
+                  />
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-gray-400">{commentText.length}/1000</span>
+                    <button
+                      type="submit"
+                      disabled={commentSubmitting || !commentText.trim()}
+                      className="flex items-center gap-1 px-3 py-1.5 bg-teal-600 text-white text-xs font-semibold rounded-lg hover:bg-teal-700 transition-colors disabled:opacity-50"
+                    >
+                      <Send className="h-3 w-3" />
+                      {commentSubmitting ? 'Saving…' : 'Add Comment'}
+                    </button>
+                  </div>
+                </form>
+              </div>
 
             </div>
 
