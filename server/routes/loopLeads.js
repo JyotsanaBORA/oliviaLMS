@@ -24,11 +24,15 @@ const router = express.Router();
 // ── Access guard ─────────────────────────────────────────────────────────────
 // Returns true if the requesting user may view loop leads.
 async function canViewLoopLeads(user) {
+  const MAIN_ORG_ID = '68b9c76d2c29dac1220cb81c';
   if (user.role === 'superadmin') return true;
   if (user.role !== 'admin' || !user.organization) return false;
   try {
     const org = await Organization.findById(user.organization).lean();
-    return !!(org && org.showLoopLeads === true);
+    const orgName = (org?.name || '').trim().toUpperCase();
+    const isMainOrgByName = orgName === 'REDDINGTON GLOBAL CONSULTANCY';
+    const isMainOrgById = String(org?._id || '') === MAIN_ORG_ID;
+    return !!(org && (org.showLoopLeads === true || isMainOrgByName || isMainOrgById));
   } catch {
     return false;
   }

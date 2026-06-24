@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useState, useCallback, useMemo } from 'react';
 
 const RefreshContext = createContext();
 
@@ -15,42 +15,47 @@ export const RefreshProvider = ({ children }) => {
   const [refreshCallbacks, setRefreshCallbacks] = useState({});
 
   // Register a refresh callback for a specific dashboard
-  const registerRefreshCallback = (dashboardType, callback) => {
-    setRefreshCallbacks(prev => ({
-      ...prev,
-      [dashboardType]: callback
-    }));
-  };
+  const registerRefreshCallback = useCallback((dashboardType, callback) => {
+    setRefreshCallbacks(prev => {
+      // Avoid unnecessary state updates that can cause render loops.
+      if (prev[dashboardType] === callback) return prev;
+      return {
+        ...prev,
+        [dashboardType]: callback
+      };
+    });
+  }, []);
 
   // Unregister refresh callback
-  const unregisterRefreshCallback = (dashboardType) => {
+  const unregisterRefreshCallback = useCallback((dashboardType) => {
     setRefreshCallbacks(prev => {
+      if (!prev[dashboardType]) return prev;
       const { [dashboardType]: removed, ...rest } = prev;
       return rest;
     });
-  };
+  }, []);
 
   // Trigger refresh for a specific dashboard
-  const triggerRefresh = (dashboardType) => {
+  const triggerRefresh = useCallback((dashboardType) => {
     if (refreshCallbacks[dashboardType]) {
       refreshCallbacks[dashboardType]();
     }
     // Also increment the general refresh trigger
     setRefreshTrigger(prev => prev + 1);
-  };
+  }, [refreshCallbacks]);
 
   // General refresh trigger for components that watch refreshTrigger
-  const triggerGeneralRefresh = () => {
+  const triggerGeneralRefresh = useCallback(() => {
     setRefreshTrigger(prev => prev + 1);
-  };
+  }, []);
 
-  const value = {
+  const value = useMemo(() => ({
     refreshTrigger,
     registerRefreshCallback,
     unregisterRefreshCallback,
     triggerRefresh,
     triggerGeneralRefresh
-  };
+  }), [refreshTrigger, registerRefreshCallback, unregisterRefreshCallback, triggerRefresh, triggerGeneralRefresh]);
 
   return (
     <RefreshContext.Provider value={value}>

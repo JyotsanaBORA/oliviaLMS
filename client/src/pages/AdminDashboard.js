@@ -584,6 +584,9 @@ const AdminDashboard = () => {
     return user?.organization?.showLoopLeads === true;
   }, [user]);
 
+  // MyDebt Review access: orgs with showLoopLeads OR main-organization admin.
+  const canAccessLoopLeads = isLoopLeadsAdmin || isReddingtonAdmin;
+
   // Clear the alert state and cancel any running timer.
   const clearWebsiteLeadAlert = useCallback(() => {
     setWebsiteLeadsBadge(0);
@@ -1090,8 +1093,8 @@ const AdminDashboard = () => {
                   )}
                 </button>
               )}
-              {/* MyDebt Review Leads button — orgs with showLoopLeads enabled */}
-              {isLoopLeadsAdmin && (
+              {/* MyDebt Review Leads button — orgs with showLoopLeads or main-org admin */}
+              {canAccessLoopLeads && (
                 <button
                   onClick={() => { setShowLoopLeads(true); setLoopLeadsBadge(0); }}
                   className="relative flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold text-white transition-all duration-200 active:scale-95 shadow-md"
@@ -2829,8 +2832,8 @@ const AdminDashboard = () => {
         </div>
       )}
 
-      {/* Loop Leads Modal — orgs with showLoopLeads enabled */}
-      {isLoopLeadsAdmin && showLoopLeads && (
+      {/* Loop Leads Modal — orgs with showLoopLeads or main-org admin */}
+      {canAccessLoopLeads && showLoopLeads && (
         <LoopLeadsModal onClose={() => setShowLoopLeads(false)} />
       )}
       </div>
