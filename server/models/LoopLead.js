@@ -121,6 +121,32 @@ const loopLeadSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
     },
+
+    // Staff comments to track what happened with this lead
+    comments: [
+      {
+        text: {
+          type: String,
+          required: true,
+          trim: true,
+          maxlength: 1000,
+        },
+        authorId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: 'User',
+          required: true,
+        },
+        authorName: {
+          type: String,
+          trim: true,
+          maxlength: 100,
+        },
+        createdAt: {
+          type: Date,
+          default: Date.now,
+        },
+      },
+    ],
   },
   {
     timestamps: true,

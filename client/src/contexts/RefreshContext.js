@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, useMemo } from 'react';
+import React, { createContext, useContext, useState, useCallback, useMemo, useRef } from 'react';
 
 const RefreshContext = createContext();
 
@@ -12,37 +12,28 @@ export const useRefresh = () => {
 
 export const RefreshProvider = ({ children }) => {
   const [refreshTrigger, setRefreshTrigger] = useState(0);
-  const [refreshCallbacks, setRefreshCallbacks] = useState({});
+  const refreshCallbacksRef = useRef({});
 
   // Register a refresh callback for a specific dashboard
   const registerRefreshCallback = useCallback((dashboardType, callback) => {
-    setRefreshCallbacks(prev => {
-      // Avoid unnecessary state updates that can cause render loops.
-      if (prev[dashboardType] === callback) return prev;
-      return {
-        ...prev,
-        [dashboardType]: callback
-      };
-    });
+    refreshCallbacksRef.current[dashboardType] = callback;
   }, []);
 
   // Unregister refresh callback
   const unregisterRefreshCallback = useCallback((dashboardType) => {
-    setRefreshCallbacks(prev => {
-      if (!prev[dashboardType]) return prev;
-      const { [dashboardType]: removed, ...rest } = prev;
-      return rest;
-    });
+    if (!refreshCallbacksRef.current[dashboardType]) return;
+    delete refreshCallbacksRef.current[dashboardType];
   }, []);
 
   // Trigger refresh for a specific dashboard
   const triggerRefresh = useCallback((dashboardType) => {
-    if (refreshCallbacks[dashboardType]) {
-      refreshCallbacks[dashboardType]();
+    const cb = refreshCallbacksRef.current[dashboardType];
+    if (cb) {
+      cb();
     }
     // Also increment the general refresh trigger
     setRefreshTrigger(prev => prev + 1);
-  }, [refreshCallbacks]);
+  }, []);
 
   // General refresh trigger for components that watch refreshTrigger
   const triggerGeneralRefresh = useCallback(() => {

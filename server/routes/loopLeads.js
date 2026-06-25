@@ -27,12 +27,31 @@ async function canViewLoopLeads(user) {
   const MAIN_ORG_ID = '68b9c76d2c29dac1220cb81c';
   if (user.role === 'superadmin') return true;
   if (user.role !== 'admin' || !user.organization) return false;
+  // Explicit flag is the most reliable source for main-org access.
+  if (user.isMainOrgAdmin === true) return true;
   try {
     const org = await Organization.findById(user.organization).lean();
     const orgName = (org?.name || '').trim().toUpperCase();
     const isMainOrgByName = orgName === 'REDDINGTON GLOBAL CONSULTANCY';
     const isMainOrgById = String(org?._id || '') === MAIN_ORG_ID;
     return !!(org && (org.showLoopLeads === true || isMainOrgByName || isMainOrgById));
+  } catch {
+    return false;
+  }
+}
+
+// Returns true only for main-organization admins (or superadmin) who are allowed to comment.
+async function canCommentOnLoopLeads(user) {
+  const MAIN_ORG_ID = '68b9c76d2c29dac1220cb81c';
+  if (user.role === 'superadmin') return true;
+  if (user.role !== 'admin' || !user.organization) return false;
+  if (user.isMainOrgAdmin === true) return true;
+  try {
+    const org = await Organization.findById(user.organization).lean();
+    const orgName = (org?.name || '').trim().toUpperCase();
+    const isMainOrgByName = orgName === 'REDDINGTON GLOBAL CONSULTANCY';
+    const isMainOrgById = String(org?._id || '') === MAIN_ORG_ID;
+    return !!(org && (isMainOrgByName || isMainOrgById));
   } catch {
     return false;
   }
@@ -130,6 +149,65 @@ router.get('/', protect, async (req, res) => {
     });
   } catch (err) {
     console.error('[loop-leads] GET error:', err);
+    return res.status(500).json({ success: false, message: 'Server error.' });
+  }
+});
+
+// ── GET /api/loop-leads/:id ─────────────────────────────────────────────────
+router.get('/:id', protect, async (req, res) => {
+  try {
+    if (!(await canViewLoopLeads(req.user))) {
+      return res.status(403).json({ success: false, message: 'Access denied.' });
+    }
+
+    const lead = await LoopLead.findById(req.params.id).lean();
+    if (!lead) {
+      return res.status(404).json({ success: false, message: 'Loop lead not found.' });
+    }
+
+    return res.json({ success: true, data: lead });
+  } catch (err) {
+    console.error('[loop-leads] GET by id error:', err);
+    return res.status(500).json({ success: false, message: 'Server error.' });
+  }
+});
+
+// ── POST /api/loop-leads/:id/comments ───────────────────────────────────────
+router.post('/:id/comments', protect, async (req, res) => {
+  try {
+    if (!(await canCommentOnLoopLeads(req.user))) {
+      return res.status(403).json({ success: false, message: 'Access denied.' });
+    }
+
+    const text = (req.body.text || '').trim();
+    if (!text) {
+      return res.status(400).json({ success: false, message: 'Comment text is required.' });
+    }
+    if (text.length > 1000) {
+      return res.status(400).json({ success: false, message: 'Comment must be 1000 characters or fewer.' });
+    }
+
+    const comment = {
+      text,
+      authorId: req.user._id,
+      authorName: req.user.name || req.user.email || 'Staff',
+      createdAt: new Date(),
+    };
+
+    const lead = await LoopLead.findByIdAndUpdate(
+      req.params.id,
+      { $push: { comments: comment } },
+      { new: true, runValidators: true }
+    ).lean();
+
+    if (!lead) {
+      return res.status(404).json({ success: false, message: 'Loop lead not found.' });
+    }
+
+    const savedComment = lead.comments[lead.comments.length - 1];
+    return res.status(201).json({ success: true, data: savedComment });
+  } catch (err) {
+    console.error('[loop-leads] POST comment error:', err);
     return res.status(500).json({ success: false, message: 'Server error.' });
   }
 });
