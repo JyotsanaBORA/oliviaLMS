@@ -27,6 +27,7 @@ import OrganizationManagement from './OrganizationManagement';
 import LeadReassignModal from '../components/LeadReassignModal';
 import AdminUploadShareModal from '../components/AdminUploadShareModal';
 import DataVendorShareModal from '../components/DataVendorShareModal';
+import ManualSaleModal from '../components/ManualSaleModal';
 import WebsiteLeadsModal from '../components/WebsiteLeadsModal';
 import LoopLeadsModal from '../components/LoopLeadsModal';
 import Pagination from '../components/Pagination';
@@ -146,6 +147,7 @@ const AdminDashboard = () => {
   // Admin upload share modal
   const [showShareModal, setShowShareModal] = useState(false);
   const [showVendorModal, setShowVendorModal] = useState(false);
+  const [showManualSaleModal, setShowManualSaleModal] = useState(false);
 
   // Website leads modal (Reddington admin only)
   const [showWebsiteLeads, setShowWebsiteLeads] = useState(false);
@@ -1751,6 +1753,13 @@ const AdminDashboard = () => {
               /* Reddington admin: full action bar — Vendor Data, Share Data, Export CSV */
               <div className="ml-auto flex items-center gap-2">
                 <button
+                  onClick={() => setShowManualSaleModal(true)}
+                  className="px-4 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 text-white text-xs font-semibold rounded-lg hover:shadow-xl hover:scale-105 transition-all duration-200 flex items-center gap-1.5"
+                >
+                  <TrendingUp size={14} />
+                  <span>Manual Sale</span>
+                </button>
+                <button
                   onClick={() => setShowVendorModal(true)}
                   className="px-4 py-1.5 bg-gradient-to-r from-violet-600 to-purple-600 text-white text-xs font-semibold rounded-lg hover:shadow-xl hover:scale-105 transition-all duration-200 flex items-center gap-1.5"
                 >
@@ -2791,6 +2800,12 @@ const AdminDashboard = () => {
       <DataVendorShareModal
         isOpen={showVendorModal}
         onClose={() => setShowVendorModal(false)}
+      />
+
+      {/* Manual Sale Modal */}
+      <ManualSaleModal
+        isOpen={showManualSaleModal}
+        onClose={() => setShowManualSaleModal(false)}
       />
 
       {/* Website Leads Modal — Reddington admin only */}

@@ -635,6 +635,100 @@ router.get('/export', protect, requireRoles('data_vendor', 'admin', 'superadmin'
 });
 
 // ─────────────────────────────────────────────────────────────────
+// POST /api/data-vendor-uploads/manual-sale
+// Manually create a single SALE record for a data vendor
+// Access: admin, superadmin
+// ─────────────────────────────────────────────────────────────────
+router.post('/manual-sale', protect, requireAdminOrSuper, async (req, res) => {
+  try {
+    const {
+      vendorId,
+      listName,
+      runDate,
+      runLabel,
+      first_name,
+      last_name,
+      phone_number,
+      email,
+      debt,
+      enrolled_debt,
+      entry_date,
+      paymentStatus,
+      paymentType,
+      draftDate1,
+      draftDate2
+    } = req.body;
+
+    if (!vendorId) return res.status(400).json({ success: false, message: 'Data vendor is required' });
+    if (!listName || !listName.trim()) return res.status(400).json({ success: false, message: 'List name is required' });
+    if (!first_name || !first_name.trim()) return res.status(400).json({ success: false, message: 'First name is required' });
+    if (!phone_number || !phone_number.trim()) return res.status(400).json({ success: false, message: 'Phone number is required' });
+    if (!enrolled_debt) return res.status(400).json({ success: false, message: 'Enrolled debt is required' });
+
+    const targetVendor = await User.findById(vendorId);
+    if (!targetVendor || targetVendor.role !== 'data_vendor') {
+      return res.status(400).json({ success: false, message: 'Invalid data vendor user' });
+    }
+
+    const trimmedListName = listName.trim();
+
+    // Auto-calculate run number
+    const existingBatches = await DataVendorUpload.distinct('runBatchId', {
+      sharedWith: targetVendor._id,
+      listName: trimmedListName
+    });
+    const runNumber = existingBatches.length + 1;
+
+    const parsedRunDate = runDate ? new Date(runDate) : new Date();
+    const batchId = `MANUAL_${Date.now()}_${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+
+    const entryDateStr = entry_date
+      ? new Date(entry_date).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' }).replace(/\//g, '-')
+      : new Date().toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' }).replace(/\//g, '-');
+
+    const doc = {
+      status:       'SALE',
+      first_name:   (first_name || '').trim(),
+      last_name:    (last_name || '').trim(),
+      phone_number: (phone_number || '').trim(),
+      email:        (email || '').trim(),
+      debt:         String(debt || ''),
+      enrolled_debt: String(enrolled_debt || ''),
+      entry_date:   entryDateStr,
+      entryDateParsed: entry_date ? new Date(entry_date) : new Date(),
+      listName:     trimmedListName,
+      runBatchId:   batchId,
+      runNumber,
+      runDate:      parsedRunDate,
+      runLabel:     (runLabel || '').trim(),
+      sharedWith:   targetVendor._id,
+      uploadedBy:   req.user._id,
+      organization: req.user.organization || null
+    };
+
+    if (paymentStatus) {
+      doc.paymentStatus = paymentStatus;
+      doc.paymentStatusUpdatedBy = req.user._id;
+      doc.paymentStatusUpdatedAt = new Date();
+    }
+    if (paymentType) doc.paymentType = paymentType;
+    if (draftDate1) doc.draftDate1 = new Date(draftDate1);
+    if (draftDate2) doc.draftDate2 = new Date(draftDate2);
+
+    const record = await DataVendorUpload.create(doc);
+
+    res.status(201).json({
+      success: true,
+      message: `Manual sale created for "${first_name} ${last_name || ''}".`,
+      data: record
+    });
+  } catch (err) {
+    console.error('Manual sale creation error:', err);
+    res.status(500).json({ success: false, message: err.message || 'Failed to create manual sale' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────
 // GET /api/data-vendor-uploads/sales-stats
 // Enrolled-debt / SALE disposition stats with optional date range
 // Query params: startDate (YYYY-MM-DD), endDate (YYYY-MM-DD)
