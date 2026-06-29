@@ -93,7 +93,7 @@ function App() {
                 } />
                 
                 <Route path="profile" element={
-                  <ProtectedRoute roles={['admin', 'superadmin', 'agent1']}>
+                  <ProtectedRoute roles={['admin', 'superadmin', 'agent1', 'agent2']}>
                     <Profile />
                   </ProtectedRoute>
                 } />

@@ -228,8 +228,8 @@ const Layout = ({ onDashboardRefresh }) => {
   const getNavItems = () => {
     const baseItems = [];
 
-    // Add Profile for admin, superadmin, and agent1 (agent1 can manage their Vicidial ID)
-    if (['admin', 'superadmin', 'agent1'].includes(user.role)) {
+    // Add Profile for admin, superadmin, agent1 and agent2 (both agents manage their Vicidial ID)
+    if (['admin', 'superadmin', 'agent1', 'agent2'].includes(user.role)) {
       baseItems.push({ name: 'Profile', href: '/profile', icon: User });
     }
 
@@ -254,6 +254,7 @@ const Layout = ({ onDashboardRefresh }) => {
       return [
         { name: 'Leads', href: '/leads', icon: Users },
         { name: 'Chat', href: '/chat', icon: MessageSquare },
+        ...baseItems,
       ];
     } else if (user.role === 'restricted_admin') {
       return [

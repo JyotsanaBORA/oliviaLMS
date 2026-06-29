@@ -6,6 +6,20 @@ import toast from 'react-hot-toast';
 
 const SocketContext = createContext();
 
+// Socket.IO connection target — bypasses CRA dev proxy (which is unreliable for
+// WebSocket upgrades) by connecting directly to the backend in development.
+// Priority: REACT_APP_SOCKET_URL → REACT_APP_API_URL → http://localhost:5000 (dev) → window.origin (prod)
+const resolveSocketUrl = () => {
+  const explicit = (process.env.REACT_APP_SOCKET_URL || '').trim();
+  if (explicit) return explicit;
+  if (apiBaseURL) return apiBaseURL;
+  if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+    return 'http://localhost:5000';
+  }
+  return undefined; // same-origin
+};
+const socketUrl = resolveSocketUrl();
+
 export const SocketProvider = ({ children }) => {
   const socket = useRef(null);
   const { user, isAuthenticated } = useAuth();
@@ -14,8 +28,9 @@ export const SocketProvider = ({ children }) => {
   useEffect(() => {
     if (isAuthenticated && user) {
       try {
+        console.log('[SocketContext] Connecting to socket server:', socketUrl || '(same-origin)');
         // Initialize socket connection with better error handling
-        socket.current = io(apiBaseURL, {
+        socket.current = io(socketUrl, {
           transports: ['websocket', 'polling'],
           upgrade: true,
           timeout: 20000,
@@ -109,6 +124,25 @@ export const SocketProvider = ({ children }) => {
           window.dispatchEvent(new CustomEvent('refreshStats', { detail: data }));
         });
       }
+
+      // Vicidial call data — dispatch window event so agent dashboards can auto-fill
+      socket.current.on('vicidialCallData', (data) => {
+        try {
+          console.log('[SocketContext] 📡 vicidialCallData received from server', {
+            userRole: user.role,
+            userId: user._id,
+            data,
+          });
+          if (user.role === 'agent1' || user.role === 'agent2') {
+            console.log('[SocketContext] ✅ Dispatching vicidialCallReceived window event');
+            window.dispatchEvent(new CustomEvent('vicidialCallReceived', { detail: data }));
+          } else {
+            console.warn('[SocketContext] ⚠️ User role not agent1/agent2 — skipping dispatch. role =', user.role);
+          }
+        } catch (error) {
+          console.error('[SocketContext] ❌ Error handling vicidialCallData event:', error);
+        }
+      });
 
         return () => {
           if (socket.current) {

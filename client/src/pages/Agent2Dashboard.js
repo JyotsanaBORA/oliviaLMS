@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+﻿import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useSocket } from '../contexts/SocketContext';
 import { useRefresh } from '../contexts/RefreshContext';
+import { useInboundCall } from '../contexts/InboundCallContext';
 import { scrollToTop } from '../utils/scrollUtils';
 import { 
   Plus,
@@ -21,6 +22,7 @@ import toast from 'react-hot-toast';
 import LoadingSpinner from '../components/LoadingSpinner';
 import AgentNotesPad from '../components/AgentNotesModal';
 import Pagination from '../components/Pagination';
+import VicidialCallQueue from '../components/VicidialCallQueue';
 import { isGtiOrganization } from '../config/constants';
 import { 
   formatEasternTimeForDisplay, 
@@ -88,12 +90,20 @@ const Agent2Dashboard = () => {
   const { user } = useAuth();
   const { socket } = useSocket();
   const { registerRefreshCallback, unregisterRefreshCallback } = useRefresh();
+  const { setActiveInboundCall, clearActiveInboundCall } = useInboundCall();
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
   const [leadsRefreshing, setLeadsRefreshing] = useState(false);
   const [todayAdminStats, setTodayAdminStats] = useState(null);
   const [selectedLead, setSelectedLead] = useState(null);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
+
+  // Vicidial inbound call tracking (same as Agent1)
+  const [activeVicidialCallId, setActiveVicidialCallId] = useState(null);
+  const [activeVicidialDid, setActiveVicidialDid] = useState('');
+  const [activeVicidialCampaign, setActiveVicidialCampaign] = useState('');
+  const [activeVicidialSourceId, setActiveVicidialSourceId] = useState('');
+  const [isFormActive, setIsFormActive] = useState(false);
 
   // ── People Search floating PiP panel ─────────────────────────────
   const [showSearchPanel, setShowSearchPanel] = useState(false);
@@ -258,6 +268,74 @@ const Agent2Dashboard = () => {
     return `$${amountStr.substring(0, 1)}***`;
   };
 
+  // Close the create lead form and clear any active vicidial call state
+  const closeCreateForm = useCallback(() => {
+    setShowCreateForm(false);
+    setIsFormActive(false);
+    setActiveVicidialCallId(null);
+    setActiveVicidialDid('');
+    setActiveVicidialCampaign('');
+    setActiveVicidialSourceId('');
+    clearActiveInboundCall();
+    setCreateFormData({
+      name: '',
+      email: '',
+      phone: '',
+      alternatePhone: '',
+      debtCategory: 'unsecured',
+      debtTypes: [],
+      totalDebtAmount: '',
+      numberOfCreditors: '',
+      monthlyDebtPayment: '',
+      creditScore: '',
+      creditScoreRange: '',
+      address: '',
+      city: '',
+      state: '',
+      zipcode: '',
+      notes: ''
+    });
+    setFormErrors({});
+  }, [clearActiveInboundCall]);
+
+  // Handler for VicidialCallQueue — auto-opens the create lead form with call data
+  const handleVicidialCallLoad = useCallback((callData) => {
+    console.log('[Agent2] Live ViciDial call received — auto-opening create form');
+
+    setCreateFormData({
+      name: callData.name || '',
+      email: callData.email || '',
+      phone: callData.phone || '',
+      alternatePhone: '',
+      debtCategory: 'unsecured',
+      debtTypes: [],
+      totalDebtAmount: '',
+      numberOfCreditors: '',
+      monthlyDebtPayment: '',
+      creditScore: '',
+      creditScoreRange: '',
+      address: callData.address || '',
+      city: callData.city || '',
+      state: callData.state || '',
+      zipcode: callData.zipcode || '',
+      notes: ''
+    });
+
+    setFormErrors({});
+    setActiveVicidialCallId(callData._vicidialCallId || null);
+    setActiveVicidialDid(callData._vicidialDid || '');
+    setActiveVicidialCampaign(callData._vicidialCampaign || '');
+    setActiveVicidialSourceId(callData._vicidialSourceId || '');
+    setIsFormActive(true);
+    setShowCreateForm(true);
+
+    // Show inbound call banner if DID is present
+    const did = (callData._vicidialDid || '').trim();
+    if (did) {
+      setActiveInboundCall(did, callData.name || '', callData._vicidialCallType || 'inbound');
+    }
+  }, [setActiveInboundCall]);
+
   
   const [filters, setFilters] = useState({
     status: '',
@@ -357,6 +435,47 @@ const Agent2Dashboard = () => {
     const handleRefresh = () => fetchLeads(pagination.page);
     window.addEventListener('refreshLeads', handleRefresh);
 
+    // Vicidial call auto-fill — SocketContext dispatches this window event
+    // when vicidialCallData socket event arrives (same proven pattern as refreshLeads)
+    const handleVicidialWindowEvent = (e) => {
+      const callData = e.detail;
+      console.log('[Agent2] vicidialCallReceived window event — auto-filling form', callData);
+      setCreateFormData({
+        name: callData.callerName || [callData.firstName, callData.lastName].filter(Boolean).join(' ') || '',
+        email: callData.email || '',
+        phone: callData.phoneNumber || '',
+        alternatePhone: '',
+        debtCategory: 'unsecured',
+        debtTypes: [],
+        totalDebtAmount: '',
+        numberOfCreditors: '',
+        monthlyDebtPayment: '',
+        creditScore: '',
+        creditScoreRange: '',
+        address: callData.address || '',
+        city: callData.city || '',
+        state: callData.state || '',
+        zipcode: callData.zipcode || '',
+        notes: ''
+      });
+      setFormErrors({ phone: '', alternatePhone: '', email: '' });
+      setActiveVicidialCallId(callData._id || null);
+      setActiveVicidialDid(callData.did || '');
+      setActiveVicidialCampaign(callData.campaignName || '');
+      setActiveVicidialSourceId(callData.sourceId || '');
+      setIsFormActive(true);
+      setShowCreateForm(true);
+      const did = (callData.did || '').trim();
+      if (did) {
+        setActiveInboundCall(did, callData.callerName || '', callData.callType || 'inbound');
+      }
+      toast(`📞 Inbound call${did ? ` — DID: ${did}` : ''} — form auto-filled`, {
+        duration: 5000, icon: did ? '📥' : '📤',
+      });
+    };
+    window.addEventListener('vicidialCallReceived', handleVicidialWindowEvent);
+    console.log('[Agent2] ✅ vicidialCallReceived window listener registered');
+
     // Socket.IO event listeners with debounce — prevents full reload on every event
     if (socket) {
       const socketDebounce = { timeout: null };
@@ -386,6 +505,7 @@ const Agent2Dashboard = () => {
       return () => {
         clearTimeout(socketDebounce.timeout);
         window.removeEventListener('refreshLeads', handleRefresh);
+        window.removeEventListener('vicidialCallReceived', handleVicidialWindowEvent);
         socket.off('leadUpdated', handleLeadUpdated);
         socket.off('leadCreated', handleLeadCreated);
       };
@@ -393,6 +513,7 @@ const Agent2Dashboard = () => {
     
     return () => {
       window.removeEventListener('refreshLeads', handleRefresh);
+      window.removeEventListener('vicidialCallReceived', handleVicidialWindowEvent);
     };
   }, [fetchLeads, pagination.page, socket, fetchTodayAdminStats, user.role]);
 
@@ -453,11 +574,11 @@ const Agent2Dashboard = () => {
     // Scroll to top using utility function
     scrollToTop();
     
-    // Close all modals and reset form states
+    // Close all modals and reset form states (clears vicidial state too)
+    closeCreateForm();
     setShowUpdateModal(false);
     setShowViewModal(false);
     setShowEditModal(false);
-    setShowCreateForm(false);
     setSelectedLead(null);
     
     // Reset filters and pagination
@@ -475,7 +596,7 @@ const Agent2Dashboard = () => {
       fetchPersistentLeads();
     }
     toast.success('Dashboard refreshed!');
-  }, [fetchLeads, fetchPersistentLeads, user.role]);
+  }, [closeCreateForm, fetchLeads, fetchPersistentLeads, user.role]);
 
   // Register refresh callback
   useEffect(() => {
@@ -1409,38 +1530,57 @@ const Agent2Dashboard = () => {
         cleanFormData.notes = createFormData.notes.trim();
       }
 
+      // Stamp DID and campaign from active vicidial call (inbound call identification)
+      if (activeVicidialCallId && activeVicidialDid && activeVicidialDid.trim() !== '') {
+        cleanFormData.vicidialDid = activeVicidialDid.trim();
+      }
+      if (activeVicidialCallId && activeVicidialCampaign && activeVicidialCampaign.trim() !== '') {
+        cleanFormData.vicidialCampaignName = activeVicidialCampaign.trim();
+      }
+      if (activeVicidialCallId && activeVicidialSourceId && activeVicidialSourceId.trim() !== '') {
+        cleanFormData.sourceId = activeVicidialSourceId.trim();
+      }
+
+      cleanFormData.lastUpdatedBy = user?.name || 'Agent2';
+
       const response = await axios.post('/api/leads', cleanFormData);
 
-      if (response.data && response.data.success) {
+      const responsePayload = response.data?.data || {};
+      const createdLead = responsePayload.lead || responsePayload;
+      const responseIsDuplicate =
+        typeof responsePayload.isDuplicate === 'boolean'
+          ? responsePayload.isDuplicate
+          : response.data?.isDuplicate;
+      const duplicateInfo = responsePayload.duplicateInfo || response.data?.duplicateInfo;
+
+      if (responseIsDuplicate && duplicateInfo) {
+        const reasonText = {
+          'email': 'email address',
+          'phone': 'phone number',
+          'both': 'email and phone number'
+        }[duplicateInfo.duplicateReason] || 'contact information';
+        toast.success(
+          `Lead created but marked as duplicate due to matching ${reasonText}!`,
+          { duration: 6000, icon: '⚠️' }
+        );
+      } else {
         toast.success('Lead created and assigned successfully!');
-        
-        // Reset form
-        setCreateFormData({
-          name: '',
-          email: '',
-          phone: '',
-          alternatePhone: '',
-          debtCategory: 'unsecured',
-          debtTypes: [],
-          totalDebtAmount: '',
-          numberOfCreditors: '',
-          monthlyDebtPayment: '',
-          creditScore: '',
-          creditScoreRange: '',
-          address: '',
-          city: '',
-          state: '',
-          zipcode: '',
-          notes: ''
-        });
-        
-        // Clear form errors
-        setFormErrors({});
-        
-        // Close form and refresh leads
-        setShowCreateForm(false);
-        fetchLeads(1);
       }
+
+      // If this lead came from a vicidial call, mark it complete in the queue
+      if (activeVicidialCallId) {
+        try {
+          await axios.put(`/api/vicidial/queue/${activeVicidialCallId}/complete`, {
+            leadId: createdLead?._id,
+          });
+        } catch (vcErr) {
+          console.error('Failed to mark vicidial call complete:', vcErr);
+        }
+      }
+
+      // Close form (also clears vicidial state) and refresh leads
+      closeCreateForm();
+      fetchLeads(1);
     } catch (error) {
       console.error('Agent2 Lead creation error:', error);
       console.error('Error response data:', error.response?.data);
@@ -1457,7 +1597,9 @@ const Agent2Dashboard = () => {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col min-[900px]:flex-row gap-4 items-start">
+      {/* ===== LEFT: Main Dashboard Content ===== */}
+      <div className="flex-1 min-w-0 space-y-6">
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
@@ -1486,18 +1628,26 @@ const Agent2Dashboard = () => {
             <StickyNote className="h-4 w-4" />
             My Notes
           </button>
-          {/* Create Lead Button - Only for Agent2 */}
+          {/* Add New Lead button — clears/resets the right-side form panel */}
           {user.role === 'agent2' && (
             <button
-              onClick={() => setShowCreateForm(true)}
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+              onClick={closeCreateForm}
+              className="inline-flex items-center px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors duration-200"
             >
-              <Plus className="h-4 w-4" />
-              Create Lead
+              <Plus className="h-5 w-5 mr-2" />
+              Add New Lead
             </button>
           )}
         </div>
       </div>
+
+      {/* Vicidial Call Queue — only shown for agent2 (inbound call support) */}
+      {user.role === 'agent2' && (
+        <VicidialCallQueue
+          onLoadCallData={handleVicidialCallLoad}
+          isFormActive={isFormActive}
+        />
+      )}
 
       {/* Today's Real-Time Stat Cards - Only for Admin/SuperAdmin */}
       {(user.role === 'admin' || user.role === 'superadmin') && (
@@ -3083,347 +3233,256 @@ const Agent2Dashboard = () => {
         </div>
       )}
 
-      {/* Create Lead Form Modal - Only for Agent2 */}
-      {user.role === 'agent2' && showCreateForm && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-          <div className="relative top-10 mx-auto p-5 border w-full max-w-4xl shadow-lg rounded-md bg-white">
-            <div className="mt-3">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-medium text-gray-900">Create New Lead</h3>
-                <button
-                  onClick={() => setShowCreateForm(false)}
-                  className="text-gray-400 hover:text-gray-600"
-                >
-                  <XCircle className="h-6 w-6" />
+      </div>{/* END LEFT COLUMN */}
+
+      {/* ===== RIGHT: Persistent Add New Lead Panel ===== */}
+      {user.role === 'agent2' && (
+        <div className="w-full min-[900px]:w-[360px] lg:w-[420px] flex-shrink-0">
+          <div className="relative z-10 min-[900px]:sticky min-[900px]:top-4 min-[900px]:max-h-[calc(100vh-5rem)] min-[900px]:overflow-y-auto w-full">
+
+            {/* Inbound / Outbound call banner */}
+            {isFormActive && (
+              activeVicidialDid ? (
+                <div className="bg-red-600 text-white text-xs font-semibold px-4 py-2 rounded-t-xl flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-white animate-pulse inline-block" />
+                  📥 INBOUND CALL — DID: {activeVicidialDid}
+                </div>
+              ) : (
+                <div className="bg-blue-600 text-white text-xs font-semibold px-4 py-2 rounded-t-xl flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-white animate-pulse inline-block" />
+                  📤 OUTBOUND CALL — fields auto-filled from ViciDial
+                </div>
+              )
+            )}
+
+            <div className={`bg-white shadow-lg border border-gray-200 overflow-hidden${isFormActive ? ' rounded-b-xl' : ' rounded-xl'}`}>
+              <form onSubmit={handleCreateSubmit}>
+                {/* Gradient header */}
+                <div className="bg-gradient-to-br from-primary-600 via-primary-700 to-primary-800 px-5 py-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="bg-white/20 rounded-lg p-2 flex-shrink-0">
+                        <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                        </svg>
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-bold text-white leading-tight">Add New Lead</h3>
+                        <p className="text-primary-200 text-xs mt-0.5">Complete lead information form</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={closeCreateForm}
+                      title="Clear form"
+                      className="bg-white/10 hover:bg-white/25 text-white rounded-lg p-1.5 transition-all duration-200"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Form Content */}
+                <div className="p-4 space-y-4">
+
+                {/* Personal Information */}
+                <div className="flex items-center gap-2 bg-primary-50 border border-primary-100 rounded-lg px-3 py-2">
+                  <div className="bg-primary-600 rounded-md p-1">
+                    <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                    </svg>
+                  </div>
+                  <h4 className="text-sm font-bold text-primary-800 uppercase tracking-wide">Personal Information</h4>
+                </div>
+
+                {/* Name */}
+                <div>
+                  <label className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">Full Name *</label>
+                  <input type="text" name="name" required
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-400 transition-all duration-200 bg-gray-50 focus:bg-white text-sm"
+                    value={createFormData.name} onChange={handleCreateFormChange} placeholder="Enter full name" />
+                  {formErrors.name && <p className="mt-1 text-xs text-red-600">{formErrors.name}</p>}
+                </div>
+
+                {/* Email */}
+                <div>
+                  <label className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">Email Address</label>
+                  <input type="email" name="email"
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-400 transition-all duration-200 bg-gray-50 focus:bg-white text-sm"
+                    value={createFormData.email} onChange={handleCreateFormChange} placeholder="Enter email address" />
+                  {formErrors.email && <p className="mt-1 text-xs text-red-600">{formErrors.email}</p>}
+                </div>
+
+                {/* Phone Numbers */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">Primary Phone *</label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none">
+                        <span className="text-gray-500 text-xs font-semibold">+1</span>
+                      </div>
+                      <input type="tel" name="phone" required
+                        className={`w-full pl-8 pr-3 py-2.5 border rounded-lg focus:ring-2 focus:border-transparent transition-all duration-200 bg-gray-50 focus:bg-white text-sm ${formErrors.phone ? 'border-red-300 focus:ring-red-500' : 'border-gray-200 focus:ring-primary-500'}`}
+                        value={getCreateDisplayPhone(createFormData.phone)} onChange={handleCreatePhoneInputChange} placeholder="10 digits" maxLength="10" />
+                    </div>
+                    {formErrors.phone && <p className="mt-1 text-xs text-red-600">{formErrors.phone}</p>}
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">Alt. Phone</label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none">
+                        <span className="text-gray-500 text-xs font-semibold">+1</span>
+                      </div>
+                      <input type="tel" name="alternatePhone"
+                        className={`w-full pl-8 pr-3 py-2.5 border rounded-lg focus:ring-2 focus:border-transparent transition-all duration-200 bg-gray-50 focus:bg-white text-sm ${formErrors.alternatePhone ? 'border-red-300 focus:ring-red-500' : 'border-gray-200 focus:ring-primary-500'}`}
+                        value={getCreateDisplayPhone(createFormData.alternatePhone)} onChange={handleCreatePhoneInputChange} placeholder="10 digits (opt)" maxLength="10" />
+                    </div>
+                    {formErrors.alternatePhone && <p className="mt-1 text-xs text-red-600">{formErrors.alternatePhone}</p>}
+                  </div>
+                </div>
+
+                {/* Address */}
+                <div>
+                  <label className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">Street Address</label>
+                  <input type="text" name="address"
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-400 bg-gray-50 focus:bg-white text-sm"
+                    value={createFormData.address} onChange={handleCreateFormChange} placeholder="Enter street address" />
+                </div>
+
+                {/* City / State / Zip */}
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">City</label>
+                    <input type="text" name="city"
+                      className="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-500 bg-gray-50 focus:bg-white text-sm"
+                      value={createFormData.city} onChange={handleCreateFormChange} placeholder="City" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">State</label>
+                    <input type="text" name="state"
+                      className="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-500 bg-gray-50 focus:bg-white text-sm"
+                      value={createFormData.state} onChange={handleCreateFormChange} placeholder="State" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">ZIP</label>
+                    <input type="text" name="zipcode"
+                      className="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-500 bg-gray-50 focus:bg-white text-sm"
+                      value={createFormData.zipcode} onChange={handleCreateFormChange} placeholder="ZIP" />
+                  </div>
+                </div>
+
+                {/* Notes */}
+                <div>
+                  <label className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">Additional Notes</label>
+                  <textarea name="notes" rows="2"
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-500 bg-gray-50 focus:bg-white resize-none text-sm"
+                    value={createFormData.notes} onChange={handleCreateFormChange} placeholder="Any additional information..." />
+                </div>
+
+                {/* Financial Information */}
+                <div className="flex items-center gap-2 bg-green-50 border border-green-100 rounded-lg px-3 py-2 mt-2">
+                  <div className="bg-green-600 rounded-md p-1">
+                    <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <h4 className="text-sm font-bold text-green-800 uppercase tracking-wide">Financial Information</h4>
+                </div>
+
+                {/* Debt Category */}
+                <div>
+                  <label className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">Debt Category</label>
+                  <div className="flex gap-4">
+                    <label className="flex items-center gap-1.5 cursor-pointer">
+                      <input type="radio" name="debtCategory" value="unsecured"
+                        checked={createFormData.debtCategory === 'unsecured'} onChange={handleCreateFormChange}
+                        className="h-3.5 w-3.5 text-primary-600 border-gray-300" />
+                      <span className="text-xs font-medium text-gray-700">Unsecured</span>
+                    </label>
+                    <label className="flex items-center gap-1.5 cursor-pointer">
+                      <input type="radio" name="debtCategory" value="secured"
+                        checked={createFormData.debtCategory === 'secured'} onChange={handleCreateFormChange}
+                        className="h-3.5 w-3.5 text-primary-600 border-gray-300" />
+                      <span className="text-xs font-medium text-gray-700">Secured</span>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Debt Types */}
+                <div>
+                  <label className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">Debt Types</label>
+                  <div className="grid grid-cols-1 gap-1.5 max-h-36 overflow-y-auto border border-gray-200 rounded-lg p-2 bg-gray-50">
+                    {(DEBT_TYPES_BY_CATEGORY[createFormData.debtCategory] || []).map((type) => (
+                      <label key={type} className="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox"
+                          checked={createFormData.debtTypes && createFormData.debtTypes.includes(type)}
+                          onChange={() => handleCreateDebtTypeChange(type)}
+                          className="h-3.5 w-3.5 text-primary-600 border-gray-300 rounded" />
+                        <span className="text-xs text-gray-700">{type}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Total Debt / Creditors / Monthly */}
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">Total Debt ($)</label>
+                    <input type="number" name="totalDebtAmount"
+                      className="w-full px-2 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-500 bg-gray-50 focus:bg-white text-sm"
+                      value={createFormData.totalDebtAmount} onChange={handleCreateFormChange} placeholder="0" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide"># Creditors</label>
+                    <input type="number" name="numberOfCreditors"
+                      className="w-full px-2 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-500 bg-gray-50 focus:bg-white text-sm"
+                      value={createFormData.numberOfCreditors} onChange={handleCreateFormChange} placeholder="0" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">Monthly ($)</label>
+                    <input type="number" name="monthlyDebtPayment"
+                      className="w-full px-2 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-500 bg-gray-50 focus:bg-white text-sm"
+                      value={createFormData.monthlyDebtPayment} onChange={handleCreateFormChange} placeholder="0" />
+                  </div>
+                </div>
+
+                {/* Credit Score / Range */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">Credit Score</label>
+                    <input type="number" name="creditScore" min="300" max="850"
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-500 bg-gray-50 focus:bg-white text-sm"
+                      value={createFormData.creditScore} onChange={handleCreateFormChange} placeholder="0-900" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-wide">Score Range</label>
+                    <select name="creditScoreRange"
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-500 bg-gray-50 focus:bg-white text-sm"
+                      value={createFormData.creditScoreRange} onChange={handleCreateFormChange}>
+                      <option value="">Select range</option>
+                      {CREDIT_SCORE_RANGES.map((r) => <option key={r} value={r}>{r}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Submit button */}
+                <button type="submit" disabled={submitting}
+                  className="w-full mt-2 py-3 px-4 bg-gradient-to-r from-primary-600 to-primary-700 text-white font-semibold rounded-lg shadow hover:from-primary-700 hover:to-primary-800 focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center justify-center gap-2 text-sm">
+                  {submitting ? (
+                    <><LoadingSpinner size="small" /><span>Adding Lead...</span></>
+                  ) : (
+                    <><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg><span>Add New Lead</span></>
+                  )}
                 </button>
-              </div>
 
-              <form onSubmit={handleCreateSubmit} className="space-y-6">
-                {/* Basic Information */}
-                <div className="space-y-4">
-                  <h4 className="text-md font-semibold text-gray-900 border-b border-gray-200 pb-2">Basic Information</h4>
-                  
-                  {/* Name */}
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Full Name *</label>
-                    <input
-                      type="text"
-                      name="name"
-                      required
-                      className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all duration-200 bg-gray-50 focus:bg-white"
-                      value={createFormData.name}
-                      onChange={handleCreateFormChange}
-                      placeholder="Enter full name"
-                    />
-                    {formErrors.name && <p className="mt-1 text-sm text-red-600">{formErrors.name}</p>}
-                  </div>
-
-                  {/* Email */}
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Email Address</label>
-                    <input
-                      type="email"
-                      name="email"
-                      className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all duration-200 bg-gray-50 focus:bg-white"
-                      value={createFormData.email}
-                      onChange={handleCreateFormChange}
-                      placeholder="Enter email address"
-                    />
-                    {formErrors.email && <p className="mt-1 text-sm text-red-600">{formErrors.email}</p>}
-                  </div>
-
-                  {/* Phone Numbers */}
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">Primary Phone *</label>
-                      <div className="relative">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                          <span className="text-gray-500 sm:text-sm">+1</span>
-                        </div>
-                        <input
-                          type="tel"
-                          name="phone"
-                          required
-                          className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:border-transparent transition-all duration-200 bg-gray-50 focus:bg-white ${
-                            formErrors.phone 
-                              ? 'border-red-300 focus:ring-red-500' 
-                              : 'border-gray-200 focus:ring-primary-500'
-                          }`}
-                          value={getCreateDisplayPhone(createFormData.phone)}
-                          onChange={handleCreatePhoneInputChange}
-                          placeholder="Enter 10 digits (e.g. 2345678901)"
-                          maxLength="10"
-                        />
-                      </div>
-                      {formErrors.phone && (
-                        <p className="mt-1 text-sm text-red-600">{formErrors.phone}</p>
-                      )}
-                    </div>
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">Alternate Phone</label>
-                      <div className="relative">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                          <span className="text-gray-500 sm:text-sm">+1</span>
-                        </div>
-                        <input
-                          type="tel"
-                          name="alternatePhone"
-                          className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:border-transparent transition-all duration-200 bg-gray-50 focus:bg-white ${
-                            formErrors.alternatePhone 
-                              ? 'border-red-300 focus:ring-red-500' 
-                              : 'border-gray-200 focus:ring-primary-500'
-                          }`}
-                          value={getCreateDisplayPhone(createFormData.alternatePhone)}
-                          onChange={handleCreatePhoneInputChange}
-                          placeholder="Enter 10 digits (optional)"
-                          maxLength="10"
-                        />
-                      </div>
-                      {formErrors.alternatePhone && (
-                        <p className="mt-1 text-sm text-red-600">{formErrors.alternatePhone}</p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Debt Information */}
-                <div className="space-y-4">
-                  <h4 className="text-md font-semibold text-gray-900 border-b border-gray-200 pb-2">Debt Information</h4>
-                  
-                  {/* Debt Category */}
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Debt Category</label>
-                    <div className="flex space-x-4">
-                      <label className="flex items-center">
-                        <input
-                          type="radio"
-                          name="debtCategory"
-                          value="unsecured"
-                          checked={createFormData.debtCategory === 'unsecured'}
-                          onChange={handleCreateFormChange}
-                          className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
-                        />
-                        <span className="ml-2 text-sm font-medium text-gray-700">Unsecured Debt</span>
-                      </label>
-                      <label className="flex items-center">
-                        <input
-                          type="radio"
-                          name="debtCategory"
-                          value="secured"
-                          checked={createFormData.debtCategory === 'secured'}
-                          onChange={handleCreateFormChange}
-                          className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300"
-                        />
-                        <span className="ml-2 text-sm font-medium text-gray-700">Secured Debt</span>
-                      </label>
-                    </div>
-                  </div>
-
-                  {/* Debt Types */}
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-3">Select Debt Types</label>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-48 overflow-y-auto border border-gray-200 rounded-lg p-4 bg-gray-50">
-                      {(DEBT_TYPES_BY_CATEGORY[createFormData.debtCategory] || []).map((type) => (
-                        <label key={type} className="flex items-center space-x-3 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={createFormData.debtTypes && createFormData.debtTypes.includes(type)}
-                            onChange={() => handleCreateDebtTypeChange(type)}
-                            className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-                          />
-                          <span className="text-sm text-gray-700">{type}</span>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Financial Details */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">Total Debt Amount ($)</label>
-                      <input
-                        type="number"
-                        name="totalDebtAmount"
-                        className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all duration-200 bg-gray-50 focus:bg-white"
-                        value={createFormData.totalDebtAmount}
-                        onChange={handleCreateFormChange}
-                        placeholder="0"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">Number of Creditors</label>
-                      <input
-                        type="number"
-                        name="numberOfCreditors"
-                        className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all duration-200 bg-gray-50 focus:bg-white"
-                        value={createFormData.numberOfCreditors}
-                        onChange={handleCreateFormChange}
-                        placeholder="0"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">Monthly Payment ($)</label>
-                      <input
-                        type="number"
-                        name="monthlyDebtPayment"
-                        className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all duration-200 bg-gray-50 focus:bg-white"
-                        value={createFormData.monthlyDebtPayment}
-                        onChange={handleCreateFormChange}
-                        placeholder="0"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Credit Information */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">Credit Score</label>
-                      <input
-                        type="number"
-                        name="creditScore"
-                        min="300"
-                        max="850"
-                        className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all duration-200 bg-gray-50 focus:bg-white"
-                        value={createFormData.creditScore}
-                        onChange={handleCreateFormChange}
-                        placeholder="Enter credit score"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">Credit Score Range</label>
-                      <select
-                        name="creditScoreRange"
-                        className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all duration-200 bg-gray-50 focus:bg-white"
-                        value={createFormData.creditScoreRange}
-                        onChange={handleCreateFormChange}
-                      >
-                        <option value="">Select credit score range</option>
-                        {CREDIT_SCORE_RANGES.map((range) => (
-                          <option key={range} value={range}>{range}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Address Information */}
-                <div className="space-y-4">
-                  <h4 className="text-md font-semibold text-gray-900 border-b border-gray-200 pb-2">Address Information</h4>
-                  
-                  {/* Address */}
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Street Address</label>
-                    <input
-                      type="text"
-                      name="address"
-                      className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all duration-200 bg-gray-50 focus:bg-white"
-                      value={createFormData.address}
-                      onChange={handleCreateFormChange}
-                      placeholder="Enter street address"
-                    />
-                  </div>
-
-                  {/* City, State, Zipcode */}
-                  <div className="grid grid-cols-3 gap-4">
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">City</label>
-                      <input
-                        type="text"
-                        name="city"
-                        className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all duration-200 bg-gray-50 focus:bg-white"
-                        value={createFormData.city}
-                        onChange={handleCreateFormChange}
-                        placeholder="City"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">State</label>
-                      <input
-                        type="text"
-                        name="state"
-                        className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all duration-200 bg-gray-50 focus:bg-white"
-                        value={createFormData.state}
-                        onChange={handleCreateFormChange}
-                        placeholder="State"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">Zipcode</label>
-                      <input
-                        type="text"
-                        name="zipcode"
-                        className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all duration-200 bg-gray-50 focus:bg-white"
-                        value={createFormData.zipcode}
-                        onChange={handleCreateFormChange}
-                        placeholder="Zipcode"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Additional Information */}
-                <div className="space-y-4">
-                  <h4 className="text-md font-semibold text-gray-900 border-b border-gray-200 pb-2">Additional Information</h4>
-                  
-                  {/* Notes */}
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Notes</label>
-                    <textarea
-                      name="notes"
-                      rows="4"
-                      className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all duration-200 bg-gray-50 focus:bg-white resize-vertical"
-                      value={createFormData.notes}
-                      onChange={handleCreateFormChange}
-                      placeholder="Additional notes about the lead..."
-                    />
-                  </div>
-
-                  {/* Requirements */}
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Requirements</label>
-                    <textarea
-                      name="requirements"
-                      rows="4"
-                      className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all duration-200 bg-gray-50 focus:bg-white resize-vertical"
-                      value={createFormData.requirements}
-                      onChange={handleCreateFormChange}
-                      placeholder="Specific requirements or preferences..."
-                    />
-                  </div>
-                </div>
-
-                {/* Form Actions */}
-                <div className="flex justify-end space-x-3 pt-6 border-t border-gray-200">
-                  <button
-                    type="button"
-                    onClick={() => setShowCreateForm(false)}
-                    className="px-6 py-3 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-all duration-200"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={submitting}
-                    className="px-6 py-3 text-sm font-medium text-white bg-gradient-to-r from-primary-600 to-primary-700 border border-transparent rounded-lg shadow-sm hover:from-primary-700 hover:to-primary-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center space-x-2"
-                  >
-                    {submitting ? (
-                      <>
-                        <LoadingSpinner size="small" />
-                        <span>Creating Lead...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Plus className="h-4 w-4" />
-                        <span>Create Lead</span>
-                      </>
-                    )}
-                  </button>
-                </div>
+                </div>{/* END Form Content */}
               </form>
             </div>
           </div>
         </div>
-      )}
+      )}{/* END RIGHT PANEL */}
 
       {/* Floating People Search PiP Panel */}
       {showSearchPanel && (
@@ -3453,7 +3512,7 @@ const Agent2Dashboard = () => {
       )}
 
       {/* Agent Notes PiP */}
-      <AgentNotesPad 
+      <AgentNotesPad
         show={showNotesModal}
         onClose={() => setShowNotesModal(false)}
         initialPos={notesPos}

@@ -22,8 +22,8 @@ const Profile = () => {
 
   // Check if user can edit profile (only admin and superadmin)
   const canEditProfile = ['admin', 'superadmin'].includes(user.role);
-  // agent1 can self-manage their Vicidial Agent ID
-  const canEditViciId = user.role === 'agent1';
+  // agent1 and agent2 can self-manage their Vicidial Agent ID
+  const canEditViciId = user.role === 'agent1' || user.role === 'agent2';
 
   const handleViciIdSubmit = async (e) => {
     e.preventDefault();

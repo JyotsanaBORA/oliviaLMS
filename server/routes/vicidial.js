@@ -243,8 +243,7 @@ router.post('/call-data', async (req, res) => {
 
       // Use socketOptimizer to emit to the specific agent
       if (req.socketOptimizer) {
-        // Try agent1 role first, then agent2
-        req.socketOptimizer.emitToUser(agent._id.toString(), 'agent1', 'vicidialCallData', callPayload);
+        req.socketOptimizer.emitToUser(agent._id.toString(), agent.role, 'vicidialCallData', callPayload);
       } else {
         // Fallback: broadcast to user rooms
         req.io.emit('vicidialCallData', callPayload);
@@ -419,7 +418,7 @@ router.get('/call-data', async (req, res) => {
       console.log('📤 Pushing call data to agent via socket:', agent.email);
 
       if (req.socketOptimizer) {
-        req.socketOptimizer.emitToUser(agent._id.toString(), 'agent1', 'vicidialCallData', callPayload);
+        req.socketOptimizer.emitToUser(agent._id.toString(), agent.role, 'vicidialCallData', callPayload);
       } else {
         req.io.emit('vicidialCallData', callPayload);
       }
@@ -442,7 +441,7 @@ router.get('/call-data', async (req, res) => {
 // Get pending call queue for the logged-in agent
 // Protected — requires auth
 // ============================================================
-router.get('/queue', protect, authorize('agent1', 'admin', 'superadmin'), async (req, res) => {
+router.get('/queue', protect, authorize('agent1', 'agent2', 'admin', 'superadmin'), async (req, res) => {
   try {
     const todayStart = getEasternStartOfDay();
     const todayEnd   = getEasternEndOfDay();
@@ -477,7 +476,7 @@ router.get('/queue', protect, authorize('agent1', 'admin', 'superadmin'), async 
 // Get pending call count for badge display
 // Protected — requires auth
 // ============================================================
-router.get('/queue/count', protect, authorize('agent1', 'admin', 'superadmin'), async (req, res) => {
+router.get('/queue/count', protect, authorize('agent1', 'agent2', 'admin', 'superadmin'), async (req, res) => {
   try {
     const todayStart = getEasternStartOfDay();
     const todayEnd   = getEasternEndOfDay();
@@ -506,7 +505,7 @@ router.get('/queue/count', protect, authorize('agent1', 'admin', 'superadmin'), 
 // Get next pending call from queue for auto-loading
 // Protected — requires auth
 // ============================================================
-router.get('/queue/next', protect, authorize('agent1', 'admin', 'superadmin'), async (req, res) => {
+router.get('/queue/next', protect, authorize('agent1', 'agent2', 'admin', 'superadmin'), async (req, res) => {
   try {
     console.log('🔍 Fetching next ViciDial call for user:', req.user._id);
     
@@ -555,7 +554,7 @@ router.get('/queue/next', protect, authorize('agent1', 'admin', 'superadmin'), a
 // PUT /api/vicidial/queue/:callId/activate
 // Mark a call as active (agent is filling form for it)
 // ============================================================
-router.put('/queue/:callId/activate', protect, authorize('agent1', 'admin', 'superadmin'), async (req, res) => {
+router.put('/queue/:callId/activate', protect, authorize('agent1', 'agent2', 'admin', 'superadmin'), async (req, res) => {
   try {
     const call = await VicidialCall.findOneAndUpdate(
       {
@@ -594,7 +593,7 @@ router.put('/queue/:callId/activate', protect, authorize('agent1', 'admin', 'sup
 // Mark a call as completed (agent submitted the lead form)
 // Optionally link the created lead
 // ============================================================
-router.put('/queue/:callId/complete', protect, authorize('agent1', 'admin', 'superadmin'), async (req, res) => {
+router.put('/queue/:callId/complete', protect, authorize('agent1', 'agent2', 'admin', 'superadmin'), async (req, res) => {
   try {
     const { leadId } = req.body;
 
@@ -637,7 +636,7 @@ router.put('/queue/:callId/complete', protect, authorize('agent1', 'admin', 'sup
     if (req.socketOptimizer) {
       req.socketOptimizer.emitToUser(
         req.user._id.toString(),
-        'agent1',
+        req.user.role,
         'vicidialQueueUpdate',
         { count: remainingCount }
       );
@@ -660,7 +659,7 @@ router.put('/queue/:callId/complete', protect, authorize('agent1', 'admin', 'sup
 // PUT /api/vicidial/queue/:callId/skip
 // Skip/dismiss a call from queue
 // ============================================================
-router.put('/queue/:callId/skip', protect, authorize('agent1', 'admin', 'superadmin'), async (req, res) => {
+router.put('/queue/:callId/skip', protect, authorize('agent1', 'agent2', 'admin', 'superadmin'), async (req, res) => {
   try {
     const call = await VicidialCall.findOneAndUpdate(
       {
@@ -690,7 +689,7 @@ router.put('/queue/:callId/skip', protect, authorize('agent1', 'admin', 'superad
       });
       req.socketOptimizer.emitToUser(
         req.user._id.toString(),
-        'agent1',
+        req.user.role,
         'vicidialQueueUpdate',
         { count: remainingCount }
       );
