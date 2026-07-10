@@ -8,7 +8,10 @@ import {
   UserPlus,
   Search,
   Filter,
-  CheckCircle
+  CheckCircle,
+  Key,
+  Copy,
+  CheckCheck
 } from 'lucide-react';
 import axios from '../utils/axios';
 import toast from 'react-hot-toast';
@@ -21,6 +24,10 @@ const OrganizationManagement = () => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showUserModal, setShowUserModal] = useState(false);
+  const [showBenKeyModal, setShowBenKeyModal] = useState(false);
+  const [benKeyData, setBenKeyData] = useState(null);
+  const [benKeyGenerating, setBenKeyGenerating] = useState(false);
+  const [copiedField, setCopiedField] = useState(null);
   const [selectedOrg, setSelectedOrg] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -188,14 +195,30 @@ const OrganizationManagement = () => {
 
   const openUserModal = (org) => {
     setSelectedOrg(org);
-    setUserForm({
-      name: '',
-      email: '',
-      password: '',
-      role: 'admin',
-      canDownloadLeads: false
-    });
+    setUserForm({ name: '', email: '', password: '', role: 'admin', canDownloadLeads: false });
     setShowUserModal(true);
+  };
+
+  const handleGenerateBenKey = async (org) => {
+    if (!window.confirm(`Generate a new Ben webhook API key for "${org.name}"? Any existing key will be replaced.`)) return;
+    setBenKeyGenerating(true);
+    try {
+      const response = await axios.post(`/api/organizations/${org._id}/ben-webhook-key`);
+      setBenKeyData({ orgName: org.name, ...response.data.data });
+      setCopiedField(null);
+      setShowBenKeyModal(true);
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to generate Ben webhook key');
+    } finally {
+      setBenKeyGenerating(false);
+    }
+  };
+
+  const handleCopy = (text, field) => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedField(field);
+      setTimeout(() => setCopiedField(null), 2000);
+    });
   };
 
   const handleAddSourceId = () => {
@@ -442,6 +465,14 @@ const OrganizationManagement = () => {
                         title="Add User"
                       >
                         <UserPlus className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={() => handleGenerateBenKey(org)}
+                        disabled={benKeyGenerating}
+                        className="text-orange-500 hover:text-orange-700"
+                        title="Generate Ben Webhook API Key"
+                      >
+                        <Key className="h-4 w-4" />
                       </button>
                       <button
                         onClick={() => openEditModal(org)}
@@ -930,6 +961,94 @@ const OrganizationManagement = () => {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Ben Webhook Key Modal */}
+      {showBenKeyModal && benKeyData && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <div className="fixed inset-0 transition-opacity" aria-hidden="true">
+              <div className="absolute inset-0 bg-gray-500 opacity-75" onClick={() => setShowBenKeyModal(false)}></div>
+            </div>
+            <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+              <div className="bg-white px-4 pt-5 pb-4 sm:p-6">
+                <div className="flex items-center mb-4">
+                  <div className="p-2 rounded-full bg-orange-100 mr-3">
+                    <Key className="h-5 w-5 text-orange-500" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-medium text-gray-900">Ben Webhook API Key Generated</h3>
+                    <p className="text-sm text-gray-500">{benKeyData.orgName}</p>
+                  </div>
+                </div>
+
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
+                  <p className="text-sm text-yellow-800 font-medium">⚠ Save this key now — it will not be shown again in full.</p>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">API Key</label>
+                    <div className="flex items-center gap-2">
+                      <code className="flex-1 bg-gray-100 border border-gray-200 rounded px-3 py-2 text-xs font-mono break-all text-gray-800">
+                        {benKeyData.benWebhookApiKey}
+                      </code>
+                      <button
+                        onClick={() => handleCopy(benKeyData.benWebhookApiKey, 'key')}
+                        className="flex-shrink-0 p-2 text-gray-500 hover:text-orange-600 border border-gray-200 rounded hover:border-orange-300"
+                        title="Copy API Key"
+                      >
+                        {copiedField === 'key' ? <CheckCheck className="h-4 w-4 text-orange-500" /> : <Copy className="h-4 w-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Webhook URL</label>
+                    <div className="flex items-center gap-2">
+                      <code className="flex-1 bg-gray-100 border border-gray-200 rounded px-3 py-2 text-xs font-mono break-all text-gray-800">
+                        {benKeyData.webhookUrl}
+                      </code>
+                      <button
+                        onClick={() => handleCopy(benKeyData.webhookUrl, 'url')}
+                        className="flex-shrink-0 p-2 text-gray-500 hover:text-orange-600 border border-gray-200 rounded hover:border-orange-300"
+                        title="Copy Webhook URL"
+                      >
+                        {copiedField === 'url' ? <CheckCheck className="h-4 w-4 text-orange-500" /> : <Copy className="h-4 w-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                    <p className="text-xs font-semibold text-gray-600 mb-2">Share with Ben's developer:</p>
+                    <pre className="text-xs text-gray-700 whitespace-pre-wrap font-mono">{`POST ${benKeyData.webhookUrl}
+Headers:
+  x-api-key: ${benKeyData.benWebhookApiKey}
+  Content-Type: application/json
+
+Body (JSON):
+{
+  "firstName": "John",
+  "lastName": "Doe",
+  "email": "john@example.com",
+  "phone": "5551234567",
+  "totalDebtAmount": 25000
+}`}</pre>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-gray-50 px-4 py-3 sm:px-6 flex justify-end">
+                <button
+                  type="button"
+                  className="inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  onClick={() => setShowBenKeyModal(false)}
+                >
+                  Close
+                </button>
+              </div>
             </div>
           </div>
         </div>

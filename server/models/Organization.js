@@ -40,6 +40,14 @@ const organizationSchema = new mongoose.Schema({
     index: true,
     select: false  // excluded from queries by default
   },
+  // Separate key for the Ben website leads webhook endpoint
+  benWebhookApiKey: {
+    type: String,
+    unique: true,
+    sparse: true,
+    index: true,
+    select: false
+  },
   // Meta Lead Ads — Facebook Page ID linked to this organisation.
   // Used to route Meta Instant Form leads to the correct org.
   metaPageId: {

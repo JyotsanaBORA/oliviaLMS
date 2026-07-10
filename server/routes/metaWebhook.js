@@ -284,11 +284,12 @@ router.post('/', async (req, res) => {
         // 6. Real-time notification to admins (same event as website leads)
         if (req.io) {
           req.io.emit('newWebsiteLead', {
-            _id:      websiteLead._id,
-            name:     websiteLead.name,
-            source:   'meta',
-            formType: 'meta-lead-form',
-            createdAt: websiteLead.createdAt,
+            _id:            websiteLead._id,
+            name:           websiteLead.name,
+            source:         'meta',
+            formType:       'meta-lead-form',
+            organizationId: String(websiteLead.organization),
+            createdAt:      websiteLead.createdAt,
           });
         }
 

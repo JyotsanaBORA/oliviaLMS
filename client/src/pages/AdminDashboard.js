@@ -29,6 +29,7 @@ import AdminUploadShareModal from '../components/AdminUploadShareModal';
 import DataVendorShareModal from '../components/DataVendorShareModal';
 import ManualSaleModal from '../components/ManualSaleModal';
 import WebsiteLeadsModal from '../components/WebsiteLeadsModal';
+import BenWebsiteLeadsModal from '../components/BenWebsiteLeadsModal';
 import LoopLeadsModal from '../components/LoopLeadsModal';
 import Pagination from '../components/Pagination';
 import { useSocket } from '../contexts/SocketContext';
@@ -157,6 +158,11 @@ const AdminDashboard = () => {
   const websiteLeadTotalRef = useRef(null);
   const alertTimerRef = useRef(null);       // 10-min auto-clear timer
   const alertStartTimeRef = useRef(null);   // When the current alert epoch started
+
+  // Ben Website Leads modal (any admin)
+  const [showBenWebsiteLeads, setShowBenWebsiteLeads] = useState(false);
+  const [benLeadsBadge, setBenLeadsBadge] = useState(0);
+  const benLeadTotalRef = useRef(null);
 
   // Loop leads modal (orgs with showLoopLeads === true)
   const [showLoopLeads, setShowLoopLeads] = useState(false);
@@ -788,10 +794,23 @@ const AdminDashboard = () => {
         }
       };
 
+      const handleNewBenWebsiteLead = (data) => {
+        if (user?.role !== 'admin') return;
+        // Notify this admin only if the lead belongs to their org, or they are Reddington admin
+        const myOrgId = user?.organization?._id || user?.organization;
+        const leadOrgId = data?.organizationId;
+        const isMyLead = !leadOrgId || String(leadOrgId) === String(myOrgId);
+        if (!isMyLead && !isReddingtonAdmin) return;
+        if (benLeadTotalRef.current !== null) benLeadTotalRef.current += 1;
+        setBenLeadsBadge(n => n + 1);
+        toast.success(`New Ben website lead: ${data?.name || 'Unknown'}`, { duration: 5000, icon: '🟠' });
+      };
+
       socket.on('leadUpdated', handleLeadUpdated);
       socket.on('leadCreated', handleLeadCreated);
       socket.on('leadDeleted', handleLeadDeleted);
       socket.on('newWebsiteLead', handleNewWebsiteLead);
+      socket.on('newBenWebsiteLead', handleNewBenWebsiteLead);
 
       // Cleanup socket listeners and timeout
       return () => {
@@ -802,6 +821,7 @@ const AdminDashboard = () => {
         socket.off('leadCreated', handleLeadCreated);
         socket.off('leadDeleted', handleLeadDeleted);
         socket.off('newWebsiteLead', handleNewWebsiteLead);
+        socket.off('newBenWebsiteLead', handleNewBenWebsiteLead);
       };
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1091,6 +1111,25 @@ const AdminDashboard = () => {
                   {websiteLeadsBadge > 0 && (
                     <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] flex items-center justify-center bg-red-500 text-white text-[10px] font-bold rounded-full px-1">
                       {websiteLeadsBadge > 99 ? '99+' : websiteLeadsBadge}
+                    </span>
+                  )}
+                </button>
+              )}
+              {/* Ben Website Leads button — all admins */}
+              {user?.role === 'admin' && (
+                <button
+                  onClick={() => { setShowBenWebsiteLeads(true); setBenLeadsBadge(0); }}
+                  className="relative flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold text-white transition-all duration-200 active:scale-95 shadow-md"
+                  style={{ background: 'linear-gradient(135deg,#f97316,#d97706)', boxShadow: '0 4px 12px rgba(249,115,22,0.4)' }}
+                  title="View Ben website leads"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9" />
+                  </svg>
+                  Ben Website Leads
+                  {benLeadsBadge > 0 && (
+                    <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] flex items-center justify-center bg-red-500 text-white text-[10px] font-bold rounded-full px-1">
+                      {benLeadsBadge > 99 ? '99+' : benLeadsBadge}
                     </span>
                   )}
                 </button>
@@ -2811,6 +2850,11 @@ const AdminDashboard = () => {
       {/* Website Leads Modal — Reddington admin only */}
       {isReddingtonAdmin && showWebsiteLeads && (
         <WebsiteLeadsModal onClose={() => setShowWebsiteLeads(false)} />
+      )}
+
+      {/* Ben Website Leads Modal — all admins */}
+      {showBenWebsiteLeads && (
+        <BenWebsiteLeadsModal onClose={() => setShowBenWebsiteLeads(false)} />
       )}
 
       {/* New Website Lead Popup — admin dashboard only */}

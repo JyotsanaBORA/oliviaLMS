@@ -32,7 +32,6 @@ const webhookLimiter = rateLimit({
   max: 100,
   standardHeaders: true,
   legacyHeaders: false,
-  trustProxy: false,
   message: { success: false, message: 'Too many requests, please try again later.' }
 });
 
@@ -140,10 +139,11 @@ router.post('/leads', webhookLimiter, async (req, res) => {
     // 7. Real-time notification to Reddington admin
     if (req.io) {
       req.io.emit('newWebsiteLead', {
-        _id:       websiteLead._id,
-        name:      websiteLead.name,
+        _id:            websiteLead._id,
+        name:           websiteLead.name,
         formType,
-        createdAt: websiteLead.createdAt,
+        organizationId: String(websiteLead.organization),
+        createdAt:      websiteLead.createdAt,
       });
     }
 

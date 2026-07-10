@@ -720,6 +720,40 @@ router.post('/:id/webhook-key', protect, async (req, res) => {
   }
 });
 
+// @desc    Generate a new Ben webhook API key for an organization
+// @route   POST /api/organizations/:id/ben-webhook-key
+// @access  Private (SuperAdmin or Reddington admin)
+router.post('/:id/ben-webhook-key', protect, async (req, res) => {
+  try {
+    const allowed = req.user.role === 'superadmin' || (await isReddingtonAdmin(req.user));
+    if (!allowed) {
+      return res.status(403).json({ success: false, message: 'Only superadmin or Reddington admin can generate Ben webhook keys.' });
+    }
+
+    const organization = await Organization.findById(req.params.id);
+    if (!organization) {
+      return res.status(404).json({ success: false, message: 'Organization not found' });
+    }
+
+    const newKey = crypto.randomBytes(32).toString('hex');
+    organization.benWebhookApiKey = newKey;
+    await organization.save();
+
+    return res.status(200).json({
+      success: true,
+      message: 'Ben webhook API key generated. Save it now — it will not be shown again in full.',
+      data: {
+        organizationId: organization._id,
+        benWebhookApiKey: newKey,
+        webhookUrl: `${req.protocol}://${req.get('host')}/api/webhook/ben-leads`
+      }
+    });
+  } catch (error) {
+    console.error('Generate Ben webhook key error:', error);
+    return res.status(500).json({ success: false, message: 'Error generating Ben webhook API key', error: process.env.NODE_ENV === 'development' ? error.message : {} });
+  }
+});
+
 // @desc    Get webhook status (masked key) for an organization
 // @route   GET /api/organizations/:id/webhook-key
 // @access  Private (Admin of that org, SuperAdmin, or Reddington admin)

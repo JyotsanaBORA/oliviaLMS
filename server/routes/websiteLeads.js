@@ -6,14 +6,30 @@ const { protect } = require('../middleware/auth');
 
 const router = express.Router();
 
-// Helper — verify caller is Reddington admin or superadmin
-const isReddingtonAdminOrSuper = async (user) => {
-  if (user.role === 'superadmin') return true;
-  if (user.role !== 'admin' || !user.organization) return false;
+// ---------------------------------------------------------------------------
+// Access control helper
+// Returns { allowed: false }
+//      OR { allowed: true, canWrite: bool, orgFilter: ObjectId|null }
+//
+// canWrite=true  → Reddington admin or superadmin (full read + write)
+// canWrite=false → any other org admin (read-only, scoped to their org)
+// orgFilter=null → no restriction (see all orgs)
+// orgFilter=<id> → restrict to that org's leads only
+// ---------------------------------------------------------------------------
+const getWebsiteLeadsAccess = async (user) => {
+  if (!user) return { allowed: false };
+  if (user.role === 'superadmin') return { allowed: true, canWrite: true, orgFilter: null };
+  if (user.role !== 'admin') return { allowed: false };
   try {
     const org = await Organization.findById(user.organization).lean();
-    return !!(org && org.name === 'REDDINGTON GLOBAL CONSULTANCY');
-  } catch { return false; }
+    if (!org) return { allowed: false };
+    const isGlobal = org.name === 'REDDINGTON GLOBAL CONSULTANCY';
+    return {
+      allowed: true,
+      canWrite: isGlobal,
+      orgFilter: isGlobal ? null : user.organization,
+    };
+  } catch { return { allowed: false }; }
 };
 
 // ---------------------------------------------------------------------------

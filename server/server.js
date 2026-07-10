@@ -33,6 +33,8 @@ const metaWebhookRoutes = require('./routes/metaWebhook');
 const loopWebhookRoutes = require('./routes/loopWebhook');
 const loopLeadsRoutes   = require('./routes/loopLeads');
 const websiteLeadsRoutes = require('./routes/websiteLeads');
+const benWebhookRoutes   = require('./routes/benWebhook');
+const benWebsiteLeadsRoutes = require('./routes/benWebsiteLeads');
 const affiliateRoutes = require('./routes/affiliate');
 const dataVendorRoutes = require('./routes/dataVendorUploads');
 
@@ -75,7 +77,7 @@ app.use(cors({
   origin: corsOrigins,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key']
 }));
 
 // =========================
@@ -202,10 +204,12 @@ app.use('/api/admin-uploads', adminUploadRoutes);
 app.use('/api/vicidial', vicidialRoutes);
 app.use('/api/notes', notesRoutes);
 app.use('/api/webhook', webhookRoutes);
+app.use('/api/webhook', benWebhookRoutes);
 app.use('/api/webhook/meta', metaWebhookRoutes);
 app.use('/api/webhook/loop', loopWebhookRoutes);
 app.use('/api/loop-leads',  loopLeadsRoutes);
 app.use('/api/website-leads', websiteLeadsRoutes);
+app.use('/api/ben-website-leads', benWebsiteLeadsRoutes);
 app.use('/api/affiliate', affiliateRoutes);
 app.use('/api/data-vendor-uploads', dataVendorRoutes);
 app.use('/api/notifications', require('./routes/notifications'));
