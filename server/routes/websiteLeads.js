@@ -38,7 +38,8 @@ const getWebsiteLeadsAccess = async (user) => {
 // ---------------------------------------------------------------------------
 router.get('/', protect, async (req, res) => {
   try {
-    if (!(await isReddingtonAdminOrSuper(req.user))) {
+    const access = await getWebsiteLeadsAccess(req.user);
+    if (!access.allowed || !access.canWrite) {
       return res.status(403).json({ success: false, message: 'Access restricted to Reddington admin.' });
     }
 
@@ -98,7 +99,8 @@ router.get('/', protect, async (req, res) => {
 // ---------------------------------------------------------------------------
 router.patch('/:id/status', protect, async (req, res) => {
   try {
-    if (!(await isReddingtonAdminOrSuper(req.user))) {
+    const access = await getWebsiteLeadsAccess(req.user);
+    if (!access.allowed || !access.canWrite) {
       return res.status(403).json({ success: false, message: 'Access restricted to Reddington admin.' });
     }
 
@@ -127,7 +129,8 @@ router.patch('/:id/status', protect, async (req, res) => {
 // ---------------------------------------------------------------------------
 router.post('/:id/import', protect, async (req, res) => {
   try {
-    if (!(await isReddingtonAdminOrSuper(req.user))) {
+    const access = await getWebsiteLeadsAccess(req.user);
+    if (!access.allowed || !access.canWrite) {
       return res.status(403).json({ success: false, message: 'Access restricted to Reddington admin.' });
     }
 
@@ -195,7 +198,8 @@ router.post('/:id/import', protect, async (req, res) => {
 // ---------------------------------------------------------------------------
 router.get('/:id', protect, async (req, res) => {
   try {
-    if (!(await isReddingtonAdminOrSuper(req.user))) {
+    const access = await getWebsiteLeadsAccess(req.user);
+    if (!access.allowed || !access.canWrite) {
       return res.status(403).json({ success: false, message: 'Access restricted to Reddington admin.' });
     }
 
@@ -221,7 +225,8 @@ router.get('/:id', protect, async (req, res) => {
 // ---------------------------------------------------------------------------
 router.post('/:id/comments', protect, async (req, res) => {
   try {
-    if (!(await isReddingtonAdminOrSuper(req.user))) {
+    const access = await getWebsiteLeadsAccess(req.user);
+    if (!access.allowed || !access.canWrite) {
       return res.status(403).json({ success: false, message: 'Access restricted to Reddington admin.' });
     }
 
