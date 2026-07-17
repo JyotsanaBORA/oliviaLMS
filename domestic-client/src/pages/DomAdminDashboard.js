@@ -4,7 +4,7 @@ import {
   Eye, X, Hash, Globe, Briefcase, CheckCircle2, Clock,
   AlertCircle, UserCheck, Calendar, ChevronLeft, ChevronRight,
   Inbox, Award, Download, FileDown, ExternalLink, FileText,
-  Image as ImageIcon, File,
+  Image as ImageIcon, File, Database, UserCheck2, Send,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import api   from '../utils/axios';
@@ -44,12 +44,13 @@ const LeadRefBadge = ({ code }) =>
     ? <span className="font-mono text-xs font-bold bg-gray-900 text-emerald-400 px-2 py-0.5 rounded-md tracking-wider whitespace-nowrap border border-gray-700">{code}</span>
     : <span className="text-gray-300 text-xs italic">—</span>;
 
-const TABS = ['overview', 'website_leads', 'dom_leads', 'agents'];
+const TABS = ['overview', 'website_leads', 'dom_leads', 'agents', 'lead_pool'];
 const TAB_META = {
   overview:      { label: 'Overview',      Icon: BarChart2, color: 'indigo' },
   website_leads: { label: 'Website Leads', Icon: Globe,     color: 'blue'   },
   dom_leads:     { label: 'Worked Leads',  Icon: Briefcase, color: 'purple' },
   agents:        { label: 'Agents',        Icon: Users,     color: 'teal'   },
+  lead_pool:     { label: 'Lead Pool',     Icon: Database,  color: 'green'  },
 };
 
 const DomAdminDashboard = () => {
@@ -59,12 +60,18 @@ const DomAdminDashboard = () => {
   const [stats,    setStats]    = useState(null);
   const [pipeline, setPipeline] = useState([]);
 
-  const [leads,        setLeads]        = useState([]);
-  const [leadsTotal,   setLeadsTotal]   = useState(0);
-  const [leadsPage,    setLeadsPage]    = useState(1);
-  const [statusFilter, setStatusFilter] = useState('');
-  const [search,       setSearch]       = useState('');
-  const [leadsLoading, setLeadsLoading] = useState(false);
+  const [leads,           setLeads]           = useState([]);
+  const [leadsTotal,      setLeadsTotal]      = useState(0);
+  const [leadsPage,       setLeadsPage]       = useState(1);
+  const [statusFilter,    setStatusFilter]    = useState('');
+  const [search,          setSearch]          = useState('');
+  const [leadsLoading,    setLeadsLoading]    = useState(false);
+  const [productTypeFilter, setProductTypeFilter] = useState('');
+  const [productTypes,    setProductTypes]    = useState([]);
+
+  // Assign website lead to agent
+  const [assignLeadModal,   setAssignLeadModal]   = useState(null); // websiteLead being assigned
+  const [assigningWebLead,  setAssigningWebLead]  = useState(false);
 
   const [domLeads,         setDomLeads]         = useState([]);
   const [domLeadsTotal,    setDomLeadsTotal]     = useState(0);
@@ -81,9 +88,36 @@ const DomAdminDashboard = () => {
   const [viewDomLead, setViewDomLead] = useState(null);
   const [viewDL,      setViewDL]      = useState(null);
 
+  // Lead Pool state (import-leads feature)
+  const [poolStats,        setPoolStats]        = useState(null);
+  const [poolLeads,        setPoolLeads]        = useState([]);
+  const [poolLeadsTotal,   setPoolLeadsTotal]   = useState(0);
+  const [poolPage,         setPoolPage]         = useState(1);
+  const [poolLoading,      setPoolLoading]      = useState(false);
+  const [assignCounts,     setAssignCounts]     = useState({});
+  const [assigning,        setAssigning]        = useState(null);
+  const [poolStatusFilter, setPoolStatusFilter] = useState('');
+
+  // Bulk select — website leads
+  const [webSelectedIds,  setWebSelectedIds]  = useState(new Set());
+  const [webBulkModal,    setWebBulkModal]    = useState(false);
+
+  // Bulk select — imported / pool leads
+  const [poolSelectedIds, setPoolSelectedIds] = useState(new Set());
+  const [poolBulkModal,   setPoolBulkModal]   = useState(false);
+
+  // Reassign a single imported lead to a different agent
+  const [reassignModal,   setReassignModal]   = useState(null); // the lead being reassigned
+  const [reassigning,     setReassigning]     = useState(false);
+
+  // Drag & drop state
+  const [dragItem,  setDragItem]  = useState(null); // { id, type: 'website' | 'pool', name }
+  const [dropAgent, setDropAgent] = useState(null); // agentId being hovered during drag
+
   // Refs hold current filter values so callbacks stay stable (no re-creation on every keystroke)
   const searchRef          = useRef('');
   const statusFilterRef    = useRef('');
+  const productTypeRef     = useRef('');
   const domSearchRef       = useRef('');
   const domStatusRef       = useRef('');
   const domProductRef      = useRef('');
@@ -107,8 +141,9 @@ const DomAdminDashboard = () => {
     setLeadsLoading(true);
     try {
       const q = new URLSearchParams({ page, limit: 30 });
-      if (statusFilterRef.current)       q.set('status', statusFilterRef.current);
-      if (searchRef.current.trim())      q.set('search', searchRef.current.trim());
+      if (statusFilterRef.current)       q.set('status',      statusFilterRef.current);
+      if (searchRef.current.trim())      q.set('search',      searchRef.current.trim());
+      if (productTypeRef.current)        q.set('productType', productTypeRef.current);
       const res = await api.get(`/domestic-api/website-leads?${q}`);
       setLeads(res.data?.data || []);
       setLeadsTotal(res.data?.pagination?.total || 0);
@@ -116,6 +151,13 @@ const DomAdminDashboard = () => {
     } catch { toast.error('Failed to load leads.'); }
     finally { setLeadsLoading(false); }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const fetchProductTypes = useCallback(async () => {
+    try {
+      const res = await api.get('/domestic-api/website-leads/product-types');
+      setProductTypes(res.data?.data || []);
+    } catch { /* silent */ }
+  }, []);
 
   const fetchDomLeads = useCallback(async (page = 1) => {
     setDomLeadsLoading(true);
@@ -141,14 +183,57 @@ const DomAdminDashboard = () => {
     finally { setAgentsLoading(false); }
   }, []);
 
+  const fetchPoolStats = useCallback(async () => {
+    try {
+      const res = await api.get('/domestic-api/import-leads/pool-stats');
+      setPoolStats(res.data || null);
+    } catch { /* silent */ }
+  }, []);
+
+  const fetchPoolLeads = useCallback(async (page = 1, statusF = '') => {
+    setPoolLoading(true);
+    try {
+      const q = new URLSearchParams({ page, limit: 50 });
+      if (statusF) q.set('status', statusF);
+      const res = await api.get(`/domestic-api/import-leads?${q}`);
+      setPoolLeads(res.data?.data || []);
+      setPoolLeadsTotal(res.data?.pagination?.total || 0);
+      setPoolPage(page);
+    } catch { toast.error('Failed to load lead pool.'); }
+    finally { setPoolLoading(false); }
+  }, []);
+
+  const handleAssignLeads = useCallback(async (agentId, agentName) => {
+    const count = parseInt(assignCounts[agentId], 10);
+    if (!count || count < 1) { toast.error('Enter at least 1 lead to assign.'); return; }
+    setAssigning(agentId);
+    try {
+      const res = await api.post('/domestic-api/import-leads/assign', { agentId, count });
+      toast.success(res.data.message);
+      setAssignCounts((prev) => ({ ...prev, [agentId]: '' }));
+      fetchPoolStats();
+      fetchPoolLeads(poolPage, poolStatusFilter);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to assign leads.');
+    } finally { setAssigning(null); }
+  }, [assignCounts, fetchPoolStats, fetchPoolLeads, poolPage, poolStatusFilter]);
+
   // Load stats once on mount
   useEffect(() => { fetchStats(); }, [fetchStats]);
 
+  // Escape cancels drag
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') { setDragItem(null); setDropAgent(null); } };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   // Load tab data only on tab switch — not on filter changes
   useEffect(() => {
-    if (tab === 'website_leads') fetchLeads(1);
+    if (tab === 'website_leads') { fetchLeads(1); fetchProductTypes(); fetchAgents(); }
     if (tab === 'dom_leads')     fetchDomLeads(1);
     if (tab === 'agents')        fetchAgents();
+    if (tab === 'lead_pool')     { fetchPoolStats(); fetchPoolLeads(1); fetchAgents(); }
   }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleViewLead = useCallback(async (lead) => {
@@ -179,6 +264,101 @@ const DomAdminDashboard = () => {
       toast.success('Download ready!', { id: 'dl' });
     } catch (err) { toast.error(`Download failed: ${err.message}`, { id: 'dl' }); }
   }, []);
+
+  const handleAssignWebLead = useCallback(async (leadId, agentId, agentName) => {
+    setAssigningWebLead(true);
+    try {
+      await api.post(`/domestic-api/website-leads/${leadId}/assign`, { agentId });
+      toast.success(`Lead assigned to ${agentName}.`);
+      setAssignLeadModal(null);
+      fetchLeads(leadsPage);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to assign lead.');
+    } finally { setAssigningWebLead(false); }
+  }, [fetchLeads, leadsPage]);
+
+  // Bulk-assign website leads
+  const handleWebBulkAssign = useCallback(async (agentId, agentName) => {
+    const leadIds = [...webSelectedIds];
+    if (!leadIds.length) return;
+    setAssigningWebLead(true);
+    try {
+      const res = await api.post('/domestic-api/website-leads/bulk-assign', { leadIds, agentId });
+      toast.success(res.data.message);
+      setWebSelectedIds(new Set());
+      setWebBulkModal(false);
+      fetchLeads(leadsPage);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Bulk assign failed.');
+    } finally { setAssigningWebLead(false); }
+  }, [webSelectedIds, fetchLeads, leadsPage]);
+
+  // Bulk-assign pool / imported leads
+  const handlePoolBulkAssign = useCallback(async (agentId, agentName) => {
+    const leadIds = [...poolSelectedIds];
+    if (!leadIds.length) return;
+    setAssigning(agentId);
+    try {
+      const res = await api.post('/domestic-api/import-leads/assign', { agentId, leadIds });
+      toast.success(res.data.message);
+      setPoolSelectedIds(new Set());
+      setPoolBulkModal(false);
+      fetchPoolStats();
+      fetchPoolLeads(poolPage, poolStatusFilter);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Bulk assign failed.');
+    } finally { setAssigning(null); }
+  }, [poolSelectedIds, fetchPoolStats, fetchPoolLeads, poolPage, poolStatusFilter]);
+
+  // Reassign a single imported lead to a different agent
+  const handleReassign = useCallback(async (agentId, agentName) => {
+    if (!reassignModal) return;
+    setReassigning(true);
+    try {
+      const res = await api.patch(`/domestic-api/import-leads/${reassignModal._id}/reassign`, { agentId });
+      toast.success(res.data.message);
+      setReassignModal(null);
+      fetchPoolLeads(poolPage, poolStatusFilter);
+      fetchPoolStats();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Reassign failed.');
+    } finally { setReassigning(false); }
+  }, [reassignModal, fetchPoolLeads, poolPage, poolStatusFilter, fetchPoolStats]);
+
+  // Drag & drop — drop a lead onto an agent
+  const handleDrop = useCallback(async (agentId, agentName) => {
+    if (!dragItem) return;
+    setDropAgent(null);
+    const item = dragItem;
+    setDragItem(null);
+    try {
+      if (item.type === 'website') {
+        await api.post(`/domestic-api/website-leads/${item.id}/assign`, { agentId });
+        toast.success(`"${item.name}" → ${agentName}`);
+        fetchLeads(leadsPage);
+      } else {
+        const res = await api.post('/domestic-api/import-leads/assign', { agentId, leadIds: [item.id] });
+        toast.success(res.data.message);
+        fetchPoolStats();
+        fetchPoolLeads(poolPage, poolStatusFilter);
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Assign failed.');
+    }
+  }, [dragItem, fetchLeads, leadsPage, fetchPoolStats, fetchPoolLeads, poolPage, poolStatusFilter]);
+
+  // Admin marks a worked lead as completed / pending / rejected
+  const handleLeadStatusChange = useCallback(async (leadId, newStatus, currentStatus) => {
+    if (newStatus === currentStatus) return;
+    try {
+      await api.patch(`/domestic-api/leads/${leadId}/status`, { status: newStatus });
+      const labels = { completed: 'Completed ✅', pending: 'Pending', rejected: 'Rejected ❌' };
+      toast.success(`Lead marked as ${labels[newStatus]}`);
+      fetchDomLeads(domLeadsPage);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to update status.');
+    }
+  }, [fetchDomLeads, domLeadsPage]);
 
   const handleExportExcel = useCallback(async () => {
     try {
@@ -236,27 +416,35 @@ const DomAdminDashboard = () => {
   );
 
   return (
-    <div className="min-h-screen bg-[#F0FFF8]">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-[#F0FFF8] to-emerald-50/30">
 
       {/* Header */}
-      <header className="bg-white shadow-sm sticky top-0 z-30 border-b-2 border-[#E8FFF5]">
-        <div className="px-6 flex items-center justify-between h-14">
-          <div className="flex items-center gap-3">
-            <img src={`${process.env.PUBLIC_URL}/mcb-logo.png`} alt="MyCashBridge" className="h-8 object-contain" />
-            <div className="border-l border-gray-200 pl-3 hidden sm:block">
-              <h1 className="text-[#065F36] font-bold text-sm leading-tight">Domestic LMS</h1>
-              <p className="text-gray-400 text-xs">Admin Dashboard</p>
+      <header className="bg-white/95 backdrop-blur-sm shadow-sm sticky top-0 z-30 border-b border-gray-100">
+        <div className="px-6 flex items-center justify-between h-16">
+          <div className="flex items-center gap-4">
+            <img src={`${process.env.PUBLIC_URL}/mcb-logo.png`} alt="MyCashBridge" className="h-9 object-contain" />
+            <div className="hidden sm:flex items-center gap-2 border-l border-gray-200 pl-4">
+              <div className="w-2 h-2 rounded-full bg-[#00A651] animate-pulse" />
+              <div>
+                <h1 className="text-gray-800 font-bold text-sm leading-tight">Domestic LMS</h1>
+                <p className="text-gray-400 text-xs">
+                  {user.role === 'dom_superadmin' ? 'Super Admin Portal' : 'Admin Dashboard'}
+                </p>
+              </div>
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <div className="hidden sm:flex items-center gap-2 text-gray-600 text-sm">
-              <div className="w-7 h-7 rounded-full bg-[#E8FFF5] flex items-center justify-center text-[#065F36] font-bold text-xs border border-[#D1FAE5]">
+            <div className="hidden sm:flex items-center gap-2.5 bg-gray-50 border border-gray-100 rounded-xl px-3 py-2">
+              <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#065F36] to-[#00A651] flex items-center justify-center text-white font-bold text-xs shadow-sm">
                 {user.name?.charAt(0)?.toUpperCase()}
               </div>
-              {user.name}
+              <div className="hidden md:block">
+                <p className="text-sm font-semibold text-gray-700 leading-tight">{user.name}</p>
+                <p className="text-xs text-gray-400">{user.role === 'dom_admin' ? 'Admin' : 'Super Admin'}</p>
+              </div>
             </div>
             <button onClick={logout}
-              className="flex items-center gap-1.5 bg-red-50 hover:bg-red-100 text-red-600 text-sm px-3 py-1.5 rounded-lg transition-colors border border-red-100">
+              className="flex items-center gap-1.5 bg-red-50 hover:bg-red-100 text-red-600 text-sm px-3 py-2 rounded-xl transition-colors border border-red-100 font-semibold">
               <LogOut className="h-3.5 w-3.5" /> Logout
             </button>
           </div>
@@ -264,16 +452,19 @@ const DomAdminDashboard = () => {
       </header>
 
       {/* Tab nav */}
-      <div className="bg-white border-b border-gray-200 shadow-sm">
-        <div className="px-6 flex gap-1 py-2 overflow-x-auto">
+      <div className="bg-white/80 backdrop-blur-sm border-b border-gray-100 shadow-sm sticky top-16 z-20">
+        <div className="px-6 flex gap-1 py-2 overflow-x-auto scrollbar-hide">
           {TABS.map((t) => {
             const { label, Icon } = TAB_META[t];
+            const isActive = tab === t;
             return (
               <button key={t} onClick={() => setTab(t)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all whitespace-nowrap ${
-                  tab === t ? 'bg-[#065F36] text-white shadow-sm' : 'text-gray-700 hover:bg-[#E8FFF5]'
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all whitespace-nowrap ${
+                  isActive
+                    ? 'bg-gradient-to-r from-[#065F36] to-[#00874A] text-white shadow-md shadow-green-200'
+                    : 'text-gray-500 hover:bg-[#E8FFF5] hover:text-[#065F36]'
                 }`}>
-                <Icon className="h-4 w-4" />
+                <Icon className={`h-4 w-4 ${isActive ? 'text-white' : ''}`} />
                 {label}
               </button>
             );
@@ -281,7 +472,7 @@ const DomAdminDashboard = () => {
         </div>
       </div>
 
-      <main className="px-6 py-5 space-y-5">
+      <main className="px-6 py-6 space-y-6">
 
         {/* OVERVIEW */}
         {tab === 'overview' && stats && (
@@ -300,31 +491,42 @@ const DomAdminDashboard = () => {
             </div>
 
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-              <div className="flex items-center justify-between mb-5">
+              <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 bg-[#E8FFF5] rounded-xl"><TrendingUp className="h-5 w-5 text-[#065F36]" /></div>
+                  <div className="p-2 bg-gradient-to-br from-[#065F36] to-[#00A651] rounded-xl shadow-sm">
+                    <TrendingUp className="h-5 w-5 text-white" />
+                  </div>
                   <div>
                     <h3 className="font-bold text-gray-800">Lead Pipeline</h3>
-                    <p className="text-xs text-gray-400">How leads progress through each stage</p>
+                    <p className="text-xs text-gray-400">Conversion funnel — how leads move through each stage</p>
                   </div>
                 </div>
-                <button onClick={fetchStats} className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-[#065F36] border border-gray-200 rounded-lg px-3 py-1.5">
-                  <RefreshCw className="h-4 w-4" /> Refresh
+                <button onClick={fetchStats} className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-[#065F36] border border-gray-200 rounded-xl px-3 py-1.5 hover:border-[#065F36] transition-all">
+                  <RefreshCw className="h-3.5 w-3.5" /> Refresh
                 </button>
               </div>
-              <div className="space-y-4">
-                {pipeline.map((stage) => (
-                  <div key={stage.stage} className="flex items-center gap-4">
-                    <span className="text-sm text-gray-600 w-36 flex-shrink-0 font-medium">{stage.stage}</span>
-                    <div className="flex-1 bg-gray-100 rounded-full h-7 overflow-hidden">
-                      <div className="h-7 bg-gradient-to-r from-[#065F36] to-[#00A651] rounded-full flex items-center justify-end pr-3 transition-all duration-700"
-                        style={{ width: `${Math.max((stage.count / maxPipeline) * 100, 3)}%` }}>
-                        <span className="text-white text-xs font-bold">{stage.count}</span>
+              <div className="space-y-5">
+                {pipeline.map((stage, idx) => {
+                  const pct = Math.max((stage.count / maxPipeline) * 100, 3);
+                  const colors = ['from-blue-500 to-blue-600', 'from-amber-400 to-orange-500', 'from-[#065F36] to-[#00A651]', 'from-violet-500 to-purple-600'];
+                  return (
+                    <div key={stage.stage}>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-sm font-semibold text-gray-700">{stage.stage}</span>
+                        <span className="text-sm font-black text-gray-800">{stage.count.toLocaleString()}</span>
                       </div>
+                      <div className="relative h-3 bg-gray-100 rounded-full overflow-hidden">
+                        <div className={`absolute inset-y-0 left-0 bg-gradient-to-r ${colors[idx % colors.length]} rounded-full transition-all duration-1000`}
+                          style={{ width: `${pct}%` }} />
+                      </div>
+                      {idx < pipeline.length - 1 && stage.count > 0 && pipeline[idx + 1]?.count > 0 && (
+                        <p className="text-xs text-gray-400 mt-1">
+                          {((pipeline[idx + 1].count / stage.count) * 100).toFixed(0)}% proceed to next stage
+                        </p>
+                      )}
                     </div>
-                    <span className="text-sm font-bold text-gray-700 w-8 text-right">{stage.count}</span>
-                  </div>
-                ))}
+                  );
+                })}
                 {pipeline.length === 0 && <Empty label="No pipeline data yet." />}
               </div>
             </div>
@@ -357,6 +559,34 @@ const DomAdminDashboard = () => {
                 <option value="completed">Completed</option>
                 <option value="rejected">Rejected</option>
               </select>
+              <select value={productTypeFilter}
+                onChange={(e) => { setProductTypeFilter(e.target.value); productTypeRef.current = e.target.value; }}
+                className="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white text-gray-700">
+                <option value="">All Services</option>
+                <optgroup label="─ Loans ─">
+                  <option value="personal_loan">Personal Loan</option>
+                  <option value="home_loan">Home Loan</option>
+                  <option value="car_loan">Car Loan</option>
+                  <option value="business_loan">Business Loan</option>
+                  <option value="loan_against_property">Loan Against Property</option>
+                  <option value="education_loan">Education Loan</option>
+                  <option value="gold_loan">Gold Loan</option>
+                </optgroup>
+                <optgroup label="─ Cards ─">
+                  <option value="credit_card">Credit Card</option>
+                </optgroup>
+                <optgroup label="─ Insurance ─">
+                  <option value="health_insurance">Health Insurance</option>
+                  <option value="life_insurance">Life Insurance</option>
+                  <option value="motor_insurance">Motor Insurance</option>
+                  <option value="travel_insurance">Travel Insurance</option>
+                </optgroup>
+                <optgroup label="─ Investments ─">
+                  <option value="mutual_fund">Mutual Fund</option>
+                  <option value="sip">SIP</option>
+                  <option value="demat">Demat Account</option>
+                </optgroup>
+              </select>
               <button onClick={() => fetchLeads(1)}
                 className="flex items-center gap-2 text-sm bg-[#065F36] text-white px-4 py-2 rounded-xl hover:bg-[#054A2E] font-semibold">
                 <Search className="h-4 w-4" /> Search
@@ -364,45 +594,104 @@ const DomAdminDashboard = () => {
             </div>
 
             {leadsLoading ? <Spinner /> : leads.length === 0 ? <Empty label="No website leads found." /> : (
-              <div className="overflow-x-auto">
+              <>
+                {/* Bulk action bar */}
+                {webSelectedIds.size > 0 && (
+                  <div className="flex items-center justify-between px-6 py-3 bg-teal-600 text-white border-b border-teal-700">
+                    <span className="text-sm font-bold">{webSelectedIds.size} lead{webSelectedIds.size > 1 ? 's' : ''} selected</span>
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => setWebBulkModal(true)}
+                        className="flex items-center gap-2 bg-white text-teal-700 text-sm font-bold px-4 py-1.5 rounded-xl hover:bg-teal-50 transition-colors shadow-sm">
+                        <UserCheck2 className="h-4 w-4" /> Assign {webSelectedIds.size} to Agent
+                      </button>
+                      <button onClick={() => setWebSelectedIds(new Set())}
+                        className="text-xs text-white/70 hover:text-white px-2">Clear</button>
+                    </div>
+                  </div>
+                )}
+                <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="bg-gray-50 text-xs font-bold text-gray-500 uppercase tracking-wider border-b border-gray-100">
-                      <th className="pl-6 pr-3 py-3.5 text-left">Customer</th>
+                      <th className="pl-4 pr-2 py-3.5 w-10 text-center">
+                        <input type="checkbox" className="rounded border-gray-300 accent-teal-600"
+                          checked={webSelectedIds.size > 0 && leads.filter(l => l.status === 'new').every(l => webSelectedIds.has(l._id))}
+                          onChange={(e) => setWebSelectedIds(e.target.checked ? new Set(leads.filter(l => l.status === 'new').map(l => l._id)) : new Set())}
+                        />
+                      </th>
+                      <th className="pl-2 pr-3 py-3.5 text-left">Customer</th>
                       <th className="px-3 py-3.5 text-left">Mobile</th>
                       <th className="px-3 py-3.5 text-left">City</th>
-                      <th className="px-3 py-3.5 text-left">Service Needed</th>
+                      <th className="px-3 py-3.5 text-left">Service</th>
+                      <th className="px-3 py-3.5 text-left">Source</th>
                       <th className="px-3 py-3.5 text-left">Status</th>
                       <th className="px-3 py-3.5 text-left">Claimed By</th>
                       <th className="px-3 py-3.5 text-left">Received On</th>
-                      <th className="px-3 pr-6 py-3.5 text-right">Action</th>
+                      <th className="px-3 pr-6 py-3.5 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
-                    {leads.map((lead) => (
-                      <tr key={lead._id} className="hover:bg-[#E8FFF5]/60 transition-colors group">
-                        <td className="pl-6 pr-3 py-3.5 font-semibold text-gray-800">{lead.name || '—'}</td>
-                        <td className="px-3 py-3.5 font-mono text-xs text-gray-600 tracking-wide">{lead.mobile || '—'}</td>
-                        <td className="px-3 py-3.5 text-gray-500">{lead.city || '—'}</td>
-                        <td className="px-3 py-3.5">
-                          {lead.productType
-                            ? <span className="bg-[#E8FFF5] text-[#065F36] border border-[#D1FAE5] px-2 py-0.5 rounded-full text-xs font-medium capitalize">{lead.productType.replace(/_/g,' ')}</span>
-                            : <span className="text-gray-300 text-xs">—</span>}
-                        </td>
-                        <td className="px-3 py-3.5"><StatusBadge status={lead.status} /></td>
-                        <td className="px-3 py-3.5 text-gray-600 text-sm">{lead.loadedBy?.name || <span className="text-orange-500 text-xs font-medium">Unclaimed</span>}</td>
-                        <td className="px-3 py-3.5 text-gray-400 text-xs whitespace-nowrap">{fmtDate(lead.createdAt)}</td>
-                        <td className="px-3 pr-6 py-3.5 text-right">
-                          <button onClick={() => handleViewLead(lead)}
-                            className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg bg-[#065F36] text-white hover:bg-[#054A2E] font-semibold opacity-0 group-hover:opacity-100 transition-all">
-                            <Eye className="h-3.5 w-3.5" /> View
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
+                    {leads.map((lead) => {
+                      const isNew     = lead.status === 'new';
+                      const isChecked = webSelectedIds.has(lead._id);
+                      return (
+                        <tr key={lead._id}
+                          draggable={isNew}
+                          onDragStart={() => isNew && setDragItem({ id: lead._id, type: 'website', name: lead.name || lead.mobile })}
+                          onDragEnd={() => { setDragItem(null); setDropAgent(null); }}
+                          className={`transition-colors group ${isNew ? 'cursor-grab active:cursor-grabbing' : ''} ${isChecked ? 'bg-teal-50' : 'hover:bg-[#E8FFF5]/60'}`}>
+                          <td className="pl-4 pr-2 py-3.5 text-center">
+                            {isNew ? (
+                              <input type="checkbox" className="rounded border-gray-300 accent-teal-600"
+                                checked={isChecked}
+                                onChange={(e) => {
+                                  const next = new Set(webSelectedIds);
+                                  e.target.checked ? next.add(lead._id) : next.delete(lead._id);
+                                  setWebSelectedIds(next);
+                                }}
+                              />
+                            ) : <span className="block w-4 h-4" />}
+                          </td>
+                          <td className="pl-2 pr-3 py-3.5">
+                            <div className="flex items-center gap-1.5">
+                              {isNew && <span className="text-gray-300 cursor-grab text-base leading-none select-none" title="Drag to assign">⠿</span>}
+                              <span className="font-semibold text-gray-800">{lead.name || '—'}</span>
+                            </div>
+                          </td>
+                          <td className="px-3 py-3.5 font-mono text-xs text-gray-600 tracking-wide">{lead.mobile || '—'}</td>
+                          <td className="px-3 py-3.5 text-gray-500">{lead.city || '—'}</td>
+                          <td className="px-3 py-3.5">
+                            {lead.productType
+                              ? <span className="bg-[#E8FFF5] text-[#065F36] border border-[#D1FAE5] px-2 py-0.5 rounded-full text-xs font-medium capitalize">{lead.productType.replace(/_/g,' ')}</span>
+                              : <span className="text-gray-300 text-xs">—</span>}
+                          </td>
+                          <td className="px-3 py-3.5">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-teal-100 text-teal-700 border border-teal-200">🌐 Website</span>
+                          </td>
+                          <td className="px-3 py-3.5"><StatusBadge status={lead.status} /></td>
+                          <td className="px-3 py-3.5 text-gray-600 text-sm">{lead.loadedBy?.name || <span className="text-orange-500 text-xs font-medium">Unclaimed</span>}</td>
+                          <td className="px-3 py-3.5 text-gray-400 text-xs whitespace-nowrap">{fmtDate(lead.createdAt)}</td>
+                          <td className="px-3 pr-6 py-3.5 text-right">
+                            <div className="flex items-center justify-end gap-1.5 opacity-0 group-hover:opacity-100 transition-all">
+                              <button onClick={() => handleViewLead(lead)}
+                                className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg bg-[#065F36] text-white hover:bg-[#054A2E] font-semibold">
+                                <Eye className="h-3.5 w-3.5" /> View
+                              </button>
+                              {isNew && (
+                                <button onClick={() => setAssignLeadModal(lead)}
+                                  className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg bg-teal-600 text-white hover:bg-teal-700 font-semibold">
+                                  <UserCheck2 className="h-3.5 w-3.5" /> Assign
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
+              </>
             )}
             <Pagination total={leadsTotal} page={leadsPage} perPage={30} count={leads.length}
               onPrev={() => fetchLeads(leadsPage - 1)} onNext={() => fetchLeads(leadsPage + 1)} />
@@ -473,14 +762,18 @@ const DomAdminDashboard = () => {
                 className="flex items-center gap-2 text-sm bg-[#065F36] text-white px-4 py-2 rounded-xl hover:bg-[#054A2E] font-semibold">
                 <Search className="h-4 w-4" /> Search
               </button>
-              <button onClick={handleExportExcel}
-                className="flex items-center gap-2 text-sm bg-white border border-[#D1FAE5] text-[#065F36] px-4 py-2 rounded-xl hover:bg-[#E8FFF5] font-semibold transition-colors">
-                <FileDown className="h-4 w-4" /> Export Excel
-              </button>
-              <button onClick={handleExportWithDocs}
-                className="flex items-center gap-2 text-sm bg-white border border-blue-200 text-blue-700 px-4 py-2 rounded-xl hover:bg-blue-50 font-semibold transition-colors">
-                <Download className="h-4 w-4" /> Export with Docs
-              </button>
+              {user.role === 'dom_superadmin' && (
+                <>
+                  <button onClick={handleExportExcel}
+                    className="flex items-center gap-2 text-sm bg-white border border-[#D1FAE5] text-[#065F36] px-4 py-2 rounded-xl hover:bg-[#E8FFF5] font-semibold transition-colors">
+                    <FileDown className="h-4 w-4" /> Export Excel
+                  </button>
+                  <button onClick={handleExportWithDocs}
+                    className="flex items-center gap-2 text-sm bg-white border border-blue-200 text-blue-700 px-4 py-2 rounded-xl hover:bg-blue-50 font-semibold transition-colors">
+                    <Download className="h-4 w-4" /> Export with Docs
+                  </button>
+                </>
+              )}
             </div>
 
             {domLeadsLoading ? <Spinner /> : domLeads.length === 0 ? <Empty label="No worked leads found. Try adjusting the filters." /> : (
@@ -493,6 +786,7 @@ const DomAdminDashboard = () => {
                       <th className="px-3 py-3.5 text-left">Mobile</th>
                       <th className="px-3 py-3.5 text-left">City</th>
                       <th className="px-3 py-3.5 text-left">Service</th>
+                      <th className="px-3 py-3.5 text-left">Source</th>
                       <th className="px-3 py-3.5 text-left">Handled By</th>
                       <th className="px-3 py-3.5 text-left">Call Outcome</th>
                       <th className="px-3 py-3.5 text-left">Status</th>
@@ -503,6 +797,18 @@ const DomAdminDashboard = () => {
                   <tbody className="divide-y divide-gray-50">
                     {domLeads.map((dl) => {
                       const outcome = OUTCOME_META[dl.callOutcome];
+                      const statusNote =
+                        dl.status === 'pending' && dl.callOutcome === 'interested'    ? 'Docs Pending' :
+                        dl.status === 'pending' && dl.callOutcome === 'callback'      ? 'Callback Due' :
+                        dl.status === 'pending' && dl.callOutcome === 'not_reachable' ? 'Try Again' :
+                        dl.status === 'pending' && !dl.callOutcome                   ? 'Not Called' :
+                        null;
+                      // Determine lead source
+                      const leadSource =
+                        dl.sourceWebsiteLead  ? { label: 'Website',  cls: 'bg-teal-100 text-teal-700 border-teal-300',     emoji: '🌐' } :
+                        dl.sourceImportedLead ? { label: 'Imported',  cls: 'bg-violet-100 text-violet-700 border-violet-300', emoji: '📊' } :
+                        dl.isManual           ? { label: 'Manual',    cls: 'bg-gray-100 text-gray-600 border-gray-300',       emoji: '✍️' } :
+                                                { label: 'Unknown',   cls: 'bg-gray-100 text-gray-400 border-gray-200',       emoji: '?' };
                       return (
                         <tr key={dl._id} className="hover:bg-[#E8FFF5]/40 transition-colors group">
                           <td className="pl-6 pr-3 py-3.5"><LeadRefBadge code={dl.leadRef} /></td>
@@ -514,13 +820,25 @@ const DomAdminDashboard = () => {
                               ? <span className="bg-[#E8FFF5] text-[#065F36] border border-[#D1FAE5] px-2 py-0.5 rounded-full text-xs font-medium capitalize">{dl.productType.replace(/_/g,' ')}</span>
                               : <span className="text-gray-300 text-xs">—</span>}
                           </td>
+                          <td className="px-3 py-3.5">
+                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold border ${leadSource.cls}`}>
+                              {leadSource.emoji} {leadSource.label}
+                            </span>
+                          </td>
                           <td className="px-3 py-3.5 text-gray-700 text-sm">{dl.assignedTo?.name || '—'}</td>
                           <td className="px-3 py-3.5">
                             {outcome
                               ? <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${outcome.cls}`}>{outcome.label}</span>
                               : <span className="text-gray-300 text-xs">Not called</span>}
                           </td>
-                          <td className="px-3 py-3.5"><StatusBadge status={dl.status} /></td>
+                          <td className="px-3 py-3.5">
+                            <div className="flex flex-col gap-0.5">
+                              <StatusBadge status={dl.status} />
+                              {statusNote && dl.status === 'pending' && (
+                                <span className="text-xs text-gray-400 font-medium">{statusNote}</span>
+                              )}
+                            </div>
+                          </td>
                           <td className="px-3 py-3.5 text-gray-400 text-xs whitespace-nowrap">{fmtDate(dl.createdAt)}</td>
                           <td className="px-3 pr-6 py-3.5 text-right">
                             <div className="flex items-center justify-end gap-1.5 opacity-0 group-hover:opacity-100 transition-all">
@@ -528,10 +846,20 @@ const DomAdminDashboard = () => {
                                 className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg bg-[#065F36] text-white hover:bg-[#054A2E] font-semibold shadow-sm">
                                 <Eye className="h-3.5 w-3.5" /> View
                               </button>
-                              <button onClick={(e) => { e.stopPropagation(); handleDownloadZip(dl._id, dl.leadRef); }}
-                                className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 font-semibold shadow-sm">
-                                <Download className="h-3.5 w-3.5" />
-                              </button>
+                              {dl.status === 'pending' && dl.callOutcome === 'interested' && (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); handleLeadStatusChange(dl._id, 'completed', dl.status); }}
+                                  className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 font-semibold shadow-sm"
+                                  title="Mark as Completed — loan processed / case closed">
+                                  <CheckCircle2 className="h-3.5 w-3.5" /> Complete
+                                </button>
+                              )}
+                              {user.role === 'dom_superadmin' && (
+                                <button onClick={(e) => { e.stopPropagation(); handleDownloadZip(dl._id, dl.leadRef); }}
+                                  className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 font-semibold shadow-sm">
+                                  <Download className="h-3.5 w-3.5" />
+                                </button>
+                              )}
                             </div>
                           </td>
                         </tr>
@@ -548,72 +876,779 @@ const DomAdminDashboard = () => {
 
         {/* AGENTS */}
         {tab === 'agents' && (
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-[#E8FFF5] rounded-xl"><Users className="h-5 w-5 text-[#065F36]" /></div>
-                <div>
-                  <h2 className="font-bold text-gray-800">Agent Performance</h2>
-                  <p className="text-xs text-gray-400">Track how each agent is handling leads</p>
+          <div className="space-y-5">
+            {/* Top 3 hero cards */}
+            {!agentsLoading && agents.filter(a => a.isActive).length > 0 && (() => {
+              const sorted = [...agents.filter(a => a.isActive)].sort((a, b) => getAgentTier(b).score - getAgentTier(a).score);
+              const top3 = sorted.slice(0, 3);
+              return (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  {top3.map((a, i) => {
+                    const tier = getAgentTier(a);
+                    const conv = a.leadsLoaded > 0 ? Math.round((a.leadsCompleted / a.leadsLoaded) * 100) : 0;
+                    const podium = ['🥇', '🥈', '🥉'][i];
+                    const gradients = [
+                      'from-amber-400 via-orange-400 to-amber-500',
+                      'from-slate-400 via-gray-400 to-slate-500',
+                      'from-orange-600 via-orange-700 to-amber-700',
+                    ];
+                    return (
+                      <div key={a._id} className={`relative overflow-hidden rounded-2xl p-5 bg-gradient-to-br ${gradients[i]} text-white shadow-xl`}>
+                        <div className="absolute top-3 right-3 text-3xl opacity-80">{podium}</div>
+                        <div className="flex items-center gap-3 mb-4">
+                          <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center font-black text-xl shadow-inner">
+                            {a.name?.charAt(0)?.toUpperCase()}
+                          </div>
+                          <div>
+                            <p className="font-black text-base leading-tight">{a.name}</p>
+                            <p className="text-white/70 text-xs">{tier.emoji} {tier.label}</p>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2 text-center mb-3">
+                          <div className="bg-white/15 rounded-xl py-2">
+                            <p className="text-xl font-black">{a.leadsLoaded}</p>
+                            <p className="text-white/70 text-xs">Loaded</p>
+                          </div>
+                          <div className="bg-white/15 rounded-xl py-2">
+                            <p className="text-xl font-black">{a.leadsCompleted}</p>
+                            <p className="text-white/70 text-xs">Done</p>
+                          </div>
+                          <div className="bg-white/15 rounded-xl py-2">
+                            <p className="text-xl font-black">{a.domLeadsCreated}</p>
+                            <p className="text-white/70 text-xs">Worked</p>
+                          </div>
+                        </div>
+                        {/* Conversion bar */}
+                        <div className="space-y-1">
+                          <div className="flex justify-between text-xs text-white/70">
+                            <span>Conversion Rate</span>
+                            <span className="font-bold text-white">{conv}%</span>
+                          </div>
+                          <div className="h-2 bg-white/20 rounded-full overflow-hidden">
+                            <div className="h-full bg-white rounded-full transition-all duration-1000"
+                              style={{ width: `${conv}%` }} />
+                          </div>
+                        </div>
+                        <div className="absolute -bottom-6 -right-6 w-24 h-24 rounded-full bg-white/10" />
+                      </div>
+                    );
+                  })}
                 </div>
+              );
+            })()}
+
+            {/* Full agent list */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+              <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-gradient-to-br from-teal-500 to-emerald-600 rounded-xl shadow-sm">
+                    <Users className="h-5 w-5 text-white" />
+                  </div>
+                  <div>
+                    <h2 className="font-bold text-gray-800">All Agents — Performance Ranking</h2>
+                    <p className="text-xs text-gray-400">Sorted by performance score · Assign leads to top performers for best results</p>
+                  </div>
+                </div>
+                <button onClick={fetchAgents}
+                  className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-[#065F36] border border-gray-200 rounded-xl px-3 py-2 hover:border-[#065F36] transition-all">
+                  <RefreshCw className="h-4 w-4" /> Refresh
+                </button>
               </div>
-              <button onClick={fetchAgents}
-                className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-[#065F36] border border-gray-200 rounded-xl px-3 py-2">
-                <RefreshCw className="h-4 w-4" /> Refresh
-              </button>
+
+              {agentsLoading ? <Spinner /> : agents.length === 0 ? <Empty label="No agents found." /> : (
+                <div className="divide-y divide-gray-50">
+                  {[...agents].sort((a, b) => getAgentTier(b).score - getAgentTier(a).score).map((a, idx) => {
+                    const tier = getAgentTier(a);
+                    const conv = a.leadsLoaded > 0 ? Math.round((a.leadsCompleted / a.leadsLoaded) * 100) : 0;
+                    const tierStyle = TIER_STYLES[tier.color] || TIER_STYLES.gray;
+                    return (
+                      <div key={a._id} className={`px-6 py-4 hover:bg-gray-50/50 transition-colors border-l-4 ${
+                        tier.tier === 5 ? 'border-l-amber-400' :
+                        tier.tier === 4 ? 'border-l-violet-400' :
+                        tier.tier === 3 ? 'border-l-emerald-400' :
+                        tier.tier === 2 ? 'border-l-teal-300' : 'border-l-gray-200'
+                      }`}>
+                        <div className="flex items-center gap-4">
+                          {/* Rank + Avatar */}
+                          <div className="flex items-center gap-3 flex-shrink-0">
+                            <span className="text-xs font-bold text-gray-300 w-5 text-center">#{idx + 1}</span>
+                            <div className="relative">
+                              <div className={`w-11 h-11 rounded-2xl flex items-center justify-center text-white font-black text-base shadow-md ${
+                                tier.tier === 5 ? 'bg-gradient-to-br from-amber-400 to-orange-500' :
+                                tier.tier === 4 ? 'bg-gradient-to-br from-violet-500 to-purple-600' :
+                                tier.tier === 3 ? 'bg-gradient-to-br from-emerald-500 to-teal-600' :
+                                tier.tier === 1 ? 'bg-gradient-to-br from-sky-400 to-blue-500' :
+                                'bg-gradient-to-br from-[#065F36] to-[#00A651]'
+                              }`}>
+                                {a.name?.charAt(0)?.toUpperCase()}
+                              </div>
+                              {/* Online indicator — now shows agent status */}
+                              <span className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-white ${
+                                !a.isActive ? 'bg-gray-300' :
+                                a.agentStatus === 'break'       ? 'bg-amber-400' :
+                                a.agentStatus === 'unavailable' ? 'bg-red-500' :
+                                                                   'bg-emerald-500'
+                              } ${a.isActive && a.agentStatus === 'available' ? 'animate-pulse' : ''}`} />
+                            </div>
+                          </div>
+
+                          {/* Info + performance */}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-bold text-gray-800">{a.name}</span>
+                              {/* Tier badge */}
+                              <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold border ${tierStyle}`}>
+                                {tier.emoji} {tier.label}
+                              </span>
+                              {/* Availability status badge */}
+                              {a.isActive && (
+                                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold border ${
+                                  a.agentStatus === 'break'       ? 'bg-amber-100 text-amber-700 border-amber-300' :
+                                  a.agentStatus === 'unavailable' ? 'bg-red-100 text-red-700 border-red-300' :
+                                                                     'bg-emerald-100 text-emerald-700 border-emerald-300'
+                                }`}>
+                                  <span className={`w-1.5 h-1.5 rounded-full ${
+                                    a.agentStatus === 'break'       ? 'bg-amber-400 animate-pulse' :
+                                    a.agentStatus === 'unavailable' ? 'bg-red-500' :
+                                                                       'bg-emerald-500 animate-pulse'
+                                  }`} />
+                                  {a.agentStatus === 'break' ? '☕ On Break' : a.agentStatus === 'unavailable' ? '🔴 Unavailable' : '✅ Available'}
+                                </span>
+                              )}
+                              {tier.tier === 5 && (
+                                <span className="text-xs font-bold text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full animate-pulse">
+                                  Recommended ✨
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-gray-400 mt-0.5">{a.email} · Last login {fmtShort(a.lastLogin)}</p>
+                            {/* Conversion bar */}
+                            <div className="flex items-center gap-2 mt-2">
+                              <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                                <div className={`h-full rounded-full transition-all duration-1000 ${
+                                  conv >= 65 ? 'bg-gradient-to-r from-amber-400 to-orange-500' :
+                                  conv >= 45 ? 'bg-gradient-to-r from-violet-500 to-purple-500' :
+                                  conv >= 25 ? 'bg-gradient-to-r from-emerald-500 to-teal-500' :
+                                  'bg-gradient-to-r from-gray-300 to-gray-400'
+                                }`} style={{ width: `${conv}%` }} />
+                              </div>
+                              <span className={`text-xs font-black w-9 text-right ${
+                                conv >= 65 ? 'text-amber-600' : conv >= 45 ? 'text-violet-600' : conv >= 25 ? 'text-emerald-600' : 'text-gray-400'
+                              }`}>{conv}%</span>
+                              <span className="text-xs text-gray-400">conversion</span>
+                            </div>
+                          </div>
+
+                          {/* Stats row */}
+                          <div className="hidden sm:flex items-center gap-3 flex-shrink-0">
+                            <div className="text-center bg-blue-50 border border-blue-100 rounded-xl px-4 py-2">
+                              <p className="text-xl font-black text-blue-600">{a.leadsLoaded}</p>
+                              <p className="text-xs text-gray-400">Loaded</p>
+                            </div>
+                            <div className="text-center bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-2">
+                              <p className="text-xl font-black text-emerald-600">{a.leadsCompleted}</p>
+                              <p className="text-xs text-gray-400">Done</p>
+                            </div>
+                            <div className={`text-center rounded-xl px-4 py-2 ${
+                              tier.tier === 5 ? 'bg-amber-50 border border-amber-100' : 'bg-gray-50 border border-gray-100'
+                            }`}>
+                              <p className={`text-xl font-black ${tier.tier === 5 ? 'text-amber-600' : 'text-gray-700'}`}>
+                                {a.domLeadsCreated}
+                              </p>
+                              <p className="text-xs text-gray-400">Worked</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* LEAD POOL */}
+        {tab === 'lead_pool' && (
+          <div className="space-y-5">
+            {/* Pool Stats */}
+            <div className="grid grid-cols-3 gap-4">
+              <div className="relative overflow-hidden bg-gradient-to-br from-[#065F36] to-[#00874A] rounded-2xl p-5 text-white shadow-lg shadow-green-200">
+                <p className="text-sm font-semibold text-white/70">Total in Pool</p>
+                <p className="text-4xl font-black mt-1">{poolStats?.stats?.total ?? '—'}</p>
+                <div className="absolute -right-4 -bottom-4 w-20 h-20 rounded-full bg-white/10" />
+              </div>
+              <div className="relative overflow-hidden bg-gradient-to-br from-amber-400 to-orange-500 rounded-2xl p-5 text-white shadow-lg shadow-amber-200">
+                <p className="text-sm font-semibold text-white/70">Available to Assign</p>
+                <p className="text-4xl font-black mt-1">{poolStats?.stats?.available ?? '—'}</p>
+                <div className="absolute -right-4 -bottom-4 w-20 h-20 rounded-full bg-white/10" />
+              </div>
+              <div className="relative overflow-hidden bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl p-5 text-white shadow-lg shadow-emerald-200">
+                <p className="text-sm font-semibold text-white/70">Assigned to Agents</p>
+                <p className="text-4xl font-black mt-1">{poolStats?.stats?.assigned ?? '—'}</p>
+                <div className="absolute -right-4 -bottom-4 w-20 h-20 rounded-full bg-white/10" />
+              </div>
             </div>
 
-            {agentsLoading ? <Spinner /> : agents.length === 0 ? <Empty label="No agents found." /> : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-gray-50 text-xs font-bold text-gray-500 uppercase tracking-wider border-b border-gray-100">
-                      <th className="pl-6 pr-3 py-3.5 text-left">Agent</th>
-                      <th className="px-3 py-3.5 text-left">Email</th>
-                      <th className="px-3 py-3.5 text-center">Leads Loaded</th>
-                      <th className="px-3 py-3.5 text-center">Completed</th>
-                      <th className="px-3 py-3.5 text-center">Worked Leads</th>
-                      <th className="px-3 py-3.5 text-left">Last Login</th>
-                      <th className="px-3 pr-6 py-3.5 text-left">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50">
-                    {agents.map((a) => (
-                      <tr key={a._id} className="hover:bg-[#E8FFF5]/40 transition-colors">
-                        <td className="pl-6 pr-3 py-4">
-                          <div className="flex items-center gap-2.5">
-                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#065F36] to-[#00A651] flex items-center justify-center text-white font-bold text-xs flex-shrink-0">
-                              {a.name?.charAt(0)?.toUpperCase()}
-                            </div>
-                            <span className="font-semibold text-gray-800">{a.name}</span>
-                          </div>
-                        </td>
-                        <td className="px-3 py-4 text-gray-500 text-xs">{a.email}</td>
-                        <td className="px-3 py-4 text-center"><span className="font-bold text-blue-700 text-base">{a.leadsLoaded}</span></td>
-                        <td className="px-3 py-4 text-center"><span className="font-bold text-emerald-700 text-base">{a.leadsCompleted}</span></td>
-                        <td className="px-3 py-4 text-center">
-                          <span className="inline-flex items-center gap-1 font-bold text-[#065F36] text-base">
-                            <Award className="h-3.5 w-3.5" />{a.domLeadsCreated}
-                          </span>
-                        </td>
-                        <td className="px-3 py-4 text-gray-400 text-xs">{fmtShort(a.lastLogin)}</td>
-                        <td className="px-3 pr-6 py-4">
-                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${
-                            a.isActive ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' : 'bg-red-100 text-red-700 border border-red-200'
-                          }`}>
-                            <span className={`w-1.5 h-1.5 rounded-full ${a.isActive ? 'bg-emerald-500' : 'bg-red-400'}`} />
-                            {a.isActive ? 'Active' : 'Inactive'}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+            {/* Assign to Agents */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+              <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-3">
+                <div className="p-2 bg-gradient-to-br from-[#065F36] to-[#00874A] rounded-xl shadow-sm">
+                  <Send className="h-5 w-5 text-white" />
+                </div>
+                <div>
+                  <h2 className="font-bold text-gray-800">Assign Leads to Agents</h2>
+                  <p className="text-xs text-gray-400">Based on agent performance — enter the number of leads to assign</p>
+                </div>
               </div>
-            )}
+              {agentsLoading ? <Spinner /> : agents.filter(a => a.isActive).length === 0 ? (
+                <Empty label="No active agents available." />
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-gray-50 text-xs font-bold text-gray-500 uppercase tracking-wider border-b border-gray-100">
+                        <th className="pl-6 pr-3 py-3.5 text-left">Agent &amp; Tier</th>
+                        <th className="px-3 py-3.5 text-center">Conv.</th>
+                        <th className="px-3 py-3.5 text-center">Loaded</th>
+                        <th className="px-3 py-3.5 text-center">Done</th>
+                        <th className="px-3 py-3.5 text-center">Pool</th>
+                        <th className="px-3 py-3.5 text-center">Assign #</th>
+                        <th className="px-3 pr-6 py-3.5 text-right">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {[...agents.filter(a => a.isActive)].sort((a, b) => getAgentTier(b).score - getAgentTier(a).score).map((a) => {
+                        const tier     = getAgentTier(a);
+                        const tierCls  = TIER_STYLES[tier.color] || TIER_STYLES.gray;
+                        const conv     = a.leadsLoaded > 0 ? Math.round((a.leadsCompleted / a.leadsLoaded) * 100) : 0;
+                        const agentPoolCount = poolStats?.agentBreakdown?.find(
+                          b => b.agent?._id === a._id || b.agent === a._id
+                        )?.count || 0;
+                        const isDropTarget = dragItem && dropAgent === a._id;
+                        return (
+                          <tr key={a._id}
+                            onDragOver={(e) => { if (dragItem) { e.preventDefault(); setDropAgent(a._id); } }}
+                            onDragLeave={() => setDropAgent(null)}
+                            onDrop={() => handleDrop(a._id, a.name)}
+                            className={`transition-all ${isDropTarget ? 'bg-[#E8FFF5] ring-2 ring-inset ring-[#065F36]' : 'hover:bg-gray-50/70'}`}>
+                            <td className="pl-6 pr-3 py-4">
+                              <div className="flex items-center gap-3">
+                                <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-white font-black text-sm shadow-sm flex-shrink-0 ${isDropTarget ? 'scale-110 shadow-md' : ''} transition-transform ${
+                                  tier.tier === 5 ? 'bg-gradient-to-br from-amber-400 to-orange-500' :
+                                  tier.tier === 4 ? 'bg-gradient-to-br from-violet-500 to-purple-600' :
+                                  tier.tier === 3 ? 'bg-gradient-to-br from-emerald-500 to-teal-600' :
+                                  'bg-gradient-to-br from-[#065F36] to-[#00A651]'
+                                }`}>
+                                  {a.name?.charAt(0)?.toUpperCase()}
+                                </div>
+                                <div>
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="font-semibold text-gray-800">{a.name}</span>
+                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold border ${tierCls}`}>
+                                      {tier.emoji} {tier.label}
+                                    </span>
+                                    {tier.tier === 5 && <span className="text-xs text-amber-600 font-bold">✨ Recommended</span>}
+                                  </div>
+                                  {isDropTarget
+                                    ? <p className="text-xs text-[#065F36] font-bold animate-pulse">Drop to assign!</p>
+                                    : <p className="text-xs text-gray-400">{a.email}</p>
+                                  }
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-3 py-4 text-center">
+                              <span className={`text-sm font-black ${conv >= 65 ? 'text-amber-600' : conv >= 45 ? 'text-violet-600' : conv >= 25 ? 'text-emerald-600' : 'text-gray-400'}`}>{conv}%</span>
+                            </td>
+                            <td className="px-3 py-4 text-center"><span className="font-bold text-blue-700">{a.leadsLoaded}</span></td>
+                            <td className="px-3 py-4 text-center"><span className="font-bold text-emerald-700">{a.leadsCompleted}</span></td>
+                            <td className="px-3 py-4 text-center">
+                              <span className="inline-flex items-center gap-1 font-bold text-[#065F36]">
+                                <Database className="h-3.5 w-3.5" />{agentPoolCount}
+                              </span>
+                            </td>
+                            <td className="px-3 py-4 text-center">
+                              <input
+                                type="number" min="1" max="500"
+                                value={assignCounts[a._id] || ''}
+                                onChange={(e) => setAssignCounts(prev => ({ ...prev, [a._id]: e.target.value }))}
+                                placeholder="e.g. 25"
+                                className="w-24 text-center text-sm border border-gray-200 rounded-xl px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#065F36]/30 focus:border-[#065F36]"
+                              />
+                            </td>
+                            <td className="px-3 pr-6 py-4 text-right">
+                              <button
+                                onClick={() => handleAssignLeads(a._id, a.name)}
+                                disabled={assigning === a._id || !assignCounts[a._id]}
+                                className="inline-flex items-center gap-1.5 text-xs px-4 py-2 rounded-xl bg-[#065F36] text-white hover:bg-[#054A2E] font-semibold shadow-sm disabled:opacity-40 transition-all">
+                                {assigning === a._id ? <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                                Assign
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* Shared Leads Table */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+              <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-[#E8FFF5] rounded-xl"><Database className="h-5 w-5 text-[#065F36]" /></div>
+                  <div>
+                    <h2 className="font-bold text-gray-800">Shared Lead Pool</h2>
+                    <p className="text-xs text-gray-400">Leads shared by Super Admin — assign them to agents above</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <select
+                    value={poolStatusFilter}
+                    onChange={(e) => { setPoolStatusFilter(e.target.value); fetchPoolLeads(1, e.target.value); }}
+                    className="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white text-gray-700">
+                    <option value="">All</option>
+                    <option value="shared">Available</option>
+                    <option value="assigned">Assigned</option>
+                  </select>
+                  <button onClick={() => fetchPoolLeads(poolPage, poolStatusFilter)}
+                    className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-[#065F36] border border-gray-200 rounded-xl px-3 py-2">
+                    <RefreshCw className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+
+              {poolLoading ? <Spinner /> : poolLeads.length === 0 ? (
+                <Empty label="No leads in pool. Ask the super admin to share a batch." />
+              ) : (
+                <>
+                  {poolSelectedIds.size > 0 && (
+                    <div className="flex items-center justify-between px-6 py-3 bg-violet-600 text-white border-b border-violet-700">
+                      <span className="text-sm font-bold">{poolSelectedIds.size} lead{poolSelectedIds.size > 1 ? 's' : ''} selected</span>
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => setPoolBulkModal(true)}
+                          className="flex items-center gap-2 bg-white text-violet-700 text-sm font-bold px-4 py-1.5 rounded-xl hover:bg-violet-50 transition-colors shadow-sm">
+                          <UserCheck2 className="h-4 w-4" /> Assign {poolSelectedIds.size} to Agent
+                        </button>
+                        <button onClick={() => setPoolSelectedIds(new Set())}
+                          className="text-xs text-white/70 hover:text-white px-2">Clear</button>
+                      </div>
+                    </div>
+                  )}
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-gray-50 text-xs font-bold text-gray-500 uppercase tracking-wider border-b border-gray-100">
+                        <th className="pl-4 pr-2 py-3.5 w-10 text-center">
+                          <input type="checkbox" className="rounded border-gray-300 accent-violet-600"
+                            checked={poolSelectedIds.size > 0 && poolLeads.filter(l => !l.assignedTo).every(l => poolSelectedIds.has(l._id))}
+                            onChange={(e) => setPoolSelectedIds(e.target.checked ? new Set(poolLeads.filter(l => !l.assignedTo).map(l => l._id)) : new Set())}
+                          />
+                        </th>
+                        <th className="pl-2 pr-3 py-3.5 text-left">Customer</th>
+                        <th className="px-3 py-3.5 text-left">Mobile</th>
+                        <th className="px-3 py-3.5 text-left">City</th>
+                        <th className="px-3 py-3.5 text-left">Product</th>
+                        <th className="px-3 py-3.5 text-left">Source</th>
+                        <th className="px-3 py-3.5 text-left">Income</th>
+                        <th className="px-3 py-3.5 text-left">Assigned To</th>
+                        <th className="px-3 py-3.5 text-left">Work Status</th>
+                        <th className="px-3 pr-6 py-3.5 text-left">Pool Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {poolLeads.map((l) => {
+                        const WS_META = {
+                          new:            { label: 'New',            cls: 'bg-orange-100 text-orange-700 border-orange-200' },
+                          in_progress:    { label: 'In Progress',    cls: 'bg-blue-100 text-blue-700 border-blue-200' },
+                          interested:     { label: 'Interested',     cls: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
+                          not_interested: { label: 'Not Interested', cls: 'bg-red-100 text-red-700 border-red-200' },
+                          closed:         { label: 'Closed',         cls: 'bg-gray-100 text-gray-600 border-gray-200' },
+                        };
+                        const wsInfo = WS_META[l.workStatus || 'new'] || WS_META.new;
+                        const isUnassigned = !l.assignedTo;
+                        const isChecked    = poolSelectedIds.has(l._id);
+                        return (
+                        <tr key={l._id}
+                          draggable={isUnassigned}
+                          onDragStart={() => isUnassigned && setDragItem({ id: l._id, type: 'pool', name: l.name || l.mobile })}
+                          onDragEnd={() => { setDragItem(null); setDropAgent(null); }}
+                          className={`transition-colors ${isUnassigned ? 'cursor-grab active:cursor-grabbing' : ''} ${isChecked ? 'bg-violet-50' : 'hover:bg-[#E8FFF5]/40'}`}>
+                          <td className="pl-4 pr-2 py-3.5 text-center">
+                            {isUnassigned ? (
+                              <input type="checkbox" className="rounded border-gray-300 accent-violet-600"
+                                checked={isChecked}
+                                onChange={(e) => {
+                                  const next = new Set(poolSelectedIds);
+                                  e.target.checked ? next.add(l._id) : next.delete(l._id);
+                                  setPoolSelectedIds(next);
+                                }}
+                              />
+                            ) : <span className="block w-4 h-4" />}
+                          </td>
+                          <td className="pl-2 pr-3 py-3.5">
+                            <div className="flex items-center gap-1.5">
+                              {isUnassigned && <span className="text-gray-300 text-base leading-none select-none" title="Drag to assign">⠿</span>}
+                              <span className="font-semibold text-gray-800">{l.name || '—'}</span>
+                            </div>
+                          </td>
+                          <td className="px-3 py-3.5 font-mono text-xs text-gray-600 tracking-wide">{l.mobile || '—'}</td>
+                          <td className="px-3 py-3.5 text-gray-500">{l.city || '—'}</td>
+                          <td className="px-3 py-3.5">
+                            {l.productType
+                              ? <span className="bg-[#E8FFF5] text-[#065F36] border border-[#D1FAE5] px-2 py-0.5 rounded-full text-xs font-medium capitalize">{l.productType.replace(/_/g,' ')}</span>
+                              : <span className="text-gray-300 text-xs">—</span>}
+                          </td>
+                          <td className="px-3 py-3.5">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-violet-100 text-violet-700 border border-violet-200">
+                              📊 Import
+                            </span>
+                          </td>
+                          <td className="px-3 py-3.5 text-gray-500 text-xs">{l.monthlyIncome || '—'}</td>
+                          <td className="px-3 py-3.5 text-gray-700 text-sm">{l.assignedTo?.name || <span className="text-amber-500 text-xs font-medium">Unassigned</span>}</td>
+                          <td className="px-3 py-3.5">
+                            <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold border ${wsInfo.cls}`}>
+                              {wsInfo.label}
+                            </span>
+                          </td>
+                          <td className="px-3 pr-6 py-3.5">
+                            <div className="flex items-center gap-2">
+                              <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold border ${
+                                l.status === 'assigned'
+                                  ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
+                                  : 'bg-amber-100 text-amber-700 border-amber-200'
+                              }`}>
+                                {l.status === 'assigned' ? 'Assigned' : 'Available'}
+                              </span>
+                              {/* Reassign button — only for already-assigned leads */}
+                              {l.status === 'assigned' && (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); setReassignModal(l); }}
+                                  className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg bg-orange-100 text-orange-700 border border-orange-200 hover:bg-orange-200 font-semibold transition-colors"
+                                  title="Reassign to a different agent">
+                                  <RefreshCw className="h-3 w-3" /> Reassign
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                </>
+              )}
+              <Pagination
+                total={poolLeadsTotal} page={poolPage} perPage={50} count={poolLeads.length}
+                onPrev={() => fetchPoolLeads(poolPage - 1, poolStatusFilter)}
+                onNext={() => fetchPoolLeads(poolPage + 1, poolStatusFilter)}
+              />
+            </div>
           </div>
         )}
       </main>
+
+      {/* ── Floating drag-drop agent panel ──────────────────────────────── */}
+      {dragItem && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] pointer-events-none w-full max-w-2xl px-4">
+          <div className="bg-gray-900/95 backdrop-blur-md rounded-2xl p-4 shadow-2xl border border-white/10 pointer-events-auto">
+            <p className="text-xs text-white/60 font-semibold uppercase tracking-wide text-center mb-3">
+              Drop onto an agent to assign <strong className="text-white">"{dragItem.name}"</strong>
+            </p>
+            <div className="flex flex-wrap justify-center gap-2">
+              {agents.filter(a => a.isActive).map((a) => (
+                <div key={a._id}
+                  onDragOver={(e) => { e.preventDefault(); setDropAgent(a._id); }}
+                  onDragLeave={() => setDropAgent(null)}
+                  onDrop={() => handleDrop(a._id, a.name)}
+                  className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 transition-all cursor-pointer ${
+                    dropAgent === a._id
+                      ? 'bg-[#065F36] border-[#00A651] text-white scale-105 shadow-lg shadow-green-500/30'
+                      : 'bg-white/10 border-white/20 text-white hover:bg-white/20'
+                  }`}>
+                  <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#065F36] to-[#00A651] flex items-center justify-center text-white font-bold text-xs">
+                    {a.name?.charAt(0)?.toUpperCase()}
+                  </div>
+                  <span className="text-sm font-semibold">{a.name}</span>
+                  {dropAgent === a._id && <span className="text-xs bg-white/20 px-1.5 py-0.5 rounded-full">Drop here</span>}
+                </div>
+              ))}
+            </div>
+            <button onMouseDown={() => setDragItem(null)}
+              className="mt-3 block mx-auto text-xs text-white/40 hover:text-white/70 transition-colors">
+              Cancel (Esc)
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Website Leads Bulk Assign Modal ──────────────────────────────── */}
+      {webBulkModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+            <div className="flex items-center justify-between px-6 py-4 bg-gradient-to-r from-teal-600 to-teal-700">
+              <div className="flex items-center gap-2">
+                <UserCheck2 className="h-5 w-5 text-white" />
+                <h3 className="text-white font-bold">Bulk Assign {webSelectedIds.size} Website Leads</h3>
+              </div>
+              <button onClick={() => setWebBulkModal(false)} className="text-white/70 hover:text-white"><X className="h-5 w-5" /></button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="bg-teal-50 border border-teal-200 rounded-xl px-4 py-3 flex items-center gap-3">
+                <span className="text-2xl font-black text-teal-700">{webSelectedIds.size}</span>
+                <div>
+                  <p className="text-sm font-semibold text-teal-800">🌐 Website leads selected</p>
+                  <p className="text-xs text-teal-600">Pick an agent to assign all of them at once</p>
+                </div>
+              </div>
+              <div className="space-y-2 max-h-56 overflow-y-auto">
+                {agents.filter(a => a.isActive).map((a) => (
+                  <button key={a._id} onClick={() => handleWebBulkAssign(a._id, a.name)}
+                    disabled={assigningWebLead}
+                    className="w-full flex items-center gap-3 p-3 rounded-xl border border-gray-100 hover:bg-teal-50 hover:border-teal-200 transition-colors text-left disabled:opacity-50">
+                    <div className="w-9 h-9 rounded-full bg-gradient-to-br from-teal-500 to-emerald-600 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
+                      {a.name?.charAt(0)?.toUpperCase()}
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-semibold text-gray-800 text-sm">{a.name}</p>
+                      <p className="text-xs text-gray-400">{a.leadsLoaded || 0} loaded · {a.leadsCompleted || 0} done</p>
+                    </div>
+                    {assigningWebLead && <span className="w-4 h-4 border-2 border-teal-400 border-t-teal-700 rounded-full animate-spin" />}
+                  </button>
+                ))}
+              </div>
+              <button onClick={() => setWebBulkModal(false)}
+                className="w-full py-2.5 text-sm border border-gray-200 rounded-xl hover:bg-gray-50 font-medium text-gray-600">Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Pool Leads Bulk Assign Modal ─────────────────────────────────── */}
+      {poolBulkModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+            <div className="flex items-center justify-between px-6 py-4 bg-gradient-to-r from-violet-600 to-purple-700">
+              <div className="flex items-center gap-2">
+                <UserCheck2 className="h-5 w-5 text-white" />
+                <h3 className="text-white font-bold">Bulk Assign {poolSelectedIds.size} Import Leads</h3>
+              </div>
+              <button onClick={() => setPoolBulkModal(false)} className="text-white/70 hover:text-white"><X className="h-5 w-5" /></button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="bg-violet-50 border border-violet-200 rounded-xl px-4 py-3 flex items-center gap-3">
+                <span className="text-2xl font-black text-violet-700">{poolSelectedIds.size}</span>
+                <div>
+                  <p className="text-sm font-semibold text-violet-800">📊 Imported leads selected</p>
+                  <p className="text-xs text-violet-600">Pick an agent to assign all of them at once</p>
+                </div>
+              </div>
+              <div className="space-y-2 max-h-56 overflow-y-auto">
+                {agents.filter(a => a.isActive).map((a) => (
+                  <button key={a._id} onClick={() => handlePoolBulkAssign(a._id, a.name)}
+                    disabled={!!assigning}
+                    className="w-full flex items-center gap-3 p-3 rounded-xl border border-gray-100 hover:bg-violet-50 hover:border-violet-200 transition-colors text-left disabled:opacity-50">
+                    <div className="w-9 h-9 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
+                      {a.name?.charAt(0)?.toUpperCase()}
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-semibold text-gray-800 text-sm">{a.name}</p>
+                      <p className="text-xs text-gray-400">{a.leadsLoaded || 0} loaded · {a.leadsCompleted || 0} done</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+              <button onClick={() => setPoolBulkModal(false)}
+                className="w-full py-2.5 text-sm border border-gray-200 rounded-xl hover:bg-gray-50 font-medium text-gray-600">Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Reassign Imported Lead Modal ─────────────────────────────────── */}
+      {reassignModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+            <div className="flex items-center justify-between px-6 py-4 bg-gradient-to-r from-orange-500 to-orange-600">
+              <div className="flex items-center gap-2">
+                <RefreshCw className="h-5 w-5 text-white" />
+                <h3 className="text-white font-bold">Reassign Lead to Different Agent</h3>
+              </div>
+              <button onClick={() => setReassignModal(null)} className="text-white/70 hover:text-white"><X className="h-5 w-5" /></button>
+            </div>
+            <div className="p-6 space-y-4">
+              {/* Lead info */}
+              <div className="bg-orange-50 border border-orange-200 rounded-xl px-4 py-3">
+                <p className="text-sm font-semibold text-orange-900">{reassignModal.name || '—'}</p>
+                <p className="text-xs text-orange-600 mt-0.5">
+                  {reassignModal.mobile}
+                  {reassignModal.loanType && ` · ${reassignModal.loanType}`}
+                  {reassignModal.state && ` · ${reassignModal.state}`}
+                </p>
+                {reassignModal.assignedTo && (
+                  <p className="text-xs text-orange-500 mt-1 font-medium">
+                    Currently assigned to: <strong>{reassignModal.assignedTo?.name || reassignModal.assignedTo}</strong>
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">
+                  Select New Agent <span className="text-red-500">*</span>
+                  <span className="ml-2 normal-case font-normal text-gray-400">— Sorted by performance</span>
+                </p>
+                {agents.filter(a => a.isActive).length === 0 ? (
+                  <p className="text-sm text-gray-400">No active agents available.</p>
+                ) : (
+                  <div className="space-y-2 max-h-64 overflow-y-auto">
+                    {[...agents.filter(a => a.isActive)].sort((a, b) => getAgentTier(b).score - getAgentTier(a).score).map((a) => {
+                      const tier    = getAgentTier(a);
+                      const tierCls = TIER_STYLES[tier.color] || TIER_STYLES.gray;
+                      const conv    = a.leadsLoaded > 0 ? Math.round((a.leadsCompleted / a.leadsLoaded) * 100) : 0;
+                      const isCurrent = reassignModal.assignedTo?._id === a._id || reassignModal.assignedTo === a._id;
+                      return (
+                        <button key={a._id}
+                          onClick={() => !isCurrent && handleReassign(a._id, a.name)}
+                          disabled={reassigning || isCurrent}
+                          className={`w-full flex items-center gap-3 p-3 rounded-xl border transition-colors text-left ${
+                            isCurrent
+                              ? 'border-gray-200 bg-gray-50 opacity-50 cursor-not-allowed'
+                              : tier.tier === 5
+                                ? 'border-amber-300 bg-amber-50 hover:bg-amber-100'
+                                : 'border-gray-100 hover:bg-orange-50 hover:border-orange-200'
+                          }`}>
+                          <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-white font-bold text-sm flex-shrink-0 ${
+                            tier.tier === 5 ? 'bg-gradient-to-br from-amber-400 to-orange-500' :
+                            tier.tier === 4 ? 'bg-gradient-to-br from-violet-500 to-purple-600' :
+                            tier.tier === 3 ? 'bg-gradient-to-br from-emerald-500 to-teal-600' :
+                            'bg-gradient-to-br from-[#065F36] to-[#00A651]'
+                          }`}>
+                            {a.name?.charAt(0)?.toUpperCase()}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className="font-semibold text-gray-800 text-sm">{a.name}</p>
+                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold border ${tierCls}`}>
+                                {tier.emoji} {tier.label}
+                              </span>
+                              {isCurrent && <span className="text-xs text-gray-400 font-medium">(current)</span>}
+                            </div>
+                            <p className="text-xs text-gray-400 mt-0.5">{conv}% conv · {a.leadsLoaded || 0} loaded</p>
+                          </div>
+                          {reassigning && <span className="w-4 h-4 border-2 border-orange-300 border-t-orange-600 rounded-full animate-spin flex-shrink-0" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+              <button onClick={() => setReassignModal(null)}
+                className="w-full py-2.5 text-sm border border-gray-200 rounded-xl hover:bg-gray-50 font-medium text-gray-600">
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Assign Website Lead Modal */}
+      {assignLeadModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+            <div className="flex items-center justify-between px-6 py-4 bg-gradient-to-r from-[#065F36] to-[#00874A]">
+              <div className="flex items-center gap-2">
+                <UserCheck2 className="h-5 w-5 text-white" />
+                <h3 className="text-white font-bold">Assign Lead to Agent</h3>
+              </div>
+              <button onClick={() => setAssignLeadModal(null)} className="text-white/70 hover:text-white">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="bg-[#E8FFF5] rounded-xl px-4 py-3 border border-[#D1FAE5]">
+                <p className="text-sm font-semibold text-[#065F36]">{assignLeadModal.name}</p>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  🌐 Website Lead · {assignLeadModal.mobile}
+                  {assignLeadModal.productType && ` · ${assignLeadModal.productType.replace(/_/g,' ')}`}
+                  {assignLeadModal.city && ` · ${assignLeadModal.city}`}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">
+                  Select Agent <span className="text-red-500">*</span>
+                  <span className="ml-2 normal-case font-normal text-gray-400">Sorted by performance</span>
+                </p>
+                {agents.filter(a => a.isActive).length === 0 ? (
+                  <p className="text-sm text-gray-400">No active agents available.</p>
+                ) : (
+                  <div className="space-y-2 max-h-64 overflow-y-auto">
+                    {[...agents.filter(a => a.isActive)].sort((a, b) => getAgentTier(b).score - getAgentTier(a).score).map((a) => {
+                      const tier    = getAgentTier(a);
+                      const tierCls = TIER_STYLES[tier.color] || TIER_STYLES.gray;
+                      const conv    = a.leadsLoaded > 0 ? Math.round((a.leadsCompleted / a.leadsLoaded) * 100) : 0;
+                      return (
+                        <button key={a._id}
+                          onClick={() => handleAssignWebLead(assignLeadModal._id, a._id, a.name)}
+                          disabled={assigningWebLead}
+                          className={`w-full flex items-center gap-3 p-3 rounded-xl border transition-colors text-left disabled:opacity-50 ${
+                            a.agentStatus === 'unavailable' ? 'border-red-100 bg-red-50/50 opacity-60' :
+                            a.agentStatus === 'break'       ? 'border-amber-100 bg-amber-50/50' :
+                            tier.tier === 5                 ? 'border-amber-300 bg-amber-50 hover:bg-amber-100' :
+                                                              'border-gray-100 hover:bg-[#E8FFF5] hover:border-[#D1FAE5]'
+                          }`}>
+                          <div className="relative">
+                            <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-white font-bold text-sm flex-shrink-0 ${
+                              tier.tier === 5 ? 'bg-gradient-to-br from-amber-400 to-orange-500' :
+                              tier.tier === 4 ? 'bg-gradient-to-br from-violet-500 to-purple-600' :
+                              tier.tier === 3 ? 'bg-gradient-to-br from-emerald-500 to-teal-600' :
+                              'bg-gradient-to-br from-[#065F36] to-[#00A651]'
+                            }`}>
+                              {a.name?.charAt(0)?.toUpperCase()}
+                            </div>
+                            <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white ${
+                              a.agentStatus === 'break'       ? 'bg-amber-400' :
+                              a.agentStatus === 'unavailable' ? 'bg-red-500' :
+                                                                 'bg-emerald-500'
+                            }`} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className="font-semibold text-gray-800 text-sm">{a.name}</p>
+                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold border ${tierCls}`}>
+                                {tier.emoji} {tier.label}
+                              </span>
+                            </div>
+                            <p className="text-xs mt-0.5">
+                              <span className="text-gray-400">{conv}% conv · {a.leadsLoaded || 0} loaded</span>
+                              {a.agentStatus !== 'available' && (
+                                <span className={`ml-2 font-semibold ${a.agentStatus === 'break' ? 'text-amber-600' : 'text-red-600'}`}>
+                                  {a.agentStatus === 'break' ? '☕ On Break' : '🔴 Unavailable'}
+                                </span>
+                              )}
+                            </p>
+                          </div>
+                          {tier.tier === 5 && a.agentStatus === 'available' && (
+                            <span className="text-xs font-bold text-amber-600 bg-amber-100 px-2 py-1 rounded-lg flex-shrink-0">
+                              Best ✨
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+              <button onClick={() => setAssignLeadModal(null)}
+                className="w-full py-2.5 text-sm border border-gray-200 rounded-xl hover:bg-gray-50 font-medium text-gray-600">
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Website Lead Modal */}
       {viewLead && (
@@ -626,10 +1661,12 @@ const DomAdminDashboard = () => {
                 Lead ID: <LeadRefBadge code={viewDomLead.leadRef} />
                 {viewDomLead.documents?.length ? ` · ${viewDomLead.documents.length} doc(s)` : ''}
               </span>
-              <button onClick={() => handleDownloadZip(viewDomLead._id, viewDomLead.leadRef)}
-                className="flex items-center gap-1.5 text-sm bg-[#065F36] text-white px-3 py-1.5 rounded-xl hover:bg-[#054A2E] font-semibold transition-all">
-                <Download className="h-3.5 w-3.5" /> Download ZIP
-              </button>
+              {user.role === 'dom_superadmin' && (
+                <button onClick={() => handleDownloadZip(viewDomLead._id, viewDomLead.leadRef)}
+                  className="flex items-center gap-1.5 text-sm bg-[#065F36] text-white px-3 py-1.5 rounded-xl hover:bg-[#054A2E] font-semibold transition-all">
+                  <Download className="h-3.5 w-3.5" /> Download ZIP
+                </button>
+              )}
             </div>
           )}
           <div className={viewDomLead?.documents?.length ? 'grid sm:grid-cols-2 gap-0 divide-y sm:divide-y-0 sm:divide-x divide-gray-100' : ''}>
@@ -672,17 +1709,34 @@ const DomAdminDashboard = () => {
       {viewDL && (
         <Modal
           title="Worked Lead Details"
-          subtitle={<span className="flex items-center gap-2 flex-wrap">Agent: {viewDL.assignedTo?.name || '—'} <LeadRefBadge code={viewDL.leadRef} /></span>}
+          subtitle={
+            <span className="flex items-center gap-2 flex-wrap">
+              Agent: {viewDL.assignedTo?.name || '—'}
+              <LeadRefBadge code={viewDL.leadRef} />
+              {/* Source badge in modal header */}
+              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold border ${
+                viewDL.sourceWebsiteLead  ? 'bg-teal-900/30 text-teal-200 border-teal-400' :
+                viewDL.sourceImportedLead ? 'bg-violet-900/30 text-violet-200 border-violet-400' :
+                                             'bg-gray-800/30 text-gray-200 border-gray-500'
+              }`}>
+                {viewDL.sourceWebsiteLead  ? '🌐 Website' :
+                 viewDL.sourceImportedLead ? '📊 Imported' :
+                                             '✍️ Manual'}
+              </span>
+            </span>
+          }
           onClose={() => setViewDL(null)} color="purple" size="xl">
           {/* Download strip */}
           <div className="px-6 py-3 bg-[#F0FFF8] border-b border-[#D1FAE5] flex items-center justify-between">
             <span className="text-xs text-gray-500">
               {viewDL.documents?.length ? `${viewDL.documents.length} document(s) attached` : 'No documents'}
             </span>
-            <button onClick={() => handleDownloadZip(viewDL._id, viewDL.leadRef)}
-              className="flex items-center gap-2 text-sm bg-[#065F36] text-white px-4 py-2 rounded-xl hover:bg-[#054A2E] font-semibold transition-all shadow-sm">
-              <Download className="h-4 w-4" /> Download ZIP (Lead + Docs)
-            </button>
+            {user.role === 'dom_superadmin' && (
+              <button onClick={() => handleDownloadZip(viewDL._id, viewDL.leadRef)}
+                className="flex items-center gap-2 text-sm bg-[#065F36] text-white px-4 py-2 rounded-xl hover:bg-[#054A2E] font-semibold transition-all shadow-sm">
+                <Download className="h-4 w-4" /> Download ZIP (Lead + Docs)
+              </button>
+            )}
           </div>
           <div className="grid sm:grid-cols-2 gap-0 divide-y sm:divide-y-0 sm:divide-x divide-gray-100">
             {/* Left: Lead info */}
@@ -733,56 +1787,121 @@ const DomAdminDashboard = () => {
 
 /* ── Shared UI sub-components ── */
 
-const KpiCard = ({ icon, label, value, color }) => {
-  const accent = {
-    blue:   { border: 'border-l-blue-500',     iconBg: 'bg-blue-100 text-blue-600'    },
-    orange: { border: 'border-l-orange-500',   iconBg: 'bg-orange-100 text-orange-600'},
-    green:  { border: 'border-l-[#00A651]',    iconBg: 'bg-[#E8FFF5] text-[#065F36]' },
-    violet: { border: 'border-l-violet-500',   iconBg: 'bg-violet-100 text-violet-600'},
-    sky:    { border: 'border-l-sky-500',      iconBg: 'bg-sky-100 text-sky-600'     },
-    amber:  { border: 'border-l-amber-500',    iconBg: 'bg-amber-100 text-amber-600' },
-    indigo: { border: 'border-l-[#065F36]',    iconBg: 'bg-[#E8FFF5] text-[#065F36]' },
-    teal:   { border: 'border-l-[#00A651]',    iconBg: 'bg-[#E8FFF5] text-[#065F36]' },
-  }[color] || { border: 'border-l-[#065F36]', iconBg: 'bg-[#E8FFF5] text-[#065F36]' };
+/**
+ * Performance tier calculator.
+ * Returns a tier object with emoji, label, color class, and a numeric score
+ * so lists can be sorted "best first".
+ */
+const getAgentTier = (agent) => {
+  if (!agent.isActive) {
+    return { tier: 0, emoji: '💤', label: 'Inactive',       color: 'gray',   score: -1, ring: 'border-gray-200',   bg: 'bg-gray-50' };
+  }
+  const loaded    = agent.leadsLoaded    || 0;
+  const completed = agent.leadsCompleted || 0;
+  const worked    = agent.domLeadsCreated || 0;
+  const conv      = loaded > 0 ? (completed / loaded) * 100 : 0;
+  // Composite score: conversion rate weighted 60%, worked leads weighted 40%
+  const score     = (conv * 0.6) + (Math.min(worked, 60) * 0.8);
+
+  if (loaded < 2) {
+    return { tier: 1, emoji: '🆕', label: 'New Agent',       color: 'sky',    score, ring: 'border-sky-200',    bg: 'bg-sky-50/60' };
+  }
+  if (conv >= 65 && worked >= 5) {
+    return { tier: 5, emoji: '🏆', label: 'Top Performer',   color: 'amber',  score, ring: 'border-amber-300',  bg: 'bg-amber-50' };
+  }
+  if (conv >= 45 || (conv >= 35 && worked >= 8)) {
+    return { tier: 4, emoji: '⭐', label: 'Star Agent',       color: 'violet', score, ring: 'border-violet-300', bg: 'bg-violet-50/60' };
+  }
+  if (conv >= 25 || worked >= 5) {
+    return { tier: 3, emoji: '👍', label: 'Good Agent',       color: 'emerald',score, ring: 'border-emerald-200',bg: 'bg-emerald-50/50' };
+  }
+  if (loaded >= 5 && conv < 15) {
+    return { tier: 2, emoji: '⚠️', label: 'Needs Coaching',  color: 'orange', score, ring: 'border-orange-200', bg: 'bg-orange-50/50' };
+  }
+  return   { tier: 2, emoji: '✅', label: 'Active',           color: 'teal',   score, ring: 'border-teal-200',   bg: 'bg-teal-50/40' };
+};
+
+const TIER_STYLES = {
+  amber:   'bg-amber-100 text-amber-800 border-amber-300',
+  violet:  'bg-violet-100 text-violet-800 border-violet-300',
+  emerald: 'bg-emerald-100 text-emerald-800 border-emerald-300',
+  teal:    'bg-teal-100 text-teal-800 border-teal-300',
+  sky:     'bg-sky-100 text-sky-800 border-sky-300',
+  orange:  'bg-orange-100 text-orange-700 border-orange-300',
+  gray:    'bg-gray-100 text-gray-500 border-gray-300',
+};
+
+const AgentTierBadge = ({ agent, size = 'sm' }) => {
+  const tier = getAgentTier(agent);
+  const cls  = TIER_STYLES[tier.color] || TIER_STYLES.gray;
+  const pad  = size === 'lg' ? 'px-3 py-1 text-sm' : 'px-2 py-0.5 text-xs';
   return (
-    <div className={`bg-white rounded-2xl p-5 shadow-sm border border-gray-100 border-l-4 ${accent.border}`}>
-      <div className="flex items-center justify-between mb-3">
-        <div className={`p-2 rounded-xl ${accent.iconBg}`}>{icon}</div>
+    <span className={`inline-flex items-center gap-1 rounded-full font-bold border ${pad} ${cls}`}>
+      {tier.emoji} {tier.label}
+    </span>
+  );
+};
+
+const KpiCard = ({ icon, label, value, color, sub }) => {
+  const styles = {
+    blue:   { bg: 'from-blue-500 to-blue-600',          ring: 'shadow-blue-200'   },
+    orange: { bg: 'from-orange-400 to-rose-500',        ring: 'shadow-orange-200' },
+    green:  { bg: 'from-[#065F36] to-[#00A651]',        ring: 'shadow-green-200'  },
+    violet: { bg: 'from-violet-500 to-purple-600',      ring: 'shadow-violet-200' },
+    sky:    { bg: 'from-sky-400 to-cyan-500',            ring: 'shadow-sky-200'    },
+    amber:  { bg: 'from-amber-400 to-orange-500',       ring: 'shadow-amber-200'  },
+    indigo: { bg: 'from-indigo-500 to-blue-600',        ring: 'shadow-indigo-200' },
+    teal:   { bg: 'from-teal-500 to-emerald-600',       ring: 'shadow-teal-200'   },
+  }[color] || { bg: 'from-[#065F36] to-[#00A651]', ring: 'shadow-green-200' };
+  return (
+    <div className={`relative overflow-hidden rounded-2xl p-5 bg-gradient-to-br ${styles.bg} text-white shadow-lg ${styles.ring}`}>
+      <div className="flex items-start justify-between mb-3">
+        <div className="p-2.5 bg-white/20 rounded-xl backdrop-blur-sm">{icon}</div>
       </div>
-      <p className="text-3xl font-black leading-none text-gray-800">{value}</p>
-      <p className="text-xs text-gray-500 mt-1.5 font-medium">{label}</p>
+      <p className="text-3xl font-black leading-none tracking-tight">{value}</p>
+      <p className="text-sm mt-1.5 font-semibold text-white/80">{label}</p>
+      {sub && <p className="text-xs mt-0.5 text-white/60">{sub}</p>}
+      <div className="absolute -right-5 -bottom-5 w-24 h-24 rounded-full bg-white/10" />
+      <div className="absolute -right-1 -bottom-10 w-36 h-36 rounded-full bg-white/5" />
     </div>
   );
 };
 
 const Spinner = () => (
-  <div className="flex flex-col items-center justify-center py-20 text-gray-400">
-    <span className="w-8 h-8 border-2 border-gray-200 border-t-[#065F36] rounded-full animate-spin mb-3" />
-    <span className="text-sm">Loading…</span>
+  <div className="flex flex-col items-center justify-center py-20 gap-3">
+    <div className="relative w-12 h-12">
+      <div className="absolute inset-0 rounded-full border-4 border-gray-100" />
+      <div className="absolute inset-0 rounded-full border-4 border-t-[#065F36] border-r-[#00A651] animate-spin" />
+    </div>
+    <span className="text-sm text-gray-400 font-medium">Loading data…</span>
   </div>
 );
 
-const Empty = ({ label }) => (
-  <div className="flex flex-col items-center justify-center py-20">
-    <Inbox className="h-14 w-14 text-gray-200 mb-4" />
-    <p className="text-gray-400 text-sm">{label}</p>
+const Empty = ({ label, icon }) => (
+  <div className="flex flex-col items-center justify-center py-20 gap-3">
+    <div className="w-16 h-16 rounded-2xl bg-gray-50 border-2 border-dashed border-gray-200 flex items-center justify-center">
+      {icon || <Inbox className="h-7 w-7 text-gray-300" />}
+    </div>
+    <p className="text-gray-400 text-sm font-medium">{label}</p>
   </div>
 );
 
 const Pagination = ({ total, page, perPage, count, onPrev, onNext }) => {
   if (total <= perPage) return null;
   return (
-    <div className="flex items-center justify-between px-6 py-3 border-t border-gray-100 bg-gray-50">
-      <span className="text-sm text-gray-500">{total} total records</span>
-      <div className="flex items-center gap-2">
+    <div className="flex items-center justify-between px-6 py-3.5 border-t border-gray-100 bg-gray-50/80">
+      <span className="text-sm text-gray-500">
+        Showing <strong className="text-gray-700">{((page - 1) * perPage) + 1}–{Math.min(page * perPage, total)}</strong> of <strong className="text-gray-700">{total}</strong>
+      </span>
+      <div className="flex items-center gap-1.5">
         <button onClick={onPrev} disabled={page === 1}
-          className="flex items-center gap-1 px-3 py-1.5 text-sm border border-gray-200 rounded-lg disabled:opacity-40 hover:bg-gray-100">
-          <ChevronLeft className="h-4 w-4" /> Prev
+          className="flex items-center gap-1 px-3 py-1.5 text-sm font-semibold border border-gray-200 rounded-xl disabled:opacity-40 hover:bg-white hover:border-[#065F36] hover:text-[#065F36] transition-all">
+          <ChevronLeft className="h-3.5 w-3.5" /> Prev
         </button>
-        <span className="px-3 py-1.5 text-sm text-gray-600 font-semibold">Page {page}</span>
+        <span className="px-3 py-1.5 text-sm font-bold text-[#065F36] bg-[#E8FFF5] border border-[#D1FAE5] rounded-xl">{page}</span>
         <button onClick={onNext} disabled={count < perPage}
-          className="flex items-center gap-1 px-3 py-1.5 text-sm border border-gray-200 rounded-lg disabled:opacity-40 hover:bg-gray-100">
-          Next <ChevronRight className="h-4 w-4" />
+          className="flex items-center gap-1 px-3 py-1.5 text-sm font-semibold border border-gray-200 rounded-xl disabled:opacity-40 hover:bg-white hover:border-[#065F36] hover:text-[#065F36] transition-all">
+          Next <ChevronRight className="h-3.5 w-3.5" />
         </button>
       </div>
     </div>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save, User, Briefcase, CreditCard, FileText, MessageSquare } from 'lucide-react';
+import { X, Save, User, Briefcase, CreditCard, FileText, MessageSquare, ChevronDown, ChevronUp, Eye, Phone, MapPin, BarChart2 } from 'lucide-react';
 import api from '../utils/axios';
 import toast from 'react-hot-toast';
 import DocumentUpload from './DocumentUpload';
@@ -48,47 +48,63 @@ const Select = ({ children, className = '', ...props }) => (
   </select>
 );
 
-const LeadFormModal = ({ websiteLead, existingDomLead, onClose, onSaved }) => {
+const LeadFormModal = ({ websiteLead, importedLead, existingDomLead, onClose, onSaved }) => {
   const [activeTab, setActiveTab] = useState('personal');
   const [form, setForm]           = useState(EMPTY_FORM);
   const [documents, setDocuments] = useState([]);
   const [domLeadId, setDomLeadId] = useState(null);
   const [leadRef,   setLeadRef]   = useState(null);
   const [saving, setSaving]       = useState(false);
+  const [refPanelOpen, setRefPanelOpen] = useState(false); // collapsible imported data panel
   const isEdit = !!domLeadId;
 
-  // Pre-fill from website lead data and existing DomLead
+  // Pre-fill from website lead / imported lead / existing DomLead
   useEffect(() => {
     if (existingDomLead) {
       setDomLeadId(existingDomLead._id);
       setLeadRef(existingDomLead.leadRef || null);
       setDocuments(existingDomLead.documents || []);
+      const src = websiteLead || importedLead || {};
       setForm({
-        name:               existingDomLead.name         || websiteLead?.name         || '',
-        dob:                existingDomLead.dob           || '',
-        pan:                existingDomLead.pan           || websiteLead?.pan          || '',
-        aadhaar:            existingDomLead.aadhaar       || '',
-        mobile:             existingDomLead.mobile        || websiteLead?.mobile       || '',
-        alternateMobile:    existingDomLead.alternateMobile || '',
-        email:              existingDomLead.email         || '',
-        address:            existingDomLead.address       || '',
-        city:               existingDomLead.city          || websiteLead?.city         || '',
-        state:              existingDomLead.state         || '',
-        pincode:            existingDomLead.pincode       || '',
-        employmentType:     existingDomLead.employmentType || websiteLead?.employment   || '',
-        companyName:        existingDomLead.companyName   || '',
-        monthlySalary:      existingDomLead.monthlySalary || '',
-        productType:        existingDomLead.productType   || websiteLead?.productType  || '',
-        loanAmountRequired: existingDomLead.loanAmountRequired || '',
-        existingBank:       existingDomLead.existingBank  || '',
+        name:               existingDomLead.name              || src.name         || '',
+        dob:                existingDomLead.dob               || '',
+        pan:                existingDomLead.pan               || src.pan          || '',
+        aadhaar:            existingDomLead.aadhaar           || '',
+        mobile:             existingDomLead.mobile            || src.mobile       || '',
+        alternateMobile:    existingDomLead.alternateMobile   || '',
+        email:              existingDomLead.email             || src.email        || '',
+        address:            existingDomLead.address           || '',
+        city:               existingDomLead.city              || src.city         || '',
+        state:              existingDomLead.state             || src.state        || '',
+        pincode:            existingDomLead.pincode           || '',
+        employmentType:     existingDomLead.employmentType    || src.employment   || '',
+        companyName:        existingDomLead.companyName       || '',
+        monthlySalary:      existingDomLead.monthlySalary     || src.monthlyIncome || '',
+        productType:        existingDomLead.productType       || src.productType  || '',
+        loanAmountRequired: existingDomLead.loanAmountRequired || src.loanAmount  || '',
+        existingBank:       existingDomLead.existingBank      || '',
         salaryAccountBank:  existingDomLead.salaryAccountBank || '',
-        cibilScoreRange:    existingDomLead.cibilScoreRange || '',
+        cibilScoreRange:    existingDomLead.cibilScoreRange   || '',
         existingLoans:      (existingDomLead.existingLoans || []).join(', '),
-        existingEMI:        existingDomLead.existingEMI   || '',
-        callOutcome:        existingDomLead.callOutcome   || '',
-        callbackDate:       existingDomLead.callbackDate  || '',
-        notes:              existingDomLead.notes         || '',
+        existingEMI:        existingDomLead.existingEMI       || '',
+        callOutcome:        existingDomLead.callOutcome       || '',
+        callbackDate:       existingDomLead.callbackDate      || '',
+        notes:              existingDomLead.notes             || importedLead?.remarks || '',
       });
+    } else if (importedLead) {
+      setForm((prev) => ({
+        ...prev,
+        name:           importedLead.name          || '',
+        mobile:         importedLead.mobile         || '',
+        email:          importedLead.email          || '',
+        city:           importedLead.city           || '',
+        state:          importedLead.state          || '',
+        employmentType: importedLead.employment     || '',
+        monthlySalary:  importedLead.monthlyIncome  || '',
+        productType:    importedLead.productType    || '',
+        loanAmountRequired: importedLead.loanAmount || '',
+        notes:          importedLead.remarks        || '',
+      }));
     } else if (websiteLead) {
       setForm((prev) => ({
         ...prev,
@@ -100,7 +116,7 @@ const LeadFormModal = ({ websiteLead, existingDomLead, onClose, onSaved }) => {
         productType:    websiteLead.productType  || '',
       }));
     }
-  }, [websiteLead, existingDomLead]);
+  }, [websiteLead, importedLead, existingDomLead]);
 
   const set = (k) => (e) => setForm((prev) => ({ ...prev, [k]: e.target.value }));
 
@@ -128,11 +144,12 @@ const LeadFormModal = ({ websiteLead, existingDomLead, onClose, onSaved }) => {
         toast.success('Lead updated successfully!');
       } else {
         const body = { ...payload };
-        if (websiteLead?._id) body.sourceWebsiteLead = websiteLead._id;
+        if (websiteLead?._id)  body.sourceWebsiteLead  = websiteLead._id;
+        if (importedLead?._id) body.sourceImportedLead = importedLead._id;
         const res = await api.post('/domestic-api/leads', body);
         setDomLeadId(res.data.data._id);
         setLeadRef(res.data.data.leadRef || null);
-        toast.success('Lead submitted! Card is now Blue.');
+        toast.success('Lead submitted successfully!');
       }
       onSaved && onSaved();
     } catch (err) {
@@ -155,15 +172,32 @@ const LeadFormModal = ({ websiteLead, existingDomLead, onClose, onSaved }) => {
     });
   };
 
+  // Determine header subtitle
+  const headerSubtitle = importedLead
+    ? `${importedLead.name || ''} · ${importedLead.mobile || ''} · Pool Lead`
+    : websiteLead
+      ? `${websiteLead.name} · ${websiteLead.mobile} · ${websiteLead.productType}`
+      : isEdit ? `${form.name} · ${form.mobile}` : 'Enter customer details manually';
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[95vh] flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="flex items-start justify-between px-6 py-4 bg-gradient-to-r from-blue-700 to-blue-900 flex-shrink-0">
+        <div className={`flex items-start justify-between px-6 py-4 flex-shrink-0 ${
+          importedLead
+            ? 'bg-gradient-to-r from-[#065F36] to-[#00874A]'
+            : 'bg-gradient-to-r from-blue-700 to-blue-900'
+        }`}>
           <div>
             <div className="flex items-center gap-2 flex-wrap">
               <h2 className="text-lg font-bold text-white">
-                {isEdit ? 'Edit Lead' : websiteLead ? 'Work on Lead' : 'New Manual Lead'}
+                {isEdit
+                  ? 'Edit Lead'
+                  : importedLead
+                    ? 'Work on Pool Lead'
+                    : websiteLead
+                      ? 'Work on Lead'
+                      : 'New Manual Lead'}
               </h2>
               {leadRef && (
                 <span className="font-mono text-xs font-bold bg-white/20 text-green-300 border border-green-400/40 px-2 py-0.5 rounded tracking-widest">
@@ -171,13 +205,9 @@ const LeadFormModal = ({ websiteLead, existingDomLead, onClose, onSaved }) => {
                 </span>
               )}
             </div>
-            <p className="text-blue-200 text-sm mt-0.5">
-              {websiteLead
-                ? `${websiteLead.name} · ${websiteLead.mobile} · ${websiteLead.productType}`
-                : isEdit ? `${form.name} · ${form.mobile}` : 'Enter customer details manually'}
-            </p>
+            <p className="text-white/70 text-sm mt-0.5">{headerSubtitle}</p>
           </div>
-          <button onClick={onClose} className="text-white hover:text-blue-200 transition-colors mt-0.5">
+          <button onClick={onClose} className="text-white hover:text-white/70 transition-colors mt-0.5">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -202,6 +232,129 @@ const LeadFormModal = ({ websiteLead, existingDomLead, onClose, onSaved }) => {
 
         {/* Body */}
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto scrollbar-thin">
+
+          {/* ── Imported Data Reference Panel (only when working a pool lead) ── */}
+          {importedLead && (
+            <div className="border-b border-gray-100 flex-shrink-0">
+              {/* Toggle bar */}
+              <button type="button"
+                onClick={() => setRefPanelOpen(p => !p)}
+                className={`w-full flex items-center justify-between px-5 py-3 text-xs font-bold transition-colors ${
+                  refPanelOpen ? 'bg-violet-50 text-violet-700' : 'bg-gray-50 text-gray-500 hover:bg-violet-50 hover:text-violet-700'
+                }`}>
+                <div className="flex items-center gap-2">
+                  <Eye className="h-3.5 w-3.5" />
+                  <span>📋 View Imported Lead Data (reference while working)</span>
+                  {(importedLead.totalOutstandingAmount || importedLead.noOfInstallmentOverdue) && (
+                    <span className="flex items-center gap-2 ml-2">
+                      {importedLead.totalOutstandingAmount && (
+                        <span className="bg-amber-100 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-full text-xs font-bold">
+                          OS: ₹{importedLead.totalOutstandingAmount}
+                        </span>
+                      )}
+                      {importedLead.noOfInstallmentOverdue && parseInt(importedLead.noOfInstallmentOverdue) > 0 && (
+                        <span className="bg-red-100 text-red-700 border border-red-200 px-2 py-0.5 rounded-full text-xs font-bold">
+                          {importedLead.noOfInstallmentOverdue} EMI overdue
+                        </span>
+                      )}
+                      {importedLead.cibilScore && (
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-bold border ${
+                          parseInt(importedLead.cibilScore) >= 700 ? 'bg-emerald-100 text-emerald-700 border-emerald-200' :
+                          parseInt(importedLead.cibilScore) >= 600 ? 'bg-amber-100 text-amber-700 border-amber-200' :
+                          'bg-red-100 text-red-700 border-red-200'
+                        }`}>
+                          CIBIL {importedLead.cibilScore}
+                        </span>
+                      )}
+                    </span>
+                  )}
+                </div>
+                {refPanelOpen
+                  ? <ChevronUp className="h-4 w-4 flex-shrink-0" />
+                  : <ChevronDown className="h-4 w-4 flex-shrink-0" />
+                }
+              </button>
+
+              {/* Expanded reference content */}
+              {refPanelOpen && (
+                <div className="bg-violet-50/50 border-t border-violet-100 px-5 py-4 space-y-4 max-h-72 overflow-y-auto">
+                  {/* Row 1: Financial highlights */}
+                  <div>
+                    <p className="text-xs font-bold text-violet-600 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+                      <BarChart2 className="h-3.5 w-3.5" /> Financial Overview
+                    </p>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      {[
+                        { label: 'Total Outstanding', val: importedLead.totalOutstandingAmount, prefix: '₹', highlight: true },
+                        { label: 'Principal',          val: importedLead.principalOutstanding,   prefix: '₹', highlight: true },
+                        { label: 'Amount Financed',    val: importedLead.amountFinanced,          prefix: '₹' },
+                        { label: 'Disbursal Amt',      val: importedLead.disbursalAmount,         prefix: '₹' },
+                        { label: 'CIBIL Score',        val: importedLead.cibilScore },
+                        { label: 'EMI Overdue',        val: importedLead.noOfInstallmentOverdue },
+                        { label: 'Live Loans',         val: importedLead.countOfLiveLoans },
+                        { label: 'Loan Type',          val: importedLead.loanType || importedLead.productType },
+                      ].filter(x => x.val).map(({ label, val, prefix = '', highlight }) => (
+                        <div key={label} className={`rounded-xl p-2.5 ${highlight ? 'bg-amber-100 border border-amber-200' : 'bg-white border border-gray-100'}`}>
+                          <p className="text-xs text-gray-400 font-medium">{label}</p>
+                          <p className={`text-sm font-bold mt-0.5 ${highlight ? 'text-amber-800' : 'text-gray-700'}`}>{prefix}{val}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Row 2: Contact & Address */}
+                  <div>
+                    <p className="text-xs font-bold text-violet-600 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+                      <Phone className="h-3.5 w-3.5" /> Contact & Address
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {[
+                        { label: 'Mobile',             val: importedLead.mobile },
+                        { label: 'Residence Phone',    val: importedLead.residencePhoneNumber },
+                        { label: 'Office Phone',       val: importedLead.officePhoneNumber },
+                        { label: 'Residence Address',  val: importedLead.residenceAddress },
+                        { label: 'Office Address',     val: importedLead.officeAddress },
+                      ].filter(x => x.val).map(({ label, val }) => (
+                        <div key={label} className="bg-white border border-gray-100 rounded-xl p-2.5">
+                          <p className="text-xs text-gray-400 font-medium">{label}</p>
+                          <p className="text-sm font-semibold text-gray-700 mt-0.5 break-words">{val}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Row 3: Loan & Other Details */}
+                  <div>
+                    <p className="text-xs font-bold text-violet-600 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+                      <CreditCard className="h-3.5 w-3.5" /> Loan & Profile
+                    </p>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      {[
+                        { label: 'Vintage',       val: importedLead.vintage },
+                        { label: 'Expiry Status', val: importedLead.expiryStatus },
+                        { label: 'Expiry Date',   val: importedLead.expiryDate },
+                        { label: 'Sanction Date', val: importedLead.sanctionDate },
+                        { label: 'Bank Name',     val: importedLead.bankName },
+                        { label: 'Employment',    val: importedLead.employment },
+                        { label: 'Firm/Employer', val: importedLead.firmEmployeeName },
+                        { label: 'PAN',           val: importedLead.panNumber },
+                        { label: 'Aadhar No',     val: importedLead.customerAadharNo },
+                        { label: 'DOB / Age',     val: [importedLead.dateOfBirth, importedLead.age].filter(Boolean).join(' / ') },
+                        { label: 'Property Val',  val: importedLead.propertyValueLatest, prefix: '₹' },
+                        { label: 'Asset',         val: importedLead.assetDescription },
+                      ].filter(x => x.val).map(({ label, val, prefix = '' }) => (
+                        <div key={label} className="bg-white border border-gray-100 rounded-xl p-2.5">
+                          <p className="text-xs text-gray-400 font-medium">{label}</p>
+                          <p className="text-sm font-semibold text-gray-700 mt-0.5">{prefix}{val}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="p-6">
             {/* ── PERSONAL ──────────────────────────────────────────────── */}
             {activeTab === 'personal' && (

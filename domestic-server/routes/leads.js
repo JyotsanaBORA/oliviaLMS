@@ -4,19 +4,29 @@ const path           = require('path');
 const fs             = require('fs');
 const archiver       = require('archiver');
 const XLSX           = require('xlsx');
-const DomLead        = require('../models/DomLead');
-const DomWebsiteLead = require('../models/DomWebsiteLead');
+const DomLead         = require('../models/DomLead');
+const DomWebsiteLead  = require('../models/DomWebsiteLead');
+const DomImportedLead = require('../models/DomImportedLead');
 const { protect, authorize } = require('../middleware/auth');
 
 const router = express.Router();
 
 const UPLOAD_DIR = path.join(__dirname, '..', process.env.UPLOAD_PATH || 'uploads');
 
+// Map callOutcome → workStatus for imported leads
+const OUTCOME_TO_WORK_STATUS = {
+  interested:     'interested',
+  not_interested: 'not_interested',
+  wrong_number:   'closed',
+  callback:       'in_progress',
+  not_reachable:  'in_progress',
+};
+
 // ── POST /domestic-api/leads ───────────────────────────────────────────────
-// Domagent submits a worked lead — can be from a website lead OR manual entry
+// Domagent submits a worked lead — from a website lead, imported lead, or manual entry
 router.post('/', protect, authorize('domagent', 'dom_admin', 'dom_superadmin'), async (req, res) => {
   try {
-    const { sourceWebsiteLead, ...fields } = req.body;
+    const { sourceWebsiteLead, sourceImportedLead, ...fields } = req.body;
 
     // ── Website-lead path ──────────────────────────────────────────────────
     if (sourceWebsiteLead) {
@@ -42,6 +52,10 @@ router.post('/', protect, authorize('domagent', 'dom_admin', 'dom_superadmin'), 
       }
 
       const sanitized = sanitizeLeadFields(fields);
+      // Auto-status: close rejected outcomes immediately
+      if (['not_interested', 'wrong_number'].includes(sanitized.callOutcome)) {
+        sanitized.status = 'rejected';
+      }
       const domLead = await DomLead.create({
         sourceWebsiteLead,
         assignedTo:    websiteLead.loadedBy || req.user._id,
@@ -60,7 +74,57 @@ router.post('/', protect, authorize('domagent', 'dom_admin', 'dom_superadmin'), 
       return res.status(201).json({ success: true, data: domLead });
     }
 
-    // ── Manual lead path (no website lead) ────────────────────────────────
+    // ── Imported-lead path ─────────────────────────────────────────────────
+    if (sourceImportedLead) {
+      const importedLead = await DomImportedLead.findById(sourceImportedLead).lean();
+      if (!importedLead) {
+        return res.status(404).json({ success: false, message: 'Imported lead not found.' });
+      }
+
+      // Agents can only work leads assigned to them
+      if (
+        req.user.role === 'domagent' &&
+        importedLead.assignedTo?.toString() !== req.user._id.toString()
+      ) {
+        return res.status(403).json({ success: false, message: 'This lead is not assigned to you.' });
+      }
+
+      // If already worked, return the existing DomLead for editing
+      if (importedLead.domLeadId) {
+        return res.status(409).json({
+          success: false,
+          message: 'This lead is already worked. Use PATCH to update it.',
+          domLeadId: importedLead.domLeadId,
+        });
+      }
+
+      const sanitized = sanitizeLeadFields(fields);
+      // Auto-status on create
+      if (['not_interested', 'wrong_number'].includes(sanitized.callOutcome)) {
+        sanitized.status = 'rejected';
+      }
+      const domLead = await DomLead.create({
+        sourceImportedLead,
+        assignedTo:    importedLead.assignedTo || req.user._id,
+        createdBy:     req.user._id,
+        lastUpdatedBy: req.user._id,
+        leadRef:       generateLeadRef(sanitized.productType || ''),
+        ...sanitized,
+      });
+
+      // Update the imported lead to record the worked state
+      const workStatus = OUTCOME_TO_WORK_STATUS[sanitized.callOutcome] || 'in_progress';
+      await DomImportedLead.findByIdAndUpdate(sourceImportedLead, {
+        domLeadId:   domLead._id,
+        workStatus,
+        callOutcome: sanitized.callOutcome || '',
+        workedAt:    new Date(),
+      });
+
+      return res.status(201).json({ success: true, data: domLead });
+    }
+
+    // ── Manual lead path (no website lead, no imported lead) ──────────────
     const sanitizedManual = sanitizeLeadFields(fields);
     const domLead = await DomLead.create({
       assignedTo:    req.user._id,
@@ -98,6 +162,20 @@ router.patch('/:id', protect, authorize('domagent', 'dom_admin', 'dom_superadmin
       lastUpdatedBy: req.user._id,
     };
 
+    // ── Auto-status logic based on call outcome ────────────────────────────
+    // Agents/admins set callOutcome; we auto-drive the status field so the
+    // admin table always reflects the true state without manual intervention.
+    if (updates.callOutcome) {
+      if (['not_interested', 'wrong_number'].includes(updates.callOutcome)) {
+        // Customer closed — mark as rejected (no further work needed)
+        updates.status = 'rejected';
+      } else if (['interested', 'callback', 'not_reachable'].includes(updates.callOutcome)) {
+        // Still active — keep/restore to pending so it stays in the work queue
+        // (only if it was previously rejected, e.g. agent changes their mind)
+        if (lead.status === 'rejected') updates.status = 'pending';
+      }
+    }
+
     // If productType changed, swap the leadRef prefix (keep the date+rand suffix)
     if (updates.productType && updates.productType !== lead.productType) {
       updates.leadRef = swapLeadRefPrefix(lead.leadRef, updates.productType);
@@ -113,6 +191,16 @@ router.patch('/:id', protect, authorize('domagent', 'dom_admin', 'dom_superadmin
     })
       .populate('assignedTo', 'name email')
       .lean();
+
+    // Sync workStatus back to the imported lead if linked
+    if (updated.sourceImportedLead && updates.callOutcome) {
+      const workStatus = OUTCOME_TO_WORK_STATUS[updates.callOutcome] || 'in_progress';
+      await DomImportedLead.findByIdAndUpdate(updated.sourceImportedLead, {
+        workStatus,
+        callOutcome: updates.callOutcome,
+        workedAt:    new Date(),
+      });
+    }
 
     return res.status(200).json({ success: true, data: updated });
   } catch (err) {
@@ -186,10 +274,35 @@ router.get('/', protect, async (req, res) => {
   }
 });
 
+// ── PATCH /domestic-api/leads/:id/status ──────────────────────────────────
+// Admin / SuperAdmin: change a lead's status directly.
+// Body: { status: 'pending' | 'completed' | 'rejected' }
+router.patch('/:id/status', protect, authorize('dom_admin', 'dom_superadmin'), async (req, res) => {
+  try {
+    const { status } = req.body;
+    if (!['pending', 'completed', 'rejected'].includes(status)) {
+      return res.status(400).json({ success: false, message: 'Invalid status. Use: pending, completed, rejected.' });
+    }
+
+    const lead = await DomLead.findByIdAndUpdate(
+      req.params.id,
+      { status, lastUpdatedBy: req.user._id },
+      { new: true, runValidators: true }
+    ).lean();
+
+    if (!lead) return res.status(404).json({ success: false, message: 'Lead not found.' });
+
+    return res.status(200).json({ success: true, data: lead, message: `Lead marked as ${status}.` });
+  } catch (err) {
+    console.error('[Leads] Status update error:', err.message);
+    return res.status(500).json({ success: false, message: 'Failed to update lead status.' });
+  }
+});
+
 // ── GET /domestic-api/leads/export ────────────────────────────────────────
-// Admin/SuperAdmin: export all filtered leads as CSV download.
+// SuperAdmin only: export all filtered leads as Excel download.
 // Accepts same query params as GET / (status, search, productType, agentId).
-router.get('/export', protect, authorize('dom_admin', 'dom_superadmin'), async (req, res) => {
+router.get('/export', protect, authorize('dom_superadmin'), async (req, res) => {
   try {
     const status      = req.query.status;
     const search      = (req.query.search || '').trim();
@@ -280,9 +393,9 @@ router.get('/export', protect, authorize('dom_admin', 'dom_superadmin'), async (
 });
 
 // ── GET /domestic-api/leads/export-zip ────────────────────────────────────
-// Admin/SuperAdmin: bulk ZIP — master Excel with all filtered leads + every
+// SuperAdmin only: bulk ZIP — master Excel with all filtered leads + every
 // lead's uploaded documents organised in per-lead subfolders.
-router.get('/export-zip', protect, authorize('dom_admin', 'dom_superadmin'), async (req, res) => {
+router.get('/export-zip', protect, authorize('dom_superadmin'), async (req, res) => {
   try {
     const status      = req.query.status;
     const search      = (req.query.search || '').trim();

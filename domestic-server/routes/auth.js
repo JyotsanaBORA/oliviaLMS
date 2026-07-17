@@ -55,16 +55,54 @@ router.get('/me', protect, async (req, res) => {
     return res.status(200).json({
       success: true,
       user: {
-        _id:       user._id,
-        name:      user.name,
-        email:     user.email,
-        role:      user.role,
-        lastLogin: user.lastLogin,
+        _id:                  user._id,
+        name:                 user.name,
+        email:                user.email,
+        role:                 user.role,
+        lastLogin:            user.lastLogin,
+        agentStatus:          user.agentStatus || 'available',
+        agentStatusUpdatedAt: user.agentStatusUpdatedAt,
       },
     });
   } catch (err) {
     console.error('[Auth] /me error:', err.message);
     return res.status(500).json({ success: false, message: 'Server error.' });
+  }
+});
+
+// PATCH /domestic-api/auth/status
+// Agent (or any user) updates their own availability status
+router.patch('/status', protect, async (req, res) => {
+  try {
+    const { agentStatus } = req.body;
+    if (!['available', 'break', 'unavailable'].includes(agentStatus)) {
+      return res.status(400).json({ success: false, message: 'Invalid status. Use: available, break, unavailable.' });
+    }
+
+    const user = await DomUser.findByIdAndUpdate(
+      req.user._id,
+      { agentStatus, agentStatusUpdatedAt: new Date() },
+      { new: true }
+    ).lean();
+
+    // Broadcast to admins so the agents tab refreshes in real-time
+    const io = req.app.get('io');
+    if (io) {
+      io.to('domagents').emit('agent_status_changed', {
+        agentId:     user._id.toString(),
+        agentName:   user.name,
+        agentStatus,
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      agentStatus,
+      message: `Status updated to "${agentStatus}".`,
+    });
+  } catch (err) {
+    console.error('[Auth] Status update error:', err.message);
+    return res.status(500).json({ success: false, message: 'Failed to update status.' });
   }
 });
 

@@ -78,7 +78,7 @@ router.get('/stats', async (req, res) => {
 router.get('/agents', async (req, res) => {
   try {
     const agents = await DomUser.find({ role: 'domagent' })
-      .select('name email isActive lastLogin createdAt')
+      .select('name email isActive lastLogin createdAt agentStatus agentStatusUpdatedAt')
       .lean();
 
     // Counts per agent

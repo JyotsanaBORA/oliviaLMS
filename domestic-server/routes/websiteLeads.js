@@ -3,6 +3,7 @@ const express         = require('express');
 const DomWebsiteLead  = require('../models/DomWebsiteLead');
 const DomNotification = require('../models/DomNotification');
 const DomLead         = require('../models/DomLead');
+const DomUser         = require('../models/DomUser');
 const { protect, authorize } = require('../middleware/auth');
 
 const router = express.Router();
@@ -11,15 +12,19 @@ const router = express.Router();
 // Admin/superadmin: all website leads with filters and pagination
 router.get('/', protect, authorize('dom_admin', 'dom_superadmin'), async (req, res) => {
   try {
-    const page   = Math.max(1, parseInt(req.query.page)  || 1);
-    const limit  = Math.min(100, parseInt(req.query.limit) || 50);
-    const skip   = (page - 1) * limit;
-    const status = req.query.status;
-    const search = (req.query.search || '').trim();
+    const page        = Math.max(1, parseInt(req.query.page)  || 1);
+    const limit       = Math.min(100, parseInt(req.query.limit) || 50);
+    const skip        = (page - 1) * limit;
+    const status      = req.query.status;
+    const search      = (req.query.search || '').trim();
+    const productType = req.query.productType;
 
     const filter = {};
     if (status && ['new', 'loaded', 'completed', 'rejected'].includes(status)) {
       filter.status = status;
+    }
+    if (productType) {
+      filter.productType = productType;
     }
     if (search) {
       filter.$or = [
@@ -47,6 +52,21 @@ router.get('/', protect, authorize('dom_admin', 'dom_superadmin'), async (req, r
   } catch (err) {
     console.error('[WebsiteLeads] GET error:', err.message);
     return res.status(500).json({ success: false, message: 'Failed to fetch website leads.' });
+  }
+});
+
+// ── GET /domestic-api/website-leads/product-types ─────────────────────────
+// Admin: distinct product types present in website leads (for filter dropdown)
+router.get('/product-types', protect, authorize('dom_admin', 'dom_superadmin'), async (req, res) => {
+  try {
+    const types = await DomWebsiteLead.distinct('productType');
+    return res.status(200).json({
+      success: true,
+      data: types.filter(Boolean).sort(),
+    });
+  } catch (err) {
+    console.error('[WebsiteLeads] Product types error:', err.message);
+    return res.status(500).json({ success: false, message: 'Failed to fetch product types.' });
   }
 });
 
@@ -155,6 +175,71 @@ router.get('/my', protect, authorize('domagent', 'dom_admin', 'dom_superadmin'),
   }
 });
 
+// ── POST /domestic-api/website-leads/:id/assign ───────────────────────────
+// Admin/SuperAdmin: directly assign a website lead to a specific agent.
+// The lead must be 'new' (unassigned). Sets loadedBy, status = loaded.
+router.post('/:id/assign', protect, authorize('dom_admin', 'dom_superadmin'), async (req, res) => {
+  try {
+    const { agentId } = req.body;
+    if (!agentId) {
+      return res.status(400).json({ success: false, message: 'agentId is required.' });
+    }
+
+    const agent = await DomUser.findOne({ _id: agentId, role: 'domagent', isActive: true }).lean();
+    if (!agent) {
+      return res.status(400).json({ success: false, message: 'Agent not found or is inactive.' });
+    }
+
+    // Atomic — only assign if still 'new'
+    const lead = await DomWebsiteLead.findOneAndUpdate(
+      { _id: req.params.id, status: 'new' },
+      {
+        status:   'loaded',
+        loadedBy: agentId,
+        loadedAt: new Date(),
+      },
+      { new: true }
+    ).lean();
+
+    if (!lead) {
+      const existing = await DomWebsiteLead.findById(req.params.id).lean();
+      if (!existing) {
+        return res.status(404).json({ success: false, message: 'Website lead not found.' });
+      }
+      return res.status(409).json({
+        success: false,
+        message: `Lead is already ${existing.status} — cannot reassign.`,
+      });
+    }
+
+    // Remove all floating notifications for this lead
+    await DomNotification.deleteMany({ websiteLead: req.params.id });
+
+    // Notify all agents so the card disappears from notification panels
+    const io = req.app.get('io');
+    if (io) {
+      io.to('domagents').emit('lead_loaded', { leadId: req.params.id });
+      // Tell the assigned agent specifically to refresh their lead list
+      io.to('domagents').emit('lead_assigned_to_you', {
+        leadId:    req.params.id,
+        agentId:   agentId.toString(),
+        leadName:  lead.name,
+        mobile:    lead.mobile,
+        assignedBy: req.user.name,
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Lead assigned to ${agent.name}.`,
+      data: lead,
+    });
+  } catch (err) {
+    console.error('[WebsiteLeads] Assign error:', err.message);
+    return res.status(500).json({ success: false, message: 'Failed to assign lead.' });
+  }
+});
+
 // ── PATCH /domestic-api/website-leads/:id/status ───────────────────────────
 // Admin: manually update status (e.g. reject)
 router.patch('/:id/status', protect, authorize('dom_admin', 'dom_superadmin'), async (req, res) => {
@@ -175,6 +260,63 @@ router.patch('/:id/status', protect, authorize('dom_admin', 'dom_superadmin'), a
   } catch (err) {
     console.error('[WebsiteLeads] Status update error:', err.message);
     return res.status(500).json({ success: false, message: 'Failed to update status.' });
+  }
+});
+
+// ── POST /domestic-api/website-leads/bulk-assign ───────────────────────────
+// Admin/SuperAdmin: assign multiple new website leads to one agent in one call.
+// Body: { leadIds: [...], agentId }
+router.post('/bulk-assign', protect, authorize('dom_admin', 'dom_superadmin'), async (req, res) => {
+  try {
+    const { leadIds, agentId } = req.body;
+
+    if (!agentId) {
+      return res.status(400).json({ success: false, message: 'agentId is required.' });
+    }
+    if (!Array.isArray(leadIds) || leadIds.length === 0) {
+      return res.status(400).json({ success: false, message: 'leadIds array is required.' });
+    }
+
+    const agent = await DomUser.findOne({ _id: agentId, role: 'domagent', isActive: true }).lean();
+    if (!agent) {
+      return res.status(400).json({ success: false, message: 'Agent not found or is inactive.' });
+    }
+
+    // Only assign leads that are currently 'new'
+    const result = await DomWebsiteLead.updateMany(
+      { _id: { $in: leadIds }, status: 'new' },
+      { status: 'loaded', loadedBy: agentId, loadedAt: new Date() }
+    );
+
+    if (result.modifiedCount === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'No leads were assigned — they may have already been claimed.',
+      });
+    }
+
+    // Remove notifications for all assigned leads
+    await DomNotification.deleteMany({ websiteLead: { $in: leadIds } });
+
+    // Broadcast socket events
+    const io = req.app.get('io');
+    if (io) {
+      leadIds.forEach((lid) => io.to('domagents').emit('lead_loaded', { leadId: lid }));
+      io.to('domagents').emit('lead_assigned_to_you', {
+        agentId:    agentId.toString(),
+        leadName:   `${result.modifiedCount} leads`,
+        assignedBy: req.user.name,
+      });
+    }
+
+    return res.status(200).json({
+      success:       true,
+      modifiedCount: result.modifiedCount,
+      message:       `${result.modifiedCount} lead(s) assigned to ${agent.name}.`,
+    });
+  } catch (err) {
+    console.error('[WebsiteLeads] Bulk-assign error:', err.message);
+    return res.status(500).json({ success: false, message: 'Failed to bulk-assign leads.' });
   }
 });
 

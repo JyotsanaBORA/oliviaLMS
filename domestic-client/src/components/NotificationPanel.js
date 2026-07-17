@@ -107,61 +107,77 @@ const NotificationPanel = ({ socket, onLeadLoaded }) => {
 
   if (notifications.length === 0) {
     return (
-      <div className="text-center py-10 text-gray-400">
-        <Bell className="h-8 w-8 mx-auto mb-2 opacity-30" />
-        <p className="text-sm">No new leads — you are all caught up!</p>
+      <div className="flex flex-col items-center justify-center py-14 gap-3">
+        <div className="w-16 h-16 rounded-2xl bg-gray-50 border-2 border-dashed border-gray-200 flex items-center justify-center">
+          <Bell className="h-7 w-7 text-gray-300" />
+        </div>
+        <div className="text-center">
+          <p className="text-gray-600 font-semibold text-sm">All caught up!</p>
+          <p className="text-gray-400 text-xs mt-1">New leads will appear here in real-time</p>
+        </div>
       </div>
     );
   }
+
+  // Map product type to a color theme
+  const getLeadColor = (productType) => {
+    const t = (productType || '').toLowerCase();
+    if (t.includes('personal')) return { bg: 'from-blue-500 to-blue-600', light: 'bg-blue-50 border-blue-200' };
+    if (t.includes('home'))     return { bg: 'from-emerald-500 to-teal-600', light: 'bg-emerald-50 border-emerald-200' };
+    if (t.includes('car'))      return { bg: 'from-orange-400 to-orange-500', light: 'bg-orange-50 border-orange-200' };
+    if (t.includes('business')) return { bg: 'from-violet-500 to-purple-600', light: 'bg-violet-50 border-violet-200' };
+    if (t.includes('credit'))   return { bg: 'from-pink-500 to-rose-500', light: 'bg-pink-50 border-pink-200' };
+    if (t.includes('insurance'))return { bg: 'from-indigo-500 to-blue-600', light: 'bg-indigo-50 border-indigo-200' };
+    return { bg: 'from-[#065F36] to-[#00A651]', light: 'bg-[#E8FFF5] border-[#D1FAE5]' };
+  };
 
   return (
     <div className="space-y-3">
       {notifications.map((notif) => {
         const lead      = notif.websiteLead || {};
         const isLoading = claiming === lead._id?.toString();
+        const colors    = getLeadColor(lead.productType);
 
         return (
           <div
             key={notif._id}
-            className="flex items-start justify-between gap-3 p-4 bg-[#F0FFF8] border border-[#D1FAE5] rounded-xl hover:bg-[#E8FFF5] transition-colors"
+            className={`relative overflow-hidden flex items-center justify-between gap-3 p-4 rounded-2xl border ${colors.light} hover:shadow-md transition-all`}
           >
-            <div className="flex items-start gap-3 min-w-0">
-              <div className="mt-0.5 w-2.5 h-2.5 bg-[#00A651] rounded-full animate-pulse flex-shrink-0" />
+            {/* Left accent bar */}
+            <div className={`absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b ${colors.bg} rounded-l-2xl`} />
+            
+            <div className="flex items-center gap-3 min-w-0 pl-2">
+              {/* Avatar */}
+              <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${colors.bg} flex items-center justify-center text-white font-black text-sm shadow-sm flex-shrink-0`}>
+                {lead.name?.charAt(0)?.toUpperCase() || '?'}
+              </div>
               <div className="min-w-0">
-                <p className="font-semibold text-gray-800 truncate">{lead.name || '—'}</p>
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-xs text-gray-600">
-                  <span className="flex items-center gap-1">
-                    <Phone className="h-3 w-3" />
-                    {lead.mobile}
-                  </span>
-                  {lead.city && (
-                    <span className="flex items-center gap-1">
-                      <MapPin className="h-3 w-3" />
-                      {lead.city}
-                    </span>
-                  )}
+                <div className="flex items-center gap-2">
+                  <p className="font-bold text-gray-800 truncate">{lead.name || '—'}</p>
+                  <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse flex-shrink-0" />
+                </div>
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-0.5">
+                  <span className="text-xs text-gray-500 font-mono">{lead.mobile}</span>
+                  {lead.city && <span className="text-xs text-gray-400">{lead.city}</span>}
                   {lead.productType && (
-                    <span className="flex items-center gap-1">
-                      <Briefcase className="h-3 w-3" />
-                      {lead.productType}
-                    </span>
+                    <span className="text-xs font-semibold text-gray-600 capitalize">{lead.productType.replace(/_/g,' ')}</span>
                   )}
                 </div>
-                <p className="text-xs text-gray-400 mt-1">{fmtTime(lead.createdAt)}</p>
+                <p className="text-xs text-gray-400 mt-0.5">{fmtTime(lead.createdAt)}</p>
               </div>
             </div>
 
             <button
               onClick={() => handleLoad(notif)}
               disabled={isLoading}
-              className="flex-shrink-0 flex items-center gap-1.5 bg-[#065F36] hover:bg-[#054A2E] disabled:bg-gray-400 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-colors"
+              className={`flex-shrink-0 flex items-center gap-1.5 bg-gradient-to-r ${colors.bg} disabled:from-gray-300 disabled:to-gray-400 text-white text-xs font-bold px-4 py-2 rounded-xl shadow-sm transition-all hover:shadow-md hover:scale-105 active:scale-95`}
             >
               {isLoading ? (
                 <span className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
               ) : (
                 <Download className="h-3.5 w-3.5" />
               )}
-              {isLoading ? 'Loading…' : 'Load'}
+              {isLoading ? 'Loading…' : 'Load Lead'}
             </button>
           </div>
         );

@@ -46,6 +46,15 @@ const domLeadSchema = new mongoose.Schema(
       index: true,
     },
 
+    // Link back to an imported lead (when agent works a pool lead)
+    sourceImportedLead: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'DomImportedLead',
+      required: false,
+      default: null,
+      index: true,
+    },
+
     // True when created by agent without a website lead
     isManual: { type: Boolean, default: false },
 

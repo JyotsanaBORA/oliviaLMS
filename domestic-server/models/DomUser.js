@@ -34,6 +34,13 @@ const domUserSchema = new mongoose.Schema(
       default: true,
     },
     lastLogin: { type: Date },
+    // Agent availability status (set by the agent themselves)
+    agentStatus: {
+      type: String,
+      enum: ['available', 'break', 'unavailable'],
+      default: 'available',
+    },
+    agentStatusUpdatedAt: { type: Date, default: null },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'DomUser',
