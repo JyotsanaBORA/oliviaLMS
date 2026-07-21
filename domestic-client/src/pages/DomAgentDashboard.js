@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { io } from 'socket.io-client';
 import {
   LogOut, Bell, User, RefreshCw, FileText, CheckCircle,
@@ -65,7 +65,7 @@ const DomAgentDashboard = () => {
     socket.on('lead_assigned_to_you', (data) => {
       // Only act if the socket message is for this agent
       if (data.agentId === socket.auth?.token) return; // id check happens server-side
-      toast.success(`Lead assigned to you: ${data.leadName || data.mobile || 'new lead'}`, { icon: '📋' });
+      toast.success(`Lead assigned to you: ${data.leadName || data.mobile || 'new lead'}`, { icon: '??' });
       fetchMyLeads(true);
     });
     return () => socket.disconnect();
@@ -112,7 +112,7 @@ const DomAgentDashboard = () => {
     try {
       await api.patch('/domestic-api/auth/status', { agentStatus: newStatus });
       setAgentStatus(newStatus);
-      const labels = { available: 'Available ✅', break: 'On Break ☕', unavailable: 'Unavailable 🔴' };
+      const labels = { available: 'Available ?', break: 'On Break ?', unavailable: 'Unavailable ??' };
       toast.success(`Status set to: ${labels[newStatus]}`);
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to update status.');
@@ -138,7 +138,7 @@ const DomAgentDashboard = () => {
     setImportedModalOpen(true);
   }, []);
 
-  // Fetch initial notification count from dedicated count field — avoids double-fetching full list
+  // Fetch initial notification count from dedicated count field � avoids double-fetching full list
   const fetchNotifCount = useCallback(async () => {
     try {
       const res = await api.get('/domestic-api/notifications?countOnly=1');
@@ -188,111 +188,120 @@ const DomAgentDashboard = () => {
   }), [myLeads]);
 
   const STATUS_CONFIG = {
-    available:   { label: 'Available',   dot: 'bg-emerald-500', activeBg: 'bg-emerald-500 text-white shadow-emerald-200', badge: 'bg-emerald-100 text-emerald-700 border border-emerald-300' },
-    break:       { label: 'On Break',    dot: 'bg-amber-400',   activeBg: 'bg-amber-400 text-white shadow-amber-200',   badge: 'bg-amber-100 text-amber-700 border border-amber-300' },
-    unavailable: { label: 'Unavailable', dot: 'bg-red-500',     activeBg: 'bg-red-500 text-white shadow-red-200',       badge: 'bg-red-100 text-red-700 border border-red-300' },
+    available:   { label: 'Available',   dot: 'bg-emerald-500', activeBg: 'bg-emerald-500 text-white', badge: 'bg-emerald-100 text-emerald-700 border border-emerald-300' },
+    break:       { label: 'On Break',    dot: 'bg-amber-400',   activeBg: 'bg-amber-400 text-white',   badge: 'bg-amber-100 text-amber-700 border border-amber-300' },
+    unavailable: { label: 'Unavailable', dot: 'bg-red-500',     activeBg: 'bg-red-500 text-white',     badge: 'bg-red-100 text-red-700 border border-red-300' },
   };
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-[#F0FFF8] to-emerald-50/30">
-      {/* â”€â”€ Header â”€â”€ */}
-      <header className="bg-white/95 backdrop-blur-sm shadow-sm sticky top-0 z-30 border-b border-gray-100">
-        <div className="px-5 flex items-center justify-between h-16">
-          <div className="flex items-center gap-3">
-            <img src={`${process.env.PUBLIC_URL}/mcb-logo.png`} alt="MyCashBridge" className="h-8 object-contain" />
-            <div className="border-l border-gray-200 pl-3 hidden sm:block">
-              <h1 className="text-[#065F36] font-bold text-sm leading-tight">Domestic LMS</h1>
-              <p className="text-gray-400 text-xs">Agent Portal</p>
-            </div>
-            <div className={`flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full border ml-1 ${
-              connected
-                ? 'bg-[#E8FFF5] border-[#D1FAE5] text-[#065F36]'
-                : 'bg-amber-50 border-amber-200 text-amber-600 animate-pulse'
-            }`}>
-              {connected ? <Wifi className="h-3 w-3" /> : <WifiOff className="h-3 w-3" />}
-              {connected ? 'Live' : 'Connecting'}
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            {/* Status toggle — desktop */}
-            <div className="hidden sm:flex items-center gap-1 bg-gray-100 rounded-xl p-1">
-              {Object.entries(STATUS_CONFIG).map(([key, cfg]) => (
-                <button key={key}
-                  onClick={() => handleStatusChange(key)}
-                  disabled={statusUpdating}
-                  title={cfg.label}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                    agentStatus === key
-                      ? `${cfg.activeBg} shadow-sm`
-                      : 'text-gray-500 hover:bg-gray-200'
-                  }`}>
-                  <span className={`w-2 h-2 rounded-full ${agentStatus === key ? 'bg-white/80' : cfg.dot}`} />
-                  {cfg.label}
-                </button>
-              ))}
-            </div>
+    <div className="flex h-screen overflow-hidden bg-gray-50">
 
-            {/* Name with status dot */}
-            <div className="hidden md:flex items-center gap-2 bg-gray-50 border border-gray-100 rounded-xl px-3 py-1.5">
-              <div className="relative">
-                <div className="w-7 h-7 rounded-full bg-[#E8FFF5] flex items-center justify-center text-[#065F36] font-bold text-xs border border-[#D1FAE5]">
-                  {user.name?.charAt(0)?.toUpperCase()}
-                </div>
-                <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white ${STATUS_CONFIG[agentStatus]?.dot || 'bg-emerald-500'}`} />
-              </div>
-              <span className="text-sm font-medium text-gray-700">{user.name}</span>
+      {/* AGENT SIDEBAR */}
+      <aside className="w-[210px] flex-shrink-0 flex flex-col h-screen bg-white border-r border-gray-200 shadow-sm">
+        {/* Brand strip */}
+        <div className="bg-[#065F36] px-4 py-4 flex-shrink-0">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-white/15 flex items-center justify-center flex-shrink-0">
+              <img src={`${process.env.PUBLIC_URL}/mcb-logo.png`} alt="MCB" className="h-5 w-auto object-contain brightness-0 invert" />
             </div>
-
-            <button onClick={() => { logout(); if (socketRef.current) socketRef.current.disconnect(); }}
-              className="flex items-center gap-1.5 bg-red-50 hover:bg-red-100 text-red-600 text-sm px-3 py-1.5 rounded-lg transition-colors border border-red-100 font-semibold">
-              <LogOut className="h-3.5 w-3.5" /> Logout
-            </button>
+            <div className="min-w-0">
+              <p className="text-white font-bold text-[13px] leading-none">MyCashBridge</p>
+              <p className="text-white/60 text-[9px] font-medium tracking-wider uppercase mt-1">Agent Portal</p>
+            </div>
           </div>
         </div>
 
-        {/* Status toggle — mobile */}
-        <div className="sm:hidden flex items-center gap-1 px-4 pb-3">
+        {/* User + status */}
+        <div className="px-3 py-3 border-b border-gray-100 flex-shrink-0">
+          <div className="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-[#f0faf5] border border-[#d1fae5]">
+            <div className="relative flex-shrink-0">
+              <div className="w-7 h-7 rounded-lg bg-[#065F36] flex items-center justify-center font-bold text-white text-xs shadow-sm">
+                {user.name?.charAt(0)?.toUpperCase()}
+              </div>
+              <span className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border-[1.5px] border-white ${STATUS_CONFIG[agentStatus]?.dot || 'bg-emerald-500'}`} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-gray-800 font-semibold text-[11px] leading-none truncate">{user.name}</p>
+              <div className="flex items-center gap-1 mt-1">
+                <span className={`w-1.5 h-1.5 rounded-full ${STATUS_CONFIG[agentStatus]?.dot || 'bg-emerald-500'}`} />
+                <p className="text-[#065F36]/70 text-[9px] font-medium">{STATUS_CONFIG[agentStatus]?.label || 'Available'}</p>
+                {connected && <span className="ml-auto text-emerald-600 text-[8px] font-bold">LIVE</span>}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Navigation */}
+        <nav className="flex-1 px-2 pt-3 pb-2 overflow-y-auto min-h-0">
+          {/* Mini stats */}
+          <div className="flex items-center gap-1.5 px-2 mb-3 flex-wrap">
+            {[
+              { label: 'Pending', val: pendingCount, color: 'text-orange-500 bg-orange-50' },
+              { label: 'Worked',  val: workedCount,  color: 'text-emerald-600 bg-emerald-50' },
+              { label: 'Pool',    val: assignedLeads.length, color: 'text-violet-600 bg-violet-50' },
+            ].map(s => (
+              <div key={s.label} className={`flex items-center gap-1 px-2 py-1 rounded-lg ${s.color}`}>
+                <span className="text-[11px] font-black">{s.val}</span>
+                <span className="text-[9px] opacity-70">{s.label}</span>
+              </div>
+            ))}
+          </div>
+
+          <p className="text-gray-400 text-[9px] font-extrabold uppercase tracking-[0.14em] px-2 mb-1.5">LEADS</p>
+          {[
+            { key: 'notifications',  Icon: Bell,     label: 'New Leads',  sub: 'Incoming enquiries', badge: notifCount || null },
+            { key: 'my_leads',       Icon: FileText, label: 'My Leads',   sub: 'Website & manual'   },
+            { key: 'assigned_leads', Icon: Database, label: 'Assigned',   sub: 'Pool leads'         },
+            { key: 'followups',      Icon: Phone,    label: 'Follow-ups', sub: 'Callbacks & retry',  badge: followups.length || null },
+          ].map(({ key, Icon, label, sub, badge }) => {
+            const isActive = tab === key;
+            return (
+              <button key={key} onClick={() => { setTab(key); if (key === 'notifications') fetchNotifCount(); }}
+                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg transition-all text-left relative group mb-0.5 ${
+                  isActive ? 'bg-[#e8f5ed] text-[#065F36]' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-800'
+                }`}>
+                {isActive && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-[#065F36] rounded-r-full" />}
+                <Icon className={`h-[14px] w-[14px] flex-shrink-0 ${isActive ? 'text-[#065F36]' : 'text-gray-400 group-hover:text-gray-600'}`} />
+                <div className="flex-1 min-w-0">
+                  <p className={`text-[12px] font-semibold leading-none ${isActive ? 'text-[#065F36]' : 'text-gray-600 group-hover:text-gray-800'}`}>{label}</p>
+                  <p className={`text-[10px] mt-1 ${isActive ? 'text-[#065F36]/60' : 'text-gray-400'}`}>{sub}</p>
+                </div>
+                {badge > 0 && (
+                  <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full flex-shrink-0 ${
+                    isActive ? 'bg-[#065F36]/20 text-[#065F36]' : 'bg-red-500 text-white'
+                  }`}>{badge}</span>
+                )}
+              </button>
+            );
+          })}
+
+          {/* Status toggle */}
+          <p className="text-gray-400 text-[9px] font-extrabold uppercase tracking-[0.14em] px-2 mt-3 mb-1.5">MY STATUS</p>
           {Object.entries(STATUS_CONFIG).map(([key, cfg]) => (
-            <button key={key}
-              onClick={() => handleStatusChange(key)}
-              disabled={statusUpdating}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-bold transition-all ${
-                agentStatus === key ? `${cfg.activeBg} shadow-sm` : 'bg-gray-100 text-gray-500'
+            <button key={key} onClick={() => handleStatusChange(key)} disabled={statusUpdating}
+              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg transition-all text-left mb-0.5 ${
+                agentStatus === key
+                  ? 'bg-[#e8f5ed] border border-[#d1fae5]'
+                  : 'text-gray-400 hover:bg-gray-50 hover:text-gray-600'
               }`}>
-              <span className={`w-2 h-2 rounded-full ${agentStatus === key ? 'bg-white/80' : cfg.dot}`} />
-              {cfg.label}
+              <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${cfg.dot}`} />
+              <span className={`text-[11px] font-semibold ${agentStatus === key ? 'text-gray-700' : ''}`}>{cfg.label}</span>
+              {agentStatus === key && <span className="ml-auto text-[9px] text-[#065F36] font-bold">Active</span>}
             </button>
           ))}
-        </div>
-      </header>
+        </nav>
 
-      {/* â”€â”€ Stats strip + Tabs â”€â”€ */}
-      <div className="bg-white/80 backdrop-blur-sm border-b border-gray-100 shadow-sm sticky top-16 z-20">
-        <div className="px-5 flex items-center justify-between gap-4 py-2">
-          <div className="flex items-center gap-2 py-3 overflow-x-auto">
-            <StatChip icon={<Clock className="h-3.5 w-3.5" />}   label="Pending" value={pendingCount} color="red" />
-            <StatChip icon={<CheckCircle className="h-3.5 w-3.5"/>} label="Worked" value={workedCount} color="blue" />
-            <StatChip icon={<FileText className="h-3.5 w-3.5" />} label="Manual" value={manualCount} color="purple" />
-            
-            <StatChip icon={<Database className="h-3.5 w-3.5" />} label="Pool" value={assignedLeads.length} color="blue" />
-          </div>
-          <div className="flex gap-1 bg-gray-100 p-1 rounded-xl flex-shrink-0">
-            <TabBtn active={tab === 'notifications'} onClick={() => { setTab('notifications'); fetchNotifCount(); }} badge={notifCount}>
-              <Bell className="h-3.5 w-3.5" /> New Leads
-            </TabBtn>
-            <TabBtn active={tab === 'my_leads'} onClick={() => setTab('my_leads')}>
-              <FileText className="h-3.5 w-3.5" /> My Leads
-            </TabBtn>
-            <TabBtn active={tab === 'assigned_leads'} onClick={() => setTab('assigned_leads')}>
-              <Database className="h-3.5 w-3.5" /> Assigned
-            </TabBtn>
-            <TabBtn active={tab === 'followups'} onClick={() => setTab('followups')} badge={followups.length || null}>
-              <Phone className="h-3.5 w-3.5" /> Follow-ups
-            </TabBtn>
-          </div>
+        {/* Logout */}
+        <div className="flex-shrink-0 px-2 pb-3 pt-2 border-t border-gray-100">
+          <button onClick={() => { logout(); if (socketRef.current) socketRef.current.disconnect(); }}
+            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-all text-left">
+            <LogOut className="h-[14px] w-[14px] flex-shrink-0" />
+            <span className="text-[12px] font-semibold">Sign out</span>
+          </button>
         </div>
-      </div>
+      </aside>
 
-      {/* â”€â”€ Main Panel â”€â”€ */}
+      {/* CONTENT */}
+      <div className="flex-1 overflow-y-auto min-w-0">
       <main className="px-5 py-5 space-y-5">
 
         {/* New Leads Tab */}
@@ -348,7 +357,7 @@ const DomAgentDashboard = () => {
             {loading ? (
               <div className="flex flex-col items-center justify-center py-20 text-gray-300">
                 <span className="w-8 h-8 border-3 border-gray-200 border-t-[#065F36] rounded-full animate-spin mb-3" />
-                <span className="text-sm text-gray-400">Loading your leadsâ€¦</span>
+                <span className="text-sm text-gray-400">Loading your leads…</span>
               </div>
             ) : myLeads.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-20 text-gray-400">
@@ -392,30 +401,30 @@ const DomAgentDashboard = () => {
                           </td>
                           <td className="px-3 py-3.5">
                             {lead.isManual
-                              ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-gray-100 text-gray-600 border border-gray-200">✍️ Manual</span>
-                              : <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-teal-100 text-teal-700 border border-teal-200">🌐 Website</span>
+                              ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-gray-100 text-gray-600 border border-gray-200">?? Manual</span>
+                              : <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-teal-100 text-teal-700 border border-teal-200">?? Website</span>
                             }
                           </td>
                           <td className="px-3 py-3.5">
                             <div className="flex items-center gap-2">
                               <div className={`w-2 h-2 rounded-full flex-shrink-0 ${isWorked ? 'bg-[#065F36]' : 'bg-red-400 animate-pulse'}`} />
-                              <p className="font-semibold text-gray-800 leading-tight">{lead.name || '—'}</p>
+                              <p className="font-semibold text-gray-800 leading-tight">{lead.name || '�'}</p>
                             </div>
                           </td>
-                          <td className="px-3 py-3.5 text-gray-600 font-mono text-xs tracking-wide">{lead.mobile || 'â€”'}</td>
-                          <td className="px-3 py-3.5 text-gray-500 text-sm">{lead.city || 'â€”'}</td>
+                          <td className="px-3 py-3.5 text-gray-600 font-mono text-xs tracking-wide">{lead.mobile || '—'}</td>
+                          <td className="px-3 py-3.5 text-gray-500 text-sm">{lead.city || '—'}</td>
                           <td className="px-3 py-3.5">
                             {lead.productType
                               ? <span className="bg-[#E8FFF5] text-[#065F36] border border-[#D1FAE5] px-2 py-0.5 rounded-full text-xs font-medium capitalize">{lead.productType.replace(/_/g,' ')}</span>
-                              : <span className="text-gray-300 text-xs">â€”</span>}
+                              : <span className="text-gray-300 text-xs">—</span>}
                           </td>
                           <td className="px-3 py-3.5 text-gray-400 text-xs whitespace-nowrap">
-                            {date ? new Date(date).toLocaleString('en-IN', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' }) : 'â€”'}
+                            {date ? new Date(date).toLocaleString('en-IN', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' }) : '—'}
                           </td>
                           <td className="px-3 py-3.5">
                             {outcome
                               ? <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${outcome.cls}`}>{outcome.label}</span>
-                              : <span className="text-gray-300 text-xs">â€”</span>}
+                              : <span className="text-gray-300 text-xs">—</span>}
                           </td>
                           <td className="px-3 py-3.5">
                             <span className={`inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full font-bold border ${
@@ -455,7 +464,7 @@ const DomAgentDashboard = () => {
                   <div className="flex items-center gap-2">
                     <h2 className="font-bold text-gray-800 text-base">Assigned Leads</h2>
                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-violet-100 text-violet-700 border border-violet-200">
-                      📊 Excel Import
+                      ?? Excel Import
                     </span>
                   </div>
                   <p className="text-xs text-gray-400 mt-0.5">Click any row to open the full work form and record your call outcome</p>
@@ -470,7 +479,7 @@ const DomAgentDashboard = () => {
             {assignedLeadsLoading ? (
               <div className="flex flex-col items-center justify-center py-20 text-gray-300">
                 <span className="w-8 h-8 border-2 border-gray-200 border-t-[#065F36] rounded-full animate-spin mb-3" />
-                <span className="text-sm text-gray-400">Loading assigned leads…</span>
+                <span className="text-sm text-gray-400">Loading assigned leads�</span>
               </div>
             ) : assignedLeads.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-20 text-gray-400">
@@ -516,30 +525,30 @@ const DomAgentDashboard = () => {
                             <div className="flex items-center gap-2">
                               <div className={`w-2 h-2 rounded-full flex-shrink-0 ${isWorked ? 'bg-violet-500' : 'bg-orange-400 animate-pulse'}`} />
                               <div>
-                                <p className="font-semibold text-gray-800 leading-tight">{lead.name || '—'}</p>
+                                <p className="font-semibold text-gray-800 leading-tight">{lead.name || '�'}</p>
                                 <p className="text-xs text-gray-400">{lead.state || lead.city || ''}</p>
                               </div>
                             </div>
                           </td>
-                          <td className="px-3 py-3.5 text-gray-600 font-mono text-xs tracking-wide">{lead.mobile || '—'}</td>
+                          <td className="px-3 py-3.5 text-gray-600 font-mono text-xs tracking-wide">{lead.mobile || '�'}</td>
                           <td className="px-3 py-3.5">
                             {(lead.loanType || lead.productType)
                               ? <span className="bg-violet-100 text-violet-700 border border-violet-200 px-2 py-0.5 rounded-full text-xs font-medium capitalize">
                                   {(lead.loanType || lead.productType).replace(/_/g,' ')}
                                 </span>
-                              : <span className="text-gray-300 text-xs">—</span>}
+                              : <span className="text-gray-300 text-xs">�</span>}
                           </td>
                           <td className="px-3 py-3.5">
                             {lead.totalOutstandingAmount
-                              ? <span className="text-xs font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-lg">₹{lead.totalOutstandingAmount}</span>
-                              : <span className="text-gray-300 text-xs">—</span>}
+                              ? <span className="text-xs font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-lg">?{lead.totalOutstandingAmount}</span>
+                              : <span className="text-gray-300 text-xs">�</span>}
                           </td>
                           <td className="px-3 py-3.5">
                             {overdue > 0
                               ? <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${overdue > 3 ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'}`}>
                                   {overdue} EMI
                                 </span>
-                              : <span className="text-gray-300 text-xs">—</span>}
+                              : <span className="text-gray-300 text-xs">�</span>}
                           </td>
                           <td className="px-3 py-3.5">
                             {lead.cibilScore
@@ -547,7 +556,7 @@ const DomAgentDashboard = () => {
                                   parseInt(lead.cibilScore) >= 700 ? 'text-emerald-600' :
                                   parseInt(lead.cibilScore) >= 600 ? 'text-amber-600' : 'text-red-600'
                                 }`}>{lead.cibilScore}</span>
-                              : <span className="text-gray-300 text-xs">—</span>}
+                              : <span className="text-gray-300 text-xs">�</span>}
                           </td>
                           <td className="px-3 py-3.5">
                             <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold border ${wsInfo.cls}`}>
@@ -569,9 +578,8 @@ const DomAgentDashboard = () => {
             )}
           </div>
         )}
-      </main>
 
-      {/* ── Follow-up Queue ── */}
+      {/* -- Follow-up Queue -- */}}
       {tab === 'followups' && (() => {
         const today     = new Date(); today.setHours(0,0,0,0);
         const tomorrow  = new Date(today); tomorrow.setDate(today.getDate() + 1);
@@ -590,9 +598,9 @@ const DomAgentDashboard = () => {
             wrong_number:  'bg-gray-100 text-gray-600 border-gray-200',
           };
           const outcomeLabels = {
-            callback:      '📞 Callback',
-            not_reachable: '📵 Not Reachable',
-            wrong_number:  '❓ Wrong Number',
+            callback:      '?? Callback',
+            not_reachable: '?? Not Reachable',
+            wrong_number:  '? Wrong Number',
           };
           const callbackD = parseDate(f.callbackDate);
           const isOverdue = callbackD && callbackD < today;
@@ -605,7 +613,7 @@ const DomAgentDashboard = () => {
               <div className="flex items-start justify-between gap-3">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-bold text-gray-800">{f.name || '—'}</span>
+                    <span className="font-bold text-gray-800">{f.name || '�'}</span>
                     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border ${outcomeColors[f.callOutcome] || 'bg-gray-100 text-gray-500 border-gray-200'}`}>
                       {outcomeLabels[f.callOutcome] || f.callOutcome}
                     </span>
@@ -614,12 +622,12 @@ const DomAgentDashboard = () => {
                     )}
                   </div>
                   <div className="flex items-center gap-3 mt-1.5 text-sm text-gray-500 flex-wrap">
-                    <span className="font-mono font-semibold text-gray-700">{f.mobile || '—'}</span>
+                    <span className="font-mono font-semibold text-gray-700">{f.mobile || '�'}</span>
                     {f.productType && <span className="text-xs bg-[#E8FFF5] text-[#065F36] border border-[#D1FAE5] px-2 py-0.5 rounded-full capitalize">{f.productType.replace(/_/g,' ')}</span>}
                     {callbackD && (
                       <span className={`flex items-center gap-1 text-xs font-semibold ${isOverdue ? 'text-red-600' : isToday ? 'text-amber-600' : 'text-gray-500'}`}>
                         <Calendar className="h-3 w-3" />
-                        {isOverdue ? '⚠️ Overdue · ' : isToday ? '🔔 Today · ' : ''}
+                        {isOverdue ? '?? Overdue � ' : isToday ? '?? Today � ' : ''}
                         {callbackD.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
                       </span>
                     )}
@@ -666,7 +674,7 @@ const DomAgentDashboard = () => {
                   </div>
                   <div>
                     <h2 className="font-bold text-gray-800 text-base">Follow-up Queue</h2>
-                    <p className="text-xs text-gray-400">Leads waiting for your call — sorted by urgency</p>
+                    <p className="text-xs text-gray-400">Leads waiting for your call � sorted by urgency</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
@@ -684,22 +692,22 @@ const DomAgentDashboard = () => {
             {followupsLoading ? (
               <div className="flex flex-col items-center justify-center py-20 gap-3">
                 <div className="w-10 h-10 border-4 border-gray-100 border-t-amber-500 rounded-full animate-spin" />
-                <p className="text-gray-400 text-sm">Loading follow-ups…</p>
+                <p className="text-gray-400 text-sm">Loading follow-ups�</p>
               </div>
             ) : followups.length === 0 ? (
               <div className="bg-white rounded-2xl border border-gray-100 shadow-sm flex flex-col items-center justify-center py-20 gap-4">
                 <div className="p-5 bg-emerald-100 rounded-3xl"><CheckCircle2 className="h-12 w-12 text-emerald-500" /></div>
                 <div className="text-center">
-                  <p className="font-bold text-gray-700 text-lg">All clear! 🎉</p>
+                  <p className="font-bold text-gray-700 text-lg">All clear! ??</p>
                   <p className="text-gray-400 text-sm mt-1">No pending callbacks or unreached leads.</p>
                 </div>
               </div>
             ) : (
               <div className="space-y-6">
-                <Section title="Overdue Callbacks" color="bg-red-100 text-red-800"   icon="🔴" items={overdue} />
-                <Section title="Call Today"         color="bg-amber-100 text-amber-800" icon="🟡" items={todayList} />
-                <Section title="Upcoming"           color="bg-emerald-100 text-emerald-800" icon="🟢" items={upcoming} />
-                <Section title="Not Scheduled"      color="bg-gray-100 text-gray-700"  icon="📋" items={noDate} />
+                <Section title="Overdue Callbacks" color="bg-red-100 text-red-800"   icon="??" items={overdue} />
+                <Section title="Call Today"         color="bg-amber-100 text-amber-800" icon="??" items={todayList} />
+                <Section title="Upcoming"           color="bg-emerald-100 text-emerald-800" icon="??" items={upcoming} />
+                <Section title="Not Scheduled"      color="bg-gray-100 text-gray-700"  icon="??" items={noDate} />
               </div>
             )}
           </div>
@@ -715,7 +723,7 @@ const DomAgentDashboard = () => {
         />
       )}
 
-      {/* Step 1: Show all imported lead data — agent reviews before calling */}
+      {/* Step 1: Show all imported lead data � agent reviews before calling */}
       {detailModalOpen && selectedImportedLead && (
         <ImportedLeadDetailModal
           lead={selectedImportedLead}
@@ -728,7 +736,7 @@ const DomAgentDashboard = () => {
         />
       )}
 
-      {/* Step 2: Full work form — agent fills in call outcome, uploads docs, etc. */}
+      {/* Step 2: Full work form � agent fills in call outcome, uploads docs, etc. */}
       {importedModalOpen && (
         <LeadFormModal
           importedLead={selectedImportedLead}
@@ -741,6 +749,8 @@ const DomAgentDashboard = () => {
           onSaved={() => { fetchAssignedLeads(); }}
         />
       )}
+      </main>
+      </div>
     </div>
   );
 };

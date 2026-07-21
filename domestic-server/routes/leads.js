@@ -223,7 +223,7 @@ router.get('/followups', protect, authorize('domagent', 'dom_admin', 'dom_supera
 
     const leads = await DomLead.find(filter)
       .populate('sourceWebsiteLead',  'name mobile productType')
-      .populate('sourceImportedLead', 'name mobile loanType totalOutstandingAmount')
+      .populate('sourceImportedLead', 'name mobile loanType totalOutstandingAmount principalOutstanding noOfInstallmentOverdue cibilScore bankName employment residencePhoneNumber officePhoneNumber vintage disbursalAmount amountFinanced')
       .sort({ callbackDate: 1, updatedAt: -1 })
       .limit(200)
       .lean();
@@ -254,6 +254,8 @@ router.get('/', protect, async (req, res) => {
       filter.assignedTo = req.query.agentId;
     }
 
+    if (req.query.isManual === 'true') filter.isManual = true;
+
     if (status && ['pending', 'completed', 'rejected'].includes(status)) {
       filter.status = status;
     }
@@ -282,6 +284,14 @@ router.get('/', protect, async (req, res) => {
         .populate('assignedTo', 'name email')
         .populate('createdBy', 'name')
         .populate('sourceWebsiteLead', 'name mobile productType status')
+        .populate('sourceImportedLead',
+          'name mobile loanType totalOutstandingAmount principalOutstanding ' +
+          'noOfInstallmentOverdue cibilScore cibilScoreDate disbursalAmount amountFinanced ' +
+          'bankName employment firmEmployeeName panNumber customerAadharNo dateOfBirth age ' +
+          'residenceAddress residencePhoneNumber officeAddress officePhoneNumber ' +
+          'countOfLiveLoans vintage expiryStatus expiryDate sanctionDate ' +
+          'assetDescription zipCode make customerPreferredLanguage workStatus callOutcome'
+        )
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)

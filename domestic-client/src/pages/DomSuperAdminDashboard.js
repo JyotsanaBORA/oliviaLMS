@@ -5,6 +5,7 @@ import {
   Upload, Database, Share2, Globe, Search, UserCheck2,
   Activity, BarChart2, FileText, Briefcase, Coffee, XCircle,
   TrendingUp, Calendar, Download, ArrowUp, ArrowDown, Zap,
+  ChevronDown,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import DomAdminDashboard from './DomAdminDashboard';
@@ -108,6 +109,20 @@ const DomSuperAdminDashboard = () => {
   const [trackPoolLeads,      setTrackPoolLeads]      = useState([]);
   const [trackLeadsLoading,   setTrackLeadsLoading]   = useState(false);
   const [trackerLeadDetail,   setTrackerLeadDetail]   = useState(null);  // lead clicked in tracker
+
+  // Channel Partners — Manual Leads
+  const [manualLeads,        setManualLeads]        = useState([]);
+  const [manualLeadsLoading, setManualLeadsLoading] = useState(false);
+  const [manualLeadDetail,   setManualLeadDetail]   = useState(null);
+  const [manualFilter,       setManualFilter]       = useState('all'); // 'all' | 'marked' | 'not_marked'
+
+  // Sidebar collapse state — 'agents' group is expanded by default
+  const [openGroups, setOpenGroups] = useState(new Set(['agents']));
+  const toggleGroup = (key) => setOpenGroups(prev => {
+    const next = new Set(prev);
+    next.has(key) ? next.delete(key) : next.add(key);
+    return next;
+  });
 
   const fetchUsers = useCallback(async () => {
     setUsersLoading(true);
@@ -227,6 +242,15 @@ const DomSuperAdminDashboard = () => {
     finally { setTrackerLoading(false); }
   }, []);
 
+  const fetchManualLeads = useCallback(async () => {
+    setManualLeadsLoading(true);
+    try {
+      const res = await api.get('/domestic-api/leads?isManual=true&limit=100');
+      setManualLeads(res.data?.data || []);
+    } catch { toast.error('Failed to load manual leads.'); }
+    finally { setManualLeadsLoading(false); }
+  }, []);
+
   const fetchReport = useCallback(async (range, customFrom, customTo) => {
     setReportLoading(true);
     try {
@@ -320,9 +344,11 @@ const DomSuperAdminDashboard = () => {
     if (superTab === 'apikey')    fetchApiKey();
     if (superTab === 'import')    { fetchBatches(); fetchAdmins(); }
     if (superTab === 'web_leads') { fetchWebLeads(1); fetchWebProductTypes(); fetchWebAgents(); fetchWebServiceStats(); }
-    if (superTab === 'tracker')   { fetchTrackerAgents(); setSelectedTrackAgent(null); }
-    if (superTab === 'reports')   { fetchReport('month', '', ''); }
-  }, [superTab, fetchUsers, fetchApiKey, fetchBatches, fetchAdmins, fetchWebLeads, fetchWebProductTypes, fetchWebAgents, fetchWebServiceStats, fetchTrackerAgents, fetchReport]);
+    if (superTab === 'tracker')      { fetchTrackerAgents(); setSelectedTrackAgent(null); }
+    if (superTab === 'reports')      { fetchReport('month', '', ''); }
+    if (superTab === 'manual_leads') { fetchManualLeads(); }
+    if (superTab === 'agent_performance') { /* uses DomAdminDashboard internally */ }
+  }, [superTab, fetchUsers, fetchApiKey, fetchBatches, fetchAdmins, fetchWebLeads, fetchWebProductTypes, fetchWebAgents, fetchWebServiceStats, fetchTrackerAgents, fetchReport, fetchManualLeads]);
 
   const handleToggleActive = async (u) => {
     try {
@@ -333,67 +359,149 @@ const DomSuperAdminDashboard = () => {
   };
 
   /* ── Main: renders Admin Dashboard + super-admin header + tab nav ── */
-  if (superTab === 'main') {
-    const SA_TABS = [
-      { key: 'users',     Icon: Users,      label: 'Manage Users',        sub: 'Agents & admins'         },
-      { key: 'tracker',   Icon: Activity,   label: 'Agent Tracker',       sub: 'Monitor live activity'   },
-      { key: 'reports',   Icon: TrendingUp, label: 'Reports & Analytics', sub: 'Daily · Monthly · Yearly'},
-      { key: 'web_leads', Icon: Globe,      label: 'Lead Monitor',        sub: 'Website enquiries'       },
-      { key: 'import',    Icon: Upload,     label: 'Import & Distribute', sub: 'Upload & share data'     },
-      { key: 'apikey',    Icon: Key,        label: 'Integration',         sub: 'API key setup'           },
-    ];
-    return (
-      <div>
-        {/* ── Slim green identity bar ── */}
-        <div className="bg-[#065F36] text-white px-6 py-2.5 flex items-center justify-between shadow-sm z-40 relative border-b border-[#054A2E]">
-          <div className="flex items-center gap-3">
-            <img src={`${process.env.PUBLIC_URL}/mcb-logo.png`} alt="MyCashBridge" className="h-7 object-contain brightness-0 invert opacity-90" />
-            <div className="h-5 w-px bg-white/20" />
-            <div className="flex items-center gap-2">
-              <div className="p-1 bg-white/15 rounded-md">
-                <Shield className="h-3.5 w-3.5 text-white/90" />
-              </div>
-              <span className="text-sm font-bold tracking-wide">Super Admin Portal</span>
+  /* ── Sidebar nav config ── */
+  const SIDEBAR_GROUPS = [
+    {
+      key: 'overview', label: null, collapsible: false,
+      items: [{ key: 'main', Icon: BarChart2, label: 'Allocation Dashboard', sub: 'System overview' }],
+    },
+    {
+      key: 'meta', label: 'META ALLOCATION', collapsible: false,
+      items: [{ key: 'web_leads', Icon: Globe, label: 'Meta Allocation', sub: 'Website + Meta leads' }],
+    },
+    {
+      key: 'agents', label: 'AGENT ALLOCATION', collapsible: true,
+      items: [
+        { key: 'tracker',          Icon: Activity,  label: 'Track Agents',      sub: 'Live monitoring'         },
+        { key: 'users',            Icon: Users,     label: 'No. of Agents',     sub: 'Agents & admins'        },
+        { key: 'agent_performance',Icon: BarChart2, label: 'Agent Performance', sub: 'Rankings & stats'        },
+      ],
+    },
+    {
+      key: 'data', label: 'IMPORT ALLOCATION', collapsible: false,
+      items: [{ key: 'import', Icon: Upload, label: 'Import Allocation', sub: 'Upload Excel & share batches' }],
+    },
+    {
+      key: 'partners', label: 'CHANNEL PARTNERS', collapsible: false,
+      items: [{ key: 'manual_leads', Icon: Briefcase, label: 'Manual Leads', sub: 'Agent-entered cases' }],
+    },
+    {
+      key: 'system', label: 'REPORTS & SYSTEM', collapsible: false,
+      items: [
+        { key: 'reports', Icon: TrendingUp, label: 'Reports & Analytics', sub: 'Daily \u00b7 Monthly \u00b7 Yearly' },
+        { key: 'apikey',  Icon: Key,        label: 'Integration',         sub: 'API key setup'                   },
+      ],
+    },
+  ];
+
+  return (
+    <div className="flex h-screen overflow-hidden bg-gray-50">
+
+      {/* ════ SIDEBAR ════ */}
+      <aside className="w-[230px] flex-shrink-0 flex flex-col h-screen bg-white border-r border-gray-200 shadow-sm">
+
+        {/* Brand strip */}
+        <div className="bg-[#065F36] px-4 py-4 flex-shrink-0">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-white/15 flex items-center justify-center flex-shrink-0">
+              <img src={`${process.env.PUBLIC_URL}/mcb-logo.png`} alt="MCB" className="h-5 w-auto object-contain brightness-0 invert" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-white font-bold text-[13px] leading-none">MyCashBridge</p>
+              <p className="text-white/60 text-[9px] font-medium tracking-wider uppercase mt-1">Super Admin Portal</p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="hidden sm:flex items-center gap-2 bg-white/10 border border-white/15 rounded-xl px-3 py-1.5">
-              <div className="w-6 h-6 rounded-lg bg-white/20 flex items-center justify-center text-white font-black text-xs">
+        </div>
+
+        {/* User card */}
+        <div className="px-3 py-3 border-b border-gray-100 flex-shrink-0">
+          <div className="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-[#f0faf5] border border-[#d1fae5]">
+            <div className="relative flex-shrink-0">
+              <div className="w-7 h-7 rounded-lg bg-[#065F36] flex items-center justify-center font-bold text-white text-xs shadow-sm">
                 {user.name?.charAt(0)?.toUpperCase()}
               </div>
-              <span className="text-sm font-semibold text-white/90">{user.name}</span>
+              <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-400 border-[1.5px] border-white" />
             </div>
-            <button onClick={logout}
-              className="flex items-center gap-1.5 text-xs bg-red-500/20 hover:bg-red-500/40 text-white px-3 py-1.5 rounded-lg border border-red-400/20 font-semibold transition-colors">
-              <LogOut className="h-3.5 w-3.5" /> Logout
-            </button>
+            <div className="flex-1 min-w-0">
+              <p className="text-gray-800 font-semibold text-[11px] leading-none truncate">{user.name}</p>
+              <p className="text-[#065F36]/70 text-[9px] font-medium mt-1">Super Admin</p>
+            </div>
           </div>
         </div>
 
-        {/* ── Tab navigation bar ── */}
-        <div className="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-30">
-          <div className="px-6 flex gap-1 py-1.5 overflow-x-auto scrollbar-hide">
-            {SA_TABS.map(({ key, Icon, label, sub }) => (
-              <button key={key}
-                onClick={() => setSuperTab(key)}
-                className="flex flex-col items-start px-4 py-2.5 rounded-xl transition-all whitespace-nowrap min-w-max hover:bg-[#E8FFF5] hover:text-[#065F36] text-gray-500 group">
-                <div className="flex items-center gap-2">
-                  <Icon className="h-4 w-4 flex-shrink-0 group-hover:text-[#065F36]" />
-                  <span className="text-sm font-bold">{label}</span>
+        {/* Navigation */}
+        <nav className="flex-1 px-2 pt-2 pb-2 overflow-y-auto min-h-0">
+          {SIDEBAR_GROUPS.map((group) => (
+            <div key={group.key} className="mb-0.5">
+              {group.label && (
+                group.collapsible ? (
+                  <button
+                    onClick={() => toggleGroup(group.key)}
+                    className="w-full flex items-center gap-2 px-2 py-1.5 mt-2 mb-0.5 group">
+                    <p className="text-gray-400 text-[9px] font-extrabold uppercase tracking-[0.14em] flex-1 text-left group-hover:text-gray-600 transition-colors">{group.label}</p>
+                    <ChevronDown className={`h-2.5 w-2.5 text-gray-300 group-hover:text-gray-500 transition-all flex-shrink-0 ${
+                      openGroups.has(group.key) ? 'rotate-0' : '-rotate-90'
+                    }`} />
+                  </button>
+                ) : (
+                  <div className="px-2 py-1.5 mt-2 mb-0.5">
+                    <p className="text-gray-400 text-[9px] font-extrabold uppercase tracking-[0.14em]">{group.label}</p>
+                  </div>
+                )
+              )}
+              {(!group.collapsible || openGroups.has(group.key)) && (
+                <div className="space-y-px">
+                  {group.items.map(({ key, Icon, label, sub }) => {
+                    const isActive = superTab === key;
+                    return (
+                      <button key={key} onClick={() => setSuperTab(key)}
+                        className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg transition-all duration-100 text-left relative group ${
+                          isActive
+                            ? 'bg-[#e8f5ed] text-[#065F36]'
+                            : 'text-gray-500 hover:bg-gray-50 hover:text-gray-800'
+                        }`}>
+                        {isActive && (
+                          <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-[#065F36] rounded-r-full" />
+                        )}
+                        <Icon className={`h-[14px] w-[14px] flex-shrink-0 ${
+                          isActive ? 'text-[#065F36]' : 'text-gray-400 group-hover:text-gray-600'
+                        }`} />
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-[12px] font-semibold leading-none ${
+                            isActive ? 'text-[#065F36]' : 'text-gray-600 group-hover:text-gray-800'
+                          }`}>{label}</p>
+                          <p className={`text-[10px] mt-1 truncate ${
+                            isActive ? 'text-[#065F36]/60' : 'text-gray-400'
+                          }`}>{sub}</p>
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
-                <span className="text-xs mt-0.5 ml-6 text-gray-400 group-hover:text-[#065F36]/70">{sub}</span>
-              </button>
-            ))}
-          </div>
+              )}
+            </div>
+          ))}
+        </nav>
+
+        {/* Sign out */}
+        <div className="flex-shrink-0 px-2 pb-3 pt-2 border-t border-gray-100">
+          <button onClick={logout}
+            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-all text-left">
+            <LogOut className="h-[14px] w-[14px] flex-shrink-0" />
+            <span className="text-[12px] font-semibold">Sign out</span>
+          </button>
         </div>
+      </aside>
 
-        <DomAdminDashboard />
-      </div>
-    );
-  }
+      {/* ════ CONTENT ════ */}
+      <div className="flex-1 overflow-y-auto min-w-0">
+        {/* Dashboard */}
+        {superTab === 'main' && <DomAdminDashboard />}
 
-  /* ── Reports & Analytics ── */
-  if (superTab === 'reports') {
+        {/* Agent Performance */}
+        {superTab === 'agent_performance' && <DomAdminDashboard initialTab="agents" />}
+
+  {superTab === 'reports' && (() => {
     const PRESETS = [
       { key: 'today',  label: 'Today'     },
       { key: 'week',   label: 'This Week' },
@@ -919,10 +1027,9 @@ const DomSuperAdminDashboard = () => {
         </main>
       </div>
     );
-  }
+  })()}
 
-  /* ── User Management ── */
-  if (superTab === 'users') {
+  {superTab === 'users' && (() => {
     const activeCount   = users.filter(u => u.isActive).length;
     const agentCount    = users.filter(u => u.role === 'domagent').length;
     const adminCount    = users.filter(u => u.role === 'dom_admin' || u.role === 'dom_superadmin').length;
@@ -1095,10 +1202,9 @@ const DomSuperAdminDashboard = () => {
         )}
       </div>
     );
-  }
+  })()}
 
-  /* ── Agent Tracker tab ── */
-  if (superTab === 'tracker') {
+  {superTab === 'tracker' && (() => {
     const fmtDate = (d) => d ? new Date(d).toLocaleString('en-IN', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' }) : '—';
     const fmtShortDt = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' }) : 'Never';
     const STATUS_DOT = {
@@ -1502,7 +1608,7 @@ const DomSuperAdminDashboard = () => {
 
                   {/* Lead info grid */}
                   <div>
-                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Lead Details</p>
+                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Lead Details — Agent Filled</p>
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                       {[
                         { label: 'Product / Service', val: l.productType?.replace(/_/g,' '), bold: true },
@@ -1536,6 +1642,55 @@ const DomSuperAdminDashboard = () => {
                     )}
                   </div>
 
+                  {/* ── Original Imported Data (if lead came from Excel) ── */}
+                  {l.sourceImportedLead && (() => {
+                    const imp = l.sourceImportedLead;
+                    return (
+                      <div className="border-2 border-violet-200 bg-violet-50/40 rounded-2xl p-4">
+                        <div className="flex items-center gap-2 mb-3">
+                          <div className="p-1.5 bg-violet-100 rounded-lg"><Database className="h-4 w-4 text-violet-600" /></div>
+                          <div>
+                            <p className="text-xs font-bold text-violet-700 uppercase tracking-wide">Original Imported Data — Excel Source</p>
+                            <p className="text-xs text-violet-500">Data from the uploaded Excel batch before agent worked this lead</p>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                          {[
+                            { label: 'Total Outstanding', val: imp.totalOutstandingAmount, amber: true },
+                            { label: 'Principal Outstanding', val: imp.principalOutstanding, amber: true },
+                            { label: 'EMI Overdue',      val: imp.noOfInstallmentOverdue },
+                            { label: 'CIBIL Score',      val: imp.cibilScore },
+                            { label: 'CIBIL Date',       val: imp.cibilScoreDate },
+                            { label: 'Loan Type',        val: imp.loanType },
+                            { label: 'Bank Name',        val: imp.bankName },
+                            { label: 'Amount Financed',  val: imp.amountFinanced },
+                            { label: 'Disbursal Amount', val: imp.disbursalAmount },
+                            { label: 'Sanction Date',    val: imp.sanctionDate },
+                            { label: 'Expiry Status',    val: imp.expiryStatus },
+                            { label: 'Expiry Date',      val: imp.expiryDate },
+                            { label: 'Vintage',          val: imp.vintage },
+                            { label: 'Employment',       val: imp.employment },
+                            { label: 'Firm / Employer',  val: imp.firmEmployeeName },
+                            { label: 'DOB / Age',        val: [imp.dateOfBirth, imp.age].filter(Boolean).join(' / ') || null },
+                            { label: 'Live Loans',       val: imp.countOfLiveLoans },
+                            { label: 'Residence Phone',  val: imp.residencePhoneNumber },
+                            { label: 'Office Phone',     val: imp.officePhoneNumber },
+                            { label: 'Residence Addr',   val: imp.residenceAddress },
+                            { label: 'Office Addr',      val: imp.officeAddress },
+                            { label: 'Asset',            val: imp.assetDescription },
+                            { label: 'Make',             val: imp.make },
+                            { label: 'Language',         val: imp.customerPreferredLanguage },
+                          ].filter(r => r.val).map(({ label, val, amber }) => (
+                            <div key={label} className={`rounded-xl p-2.5 ${amber ? 'bg-amber-100 border border-amber-200' : 'bg-white border border-violet-100'}`}>
+                              <p className="text-xs text-gray-400 font-medium">{label}</p>
+                              <p className={`text-sm font-semibold mt-0.5 ${amber ? 'text-amber-800' : 'text-gray-700'}`}>{val}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
                   {/* Timeline */}
                   <div className="flex items-center gap-6 text-xs text-gray-400 bg-gray-50 rounded-xl p-4 border border-gray-100">
                     <div><span className="font-semibold text-gray-600">Submitted:</span> {fmt(l.createdAt)}</div>
@@ -1555,10 +1710,9 @@ const DomSuperAdminDashboard = () => {
 
       </div>
     );
-  }
+  })()}
 
-  /* ── Website Leads tab ── */
-  if (superTab === 'web_leads') {
+  {superTab === 'web_leads' && (() => {
     const STATUS_META = {
       new:       { label: 'New',       cls: 'bg-orange-100 text-orange-800 border border-orange-200' },
       loaded:    { label: 'Loaded',    cls: 'bg-yellow-100 text-yellow-800 border border-yellow-200' },
@@ -1990,10 +2144,9 @@ const DomSuperAdminDashboard = () => {
         )}
       </div>
     );
-  }
+  })()}
 
-  /* ── Import & Share tab ── */
-  if (superTab === 'import') {
+  {superTab === 'import' && (() => {
     const fmtNum = (n) => (n || 0).toLocaleString('en-IN');
     return (
       <div className="min-h-screen bg-[#F0FFF8]">
@@ -2191,10 +2344,9 @@ const DomSuperAdminDashboard = () => {
         )}
       </div>
     );
-  }
+  })()}
 
-  /* ── API Key tab ── */
-  return (
+  {superTab === 'apikey' && (
     <div className="min-h-screen bg-[#F0FFF8]">
       {/* Green breadcrumb bar */}
       <div className="bg-[#065F36] text-white px-6 py-2 flex items-center justify-between border-b border-[#054A2E]">
@@ -2280,6 +2432,507 @@ DOMESTIC_LMS_API_KEY=${apiKeyVisible ? apiKey : '<show key above>'}`}
           </div>
         </div>
       </main>
+    </div>
+  )}
+
+  {/* ════ CHANNEL PARTNERS — MANUAL LEADS ════ */}
+  {superTab === 'manual_leads' && (() => {
+    const fmtDate = (d) => d ? new Date(d).toLocaleString('en-IN', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '—';
+
+    const OUTCOME_CFG = {
+      interested:     { label: 'Interested',     cls: 'bg-emerald-100 text-emerald-700 border-emerald-200', icon: '✅', hdr: 'from-emerald-500 to-teal-600' },
+      not_interested: { label: 'Not Interested', cls: 'bg-red-100 text-red-700 border-red-200',             icon: '❌', hdr: 'from-red-500 to-rose-600' },
+      callback:       { label: 'Callback',       cls: 'bg-amber-100 text-amber-700 border-amber-200',       icon: '📞', hdr: 'from-amber-400 to-orange-500' },
+      not_reachable:  { label: 'Not Reachable',  cls: 'bg-orange-100 text-orange-700 border-orange-200',    icon: '📵', hdr: 'from-orange-400 to-amber-500' },
+      wrong_number:   { label: 'Wrong Number',   cls: 'bg-gray-100 text-gray-500 border-gray-200',          icon: '❓', hdr: 'from-gray-500 to-gray-600' },
+    };
+
+    const CIBIL_LABEL = { below_600:'< 600 (Poor)', '600_699':'600–699 (Fair)', '700_749':'700–749 (Good)', '750_800':'750–800 (Very Good)', above_800:'> 800 (Excellent)', unknown:'Unknown' };
+
+    // Apply filter
+    const marked    = manualLeads.filter(l => l.callOutcome && l.callOutcome !== '');
+    const notMarked = manualLeads.filter(l => !l.callOutcome || l.callOutcome === '');
+    const filtered  = manualFilter === 'marked' ? marked : manualFilter === 'not_marked' ? notMarked : manualLeads;
+
+    return (
+      <div className="min-h-screen bg-gray-50">
+        {/* Page header */}
+        <header className="bg-white shadow-sm sticky top-0 z-20 border-b border-gray-100">
+          <div className="px-6 flex items-center justify-between h-14">
+            <div className="flex items-center gap-3">
+              <div className="p-1.5 bg-amber-100 rounded-lg"><Briefcase className="h-4 w-4 text-amber-600" /></div>
+              <div>
+                <h1 className="text-gray-800 font-bold text-sm">Channel Partners — Manual Leads</h1>
+                <p className="text-gray-400 text-xs">Leads filled manually by agents · click any row to see full details</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button onClick={fetchManualLeads} disabled={manualLeadsLoading}
+                className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-[#065F36] border border-gray-200 rounded-xl px-3 py-2 transition-all">
+                <RefreshCw className={`h-4 w-4 ${manualLeadsLoading ? 'animate-spin' : ''}`} />
+              </button>
+            </div>
+          </div>
+        </header>
+
+        <main className="px-6 py-5 space-y-4">
+
+          {/* ── Filter tabs + stats ── */}
+          <div className="flex items-center gap-3 flex-wrap">
+            {[
+              { key: 'all',        label: 'All Leads',   count: manualLeads.length,  color: 'text-gray-700 border-gray-200 bg-white' },
+              { key: 'marked',     label: '✅ Marked',    count: marked.length,       color: 'text-emerald-700 border-emerald-200 bg-emerald-50' },
+              { key: 'not_marked', label: '⭕ Not Marked', count: notMarked.length,    color: 'text-orange-700 border-orange-200 bg-orange-50' },
+            ].map(f => (
+              <button key={f.key} onClick={() => setManualFilter(f.key)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl border text-sm font-bold transition-all ${
+                  manualFilter === f.key
+                    ? 'ring-2 ring-offset-1 ring-[#065F36] bg-[#065F36] text-white border-[#065F36]'
+                    : f.color + ' hover:shadow-sm'
+                }`}>
+                {f.label}
+                <span className={`px-1.5 py-0.5 rounded-lg text-xs font-black ${manualFilter === f.key ? 'bg-white/20' : 'bg-black/8'}`}>
+                  {f.count}
+                </span>
+              </button>
+            ))}
+            <div className="ml-auto flex items-center gap-2">
+              <span className="text-xs text-gray-400 bg-gray-100 px-3 py-1.5 rounded-xl">
+                ✍️ Manual entry only · no Excel / website source
+              </span>
+            </div>
+          </div>
+
+          {manualLeadsLoading ? (
+            <div className="flex flex-col items-center justify-center py-24 gap-4 bg-white rounded-2xl border border-gray-100">
+              <div className="w-10 h-10 border-4 border-gray-100 border-t-amber-500 rounded-full animate-spin" />
+              <p className="text-gray-400 text-sm">Loading leads…</p>
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-20 gap-4 bg-white rounded-2xl border border-gray-100 shadow-sm">
+              <div className="p-5 bg-amber-100 rounded-3xl"><Briefcase className="h-12 w-12 text-amber-500" /></div>
+              <div className="text-center">
+                <p className="font-bold text-gray-700 text-lg">
+                  {manualFilter === 'marked' ? 'No marked leads yet' : manualFilter === 'not_marked' ? 'All leads have been marked!' : 'No manual leads yet'}
+                </p>
+                <p className="text-gray-400 text-sm mt-1">
+                  {manualFilter === 'all' ? 'Agents create manual leads directly from their dashboard.' : 'Change the filter above to see other leads.'}
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-gray-50 text-xs font-bold text-gray-500 uppercase tracking-wider border-b border-gray-100">
+                      <th className="pl-6 pr-3 py-3.5 text-left">Lead ID</th>
+                      <th className="px-3 py-3.5 text-left">Customer</th>
+                      <th className="px-3 py-3.5 text-left">Mobile</th>
+                      <th className="px-3 py-3.5 text-left">Product</th>
+                      <th className="px-3 py-3.5 text-left">City / State</th>
+                      <th className="px-3 py-3.5 text-left">Agent</th>
+                      <th className="px-3 py-3.5 text-left">Disposition</th>
+                      <th className="px-3 py-3.5 text-left">Status</th>
+                      <th className="px-3 pr-6 py-3.5 text-left">Date</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {filtered.map((l) => {
+                      const oc = OUTCOME_CFG[l.callOutcome];
+                      const isMarked = !!(l.callOutcome && l.callOutcome !== '');
+                      return (
+                        <tr key={l._id}
+                          onClick={() => setManualLeadDetail(l)}
+                          className={`cursor-pointer transition-colors border-l-4 group ${
+                            isMarked ? 'border-l-emerald-400 hover:bg-emerald-50/30' : 'border-l-orange-300 hover:bg-orange-50/20'
+                          }`}>
+                          <td className="pl-6 pr-3 py-3.5">
+                            {l.leadRef
+                              ? <span className="font-mono text-xs font-bold bg-gray-900 text-emerald-400 px-1.5 py-0.5 rounded">{l.leadRef}</span>
+                              : <span className="text-gray-300 text-xs italic">—</span>}
+                          </td>
+                          <td className="px-3 py-3.5">
+                            <div className="flex items-center gap-2">
+                              <div className={`w-2 h-2 rounded-full flex-shrink-0 ${isMarked ? 'bg-emerald-400' : 'bg-orange-400 animate-pulse'}`} />
+                              <div>
+                                <p className="font-semibold text-gray-800">{l.name || '—'}</p>
+                                {l.email && <p className="text-xs text-gray-400">{l.email}</p>}
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-3 py-3.5 text-gray-600 font-mono text-xs">
+                            <div>{l.mobile || '—'}</div>
+                            {l.alternateMobile && <div className="text-gray-400">{l.alternateMobile}</div>}
+                          </td>
+                          <td className="px-3 py-3.5">
+                            {l.productType
+                              ? <span className="bg-[#E8FFF5] text-[#065F36] border border-[#D1FAE5] px-2 py-0.5 rounded-full text-xs font-medium capitalize">{l.productType.replace(/_/g,' ')}</span>
+                              : <span className="text-gray-300 text-xs">—</span>}
+                          </td>
+                          <td className="px-3 py-3.5 text-gray-500 text-xs">{[l.city, l.state].filter(Boolean).join(', ') || '—'}</td>
+                          <td className="px-3 py-3.5 text-gray-600 text-sm">{l.assignedTo?.name || '—'}</td>
+                          <td className="px-3 py-3.5">
+                            {oc
+                              ? <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-semibold border ${oc.cls}`}>{oc.icon} {oc.label}</span>
+                              : <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-semibold bg-orange-50 text-orange-600 border border-orange-200">⭕ Not Marked</span>}
+                          </td>
+                          <td className="px-3 py-3.5">
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
+                              l.status === 'completed' ? 'bg-emerald-100 text-emerald-700' :
+                              l.status === 'rejected'  ? 'bg-red-100 text-red-700' :
+                              'bg-blue-100 text-blue-700'
+                            }`}>{l.status}</span>
+                          </td>
+                          <td className="px-3 pr-6 py-3.5 text-gray-400 text-xs whitespace-nowrap">{fmtDate(l.createdAt)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </main>
+
+        {/* ── Full Lead Detail Modal ── */}
+        {manualLeadDetail && (() => {
+          const l = manualLeadDetail;
+          const oc = OUTCOME_CFG[l.callOutcome];
+          const isMarked = !!(l.callOutcome && l.callOutcome !== '');
+          const hdrGrad  = oc?.hdr || 'from-[#065F36] to-[#00874A]';
+          const fmtMoney = (v) => v ? `₹${Number(v).toLocaleString('en-IN')}` : null;
+
+          const Section = ({ title, children }) => (
+            <div>
+              <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">{title}</p>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">{children}</div>
+            </div>
+          );
+          const Field = ({ label, val, highlight }) => val ? (
+            <div className={`rounded-xl p-3 ${highlight ? 'bg-amber-50 border border-amber-200' : 'bg-gray-50 border border-gray-100'}`}>
+              <p className="text-xs text-gray-400 font-medium">{label}</p>
+              <p className={`text-sm font-semibold mt-0.5 capitalize ${highlight ? 'text-amber-800' : 'text-gray-700'}`}>{val}</p>
+            </div>
+          ) : null;
+
+          return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+              onClick={() => setManualLeadDetail(null)}>
+              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[92vh] overflow-y-auto"
+                onClick={e => e.stopPropagation()}>
+
+                {/* Modal header */}
+                <div className={`px-6 py-5 rounded-t-3xl bg-gradient-to-r ${hdrGrad} text-white`}>
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap mb-1">
+                        {oc ? <span className="text-xl">{oc.icon}</span> : <span className="text-xl">⭕</span>}
+                        <span className="text-xl font-black">{l.name || '—'}</span>
+                        {l.leadRef && <span className="font-mono text-xs font-bold bg-white/20 text-white px-2 py-0.5 rounded-lg tracking-widest">{l.leadRef}</span>}
+                        <span className="text-xs bg-white/20 text-white px-2 py-0.5 rounded-full font-bold border border-white/30">✍️ Manual</span>
+                      </div>
+                      <div className="flex items-center gap-3 flex-wrap text-sm text-white/80">
+                        <span>{l.mobile || '—'}</span>
+                        {l.alternateMobile && <span>· Alt: {l.alternateMobile}</span>}
+                        {l.email && <span>· {l.email}</span>}
+                        {(l.city || l.state) && <span>· {[l.city, l.state].filter(Boolean).join(', ')}</span>}
+                      </div>
+                    </div>
+                    <button onClick={() => setManualLeadDetail(null)}
+                      className="p-2 bg-white/20 hover:bg-white/30 rounded-xl transition-colors flex-shrink-0 ml-3">
+                      <X className="h-5 w-5" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="p-6 space-y-5">
+
+                  {/* Disposition block */}
+                  <div className={`rounded-2xl border-2 p-4 ${
+                    !isMarked                            ? 'border-orange-200 bg-orange-50' :
+                    l.callOutcome === 'not_interested'   ? 'border-red-200 bg-red-50' :
+                    l.callOutcome === 'interested'       ? 'border-emerald-200 bg-emerald-50' :
+                    l.callOutcome === 'callback'         ? 'border-amber-200 bg-amber-50' :
+                    l.callOutcome === 'not_reachable'    ? 'border-orange-200 bg-orange-50' :
+                    'border-gray-200 bg-gray-50'
+                  }`}>
+                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Disposition & Outcome</p>
+                    <div className="flex items-center gap-2 flex-wrap mb-3">
+                      {isMarked ? (
+                        <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-bold border ${oc?.cls || 'bg-gray-100 text-gray-600 border-gray-200'}`}>
+                          {oc?.icon} {oc?.label || l.callOutcome}
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-bold bg-orange-100 text-orange-700 border border-orange-300">
+                          ⭕ Not Marked — No Disposition Set
+                        </span>
+                      )}
+                      <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-bold border ${
+                        l.status === 'completed' ? 'bg-emerald-100 text-emerald-700 border-emerald-300' :
+                        l.status === 'rejected'  ? 'bg-red-100 text-red-700 border-red-300' :
+                                                   'bg-blue-100 text-blue-700 border-blue-300'
+                      }`}>
+                        {l.status === 'completed' ? '✔ Completed' : l.status === 'rejected' ? '✖ Rejected' : '⏳ Pending'}
+                      </span>
+                      {l.callbackDate && (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-bold bg-violet-100 text-violet-700 border border-violet-300">
+                          📅 Callback: {l.callbackDate}
+                        </span>
+                      )}
+                    </div>
+                    {l.notes
+                      ? <div className="bg-white rounded-xl p-3 border border-gray-200">
+                          <p className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-1.5">Agent Notes / Reason</p>
+                          <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">"{l.notes}"</p>
+                        </div>
+                      : <p className="text-xs text-gray-400 italic bg-white rounded-xl p-3 border border-gray-200">No notes added by agent.</p>}
+                  </div>
+
+                  {/* Personal details */}
+                  <Section title="Personal Details">
+                    <Field label="Date of Birth"  val={l.dob} />
+                    <Field label="PAN"             val={l.pan} />
+                    <Field label="Aadhaar"         val={l.aadhaar} />
+                    <Field label="Address"         val={l.address} />
+                    <Field label="City"            val={l.city} />
+                    <Field label="State"           val={l.state} />
+                    <Field label="Pincode"         val={l.pincode} />
+                    <Field label="Email"           val={l.email} />
+                    <Field label="Alt. Mobile"     val={l.alternateMobile} />
+                  </Section>
+
+                  {/* Loan / Product */}
+                  <Section title="Loan & Service Details">
+                    <Field label="Product / Service" val={l.productType?.replace(/_/g,' ')} highlight />
+                    <Field label="Required Amount"   val={fmtMoney(l.loanAmountRequired)} highlight />
+                    <Field label="Existing Bank"     val={l.existingBank} />
+                    <Field label="Salary Bank"       val={l.salaryAccountBank} />
+                  </Section>
+
+                  {/* Employment */}
+                  <Section title="Employment">
+                    <Field label="Employment Type" val={l.employmentType?.replace(/_/g,' ')} />
+                    <Field label="Company / Business" val={l.companyName} />
+                    <Field label="Monthly Salary"  val={fmtMoney(l.monthlySalary)} />
+                  </Section>
+
+                  {/* Credit */}
+                  <Section title="Credit Profile">
+                    <Field label="CIBIL Score Range" val={CIBIL_LABEL[l.cibilScoreRange] || l.cibilScoreRange} />
+                    <Field label="Monthly EMI"       val={fmtMoney(l.existingEMI)} />
+                    {l.existingLoans?.length > 0 && (
+                      <div className="col-span-2 bg-gray-50 border border-gray-100 rounded-xl p-3">
+                        <p className="text-xs text-gray-400 font-medium mb-1.5">Existing Loans</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {l.existingLoans.map((loan, i) => (
+                            <span key={i} className="text-xs bg-white border border-gray-200 text-gray-700 px-2 py-1 rounded-lg font-medium">{loan}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </Section>
+
+                  {/* Timeline */}
+                  <div className="flex items-center gap-5 text-xs text-gray-400 bg-gray-50 rounded-xl p-3 border border-gray-100 flex-wrap">
+                    <div><span className="font-semibold text-gray-600">Submitted:</span> {fmtDate(l.createdAt)}</div>
+                    {l.updatedAt && l.updatedAt !== l.createdAt && (
+                      <div><span className="font-semibold text-gray-600">Updated:</span> {fmtDate(l.updatedAt)}</div>
+                    )}
+                    {l.assignedTo?.name && (
+                      <div><span className="font-semibold text-gray-600">Agent:</span> {l.assignedTo.name}</div>
+                    )}
+                  </div>
+
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+      </div>
+    );
+  })()}
+      <div className="min-h-screen bg-gray-50">
+        {/* Page header */}
+        <header className="bg-white shadow-sm sticky top-0 z-20 border-b border-gray-100">
+          <div className="px-6 flex items-center justify-between h-14">
+            <div className="flex items-center gap-3">
+              <div className="p-1.5 bg-amber-100 rounded-lg"><Briefcase className="h-4 w-4 text-amber-600" /></div>
+              <div>
+                <h1 className="text-gray-800 font-bold text-sm">Channel Partners — Manual Leads</h1>
+                <p className="text-gray-400 text-xs">All leads entered manually by agents (no website or Excel source)</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs bg-amber-100 text-amber-700 border border-amber-200 px-3 py-1.5 rounded-xl font-bold">
+                \u270d\ufe0f {manualLeads.length} Manual Leads
+              </span>
+              <button onClick={fetchManualLeads} disabled={manualLeadsLoading}
+                className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-[#065F36] border border-gray-200 rounded-xl px-3 py-2 transition-all">
+                <RefreshCw className={`h-4 w-4 ${manualLeadsLoading ? 'animate-spin' : ''}`} />
+              </button>
+            </div>
+          </div>
+        </header>
+
+        <main className="px-6 py-5">
+          {manualLeadsLoading ? (
+            <div className="flex flex-col items-center justify-center py-24 gap-4">
+              <div className="w-10 h-10 border-4 border-gray-100 border-t-amber-500 rounded-full animate-spin" />
+              <p className="text-gray-400 text-sm">Loading manual leads\u2026</p>
+            </div>
+          ) : manualLeads.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-24 gap-4 bg-white rounded-2xl border border-gray-100 shadow-sm">
+              <div className="p-5 bg-amber-100 rounded-3xl"><Briefcase className="h-12 w-12 text-amber-500" /></div>
+              <div className="text-center">
+                <p className="font-bold text-gray-700 text-lg">No manual leads yet</p>
+                <p className="text-gray-400 text-sm mt-1">Manual leads are created by agents without a website or Excel source.</p>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-gray-50 text-xs font-bold text-gray-500 uppercase tracking-wider border-b border-gray-100">
+                      <th className="pl-6 pr-3 py-3.5 text-left border-l-4 border-l-gray-300">Lead ID</th>
+                      <th className="px-3 py-3.5 text-left">Customer</th>
+                      <th className="px-3 py-3.5 text-left">Mobile</th>
+                      <th className="px-3 py-3.5 text-left">Product</th>
+                      <th className="px-3 py-3.5 text-left">Agent</th>
+                      <th className="px-3 py-3.5 text-left">Disposition</th>
+                      <th className="px-3 py-3.5 text-left">Status</th>
+                      <th className="px-3 pr-6 py-3.5 text-left">Date</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {manualLeads.map((l) => {
+                      const oc = OUTCOME_CFG[l.callOutcome];
+                      return (
+                        <tr key={l._id}
+                          onClick={() => setManualLeadDetail(l)}
+                          className="hover:bg-amber-50/40 cursor-pointer transition-colors border-l-4 border-l-gray-300 group">
+                          <td className="pl-6 pr-3 py-3.5">
+                            {l.leadRef
+                              ? <span className="font-mono text-xs font-bold bg-gray-900 text-emerald-400 px-1.5 py-0.5 rounded">{l.leadRef}</span>
+                              : <span className="text-gray-300 text-xs italic">—</span>}
+                          </td>
+                          <td className="px-3 py-3.5">
+                            <div className="flex items-center gap-2">
+                              <div className="w-2 h-2 rounded-full bg-gray-400 flex-shrink-0" />
+                              <div>
+                                <p className="font-semibold text-gray-800">{l.name || '\u2014'}</p>
+                                <p className="text-xs text-gray-400">{l.city || ''}</p>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-3 py-3.5 text-gray-600 font-mono text-xs">{l.mobile || '\u2014'}</td>
+                          <td className="px-3 py-3.5">
+                            {l.productType
+                              ? <span className="bg-[#E8FFF5] text-[#065F36] border border-[#D1FAE5] px-2 py-0.5 rounded-full text-xs font-medium capitalize">{l.productType.replace(/_/g,' ')}</span>
+                              : <span className="text-gray-300 text-xs">—</span>}
+                          </td>
+                          <td className="px-3 py-3.5 text-gray-600 text-sm">{l.assignedTo?.name || '\u2014'}</td>
+                          <td className="px-3 py-3.5">
+                            {oc
+                              ? <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-semibold border ${oc.cls}`}>{oc.icon} {oc.label}</span>
+                              : <span className="text-gray-400 text-xs">Not called</span>}
+                          </td>
+                          <td className="px-3 py-3.5">
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
+                              l.status === 'completed' ? 'bg-emerald-100 text-emerald-700' :
+                              l.status === 'rejected'  ? 'bg-red-100 text-red-700' :
+                              'bg-blue-100 text-blue-700'
+                            }`}>{l.status}</span>
+                          </td>
+                          <td className="px-3 pr-6 py-3.5 text-gray-400 text-xs whitespace-nowrap">{fmtDate(l.createdAt)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </main>
+
+        {/* Lead detail modal */}
+        {manualLeadDetail && (() => {
+          const l = manualLeadDetail;
+          const OUTCOME_CFG2 = {
+            interested:     { label: 'Interested',     cls: 'bg-emerald-100 text-emerald-700 border-emerald-300', icon: '\u2705' },
+            not_interested: { label: 'Not Interested', cls: 'bg-red-100 text-red-700 border-red-300',             icon: '\u274c' },
+            callback:       { label: 'Callback',       cls: 'bg-amber-100 text-amber-700 border-amber-300',       icon: '\ud83d\udcde' },
+            not_reachable:  { label: 'Not Reachable',  cls: 'bg-orange-100 text-orange-700 border-orange-300',    icon: '\ud83d\udcf5' },
+            wrong_number:   { label: 'Wrong Number',   cls: 'bg-gray-100 text-gray-500 border-gray-200',          icon: '\u2753' },
+          };
+          const oc2 = OUTCOME_CFG2[l.callOutcome] || { label: l.callOutcome || 'No Disposition', cls: 'bg-gray-100 text-gray-500 border-gray-200', icon: '\u2014' };
+          return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+              onClick={() => setManualLeadDetail(null)}>
+              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[85vh] overflow-y-auto"
+                onClick={e => e.stopPropagation()}>
+                <div className={`px-6 py-5 rounded-t-3xl ${
+                  l.callOutcome === 'interested'     ? 'bg-gradient-to-r from-emerald-500 to-teal-600' :
+                  l.callOutcome === 'not_interested' ? 'bg-gradient-to-r from-red-500 to-rose-600' :
+                  l.callOutcome === 'callback'       ? 'bg-gradient-to-r from-amber-400 to-orange-500' :
+                  'bg-gradient-to-r from-[#065F36] to-[#00874A]'
+                } text-white`}>
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap mb-1">
+                        <span className="text-2xl">{oc2.icon}</span>
+                        <span className="text-xl font-black">{l.name || '\u2014'}</span>
+                        {l.leadRef && <span className="font-mono text-xs font-bold bg-white/20 px-2 py-0.5 rounded-lg">{l.leadRef}</span>}
+                        <span className="text-xs bg-white/20 text-white px-2 py-0.5 rounded-full font-bold border border-white/30">\u270d\ufe0f Manual</span>
+                      </div>
+                      <p className="text-white/80 text-sm">{l.mobile} {l.city ? '\u00b7 ' + l.city : ''}</p>
+                    </div>
+                    <button onClick={() => setManualLeadDetail(null)} className="p-2 bg-white/20 hover:bg-white/30 rounded-xl"><X className="h-5 w-5" /></button>
+                  </div>
+                </div>
+                <div className="p-6 space-y-4">
+                  <div className={`rounded-2xl border-2 p-4 ${
+                    l.callOutcome === 'not_interested' ? 'border-red-200 bg-red-50' :
+                    l.callOutcome === 'interested'     ? 'border-emerald-200 bg-emerald-50' :
+                    l.callOutcome === 'callback'       ? 'border-amber-200 bg-amber-50' :
+                    'border-gray-200 bg-gray-50'
+                  }`}>
+                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Disposition</p>
+                    <div className="flex items-center gap-2 flex-wrap mb-3">
+                      <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-bold border ${oc2.cls}`}>{oc2.icon} {oc2.label}</span>
+                      <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-bold border ${
+                        l.status === 'completed' ? 'bg-emerald-100 text-emerald-700 border-emerald-300' :
+                        l.status === 'rejected'  ? 'bg-red-100 text-red-700 border-red-300' :
+                                                   'bg-blue-100 text-blue-700 border-blue-300'
+                      }`}>{l.status === 'completed' ? '\u2714 Completed' : l.status === 'rejected' ? '\u2716 Rejected' : '\u23f3 Pending'}</span>
+                    </div>
+                    {l.notes
+                      ? <div className="bg-white rounded-xl p-3 border border-gray-200"><p className="text-xs font-bold text-gray-400 mb-1">Agent Notes / Reason</p><p className="text-sm text-gray-700 leading-relaxed">"{l.notes}"</p></div>
+                      : <p className="text-xs text-gray-400 italic bg-white rounded-xl p-3 border border-gray-200">No notes added.</p>}
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    {[{ label: 'Product', val: l.productType?.replace(/_/g,' ') }, { label: 'Loan Amount', val: l.loanAmountRequired ? `\u20b9${l.loanAmountRequired.toLocaleString('en-IN')}` : null }, { label: 'Employment', val: l.employmentType }, { label: 'CIBIL Range', val: l.cibilScoreRange?.replace(/_/g,' ') }, { label: 'City / State', val: [l.city, l.state].filter(Boolean).join(', ') || null }, { label: 'Callback Date', val: l.callbackDate }].filter(r => r.val).map(({ label, val }) => (
+                      <div key={label} className="bg-gray-50 border border-gray-100 rounded-xl p-3">
+                        <p className="text-xs text-gray-400">{label}</p>
+                        <p className="text-sm font-semibold text-gray-700 mt-0.5 capitalize">{val}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-xs text-gray-400 bg-gray-50 rounded-xl p-3 border border-gray-100">
+                    <span className="font-semibold text-gray-600">Submitted:</span> {fmtDate(l.createdAt)}
+                    {l.assignedTo?.name && <> \u00b7 <span className="font-semibold text-gray-600">Agent:</span> {l.assignedTo.name}</>}
+                  </p>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+      </div>
+    );
+  })()}
+
+      </div>
     </div>
   );
 };

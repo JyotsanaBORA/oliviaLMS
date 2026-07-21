@@ -66,16 +66,16 @@ const LeadRefBadge = ({ code }) =>
 
 const TABS = ['overview', 'website_leads', 'dom_leads', 'agents', 'lead_pool'];
 const TAB_META = {
-  overview:      { label: 'Dashboard',        sub: 'Stats & Pipeline',           Icon: BarChart2, color: 'indigo' },
-  website_leads: { label: 'Enquiries',         sub: 'Leads from website',         Icon: Globe,     color: 'blue'   },
-  dom_leads:     { label: 'Worked Cases',      sub: 'Agent submitted leads',      Icon: Briefcase, color: 'purple' },
-  agents:        { label: 'Agent Performance', sub: 'Rankings & activity',        Icon: Users,     color: 'teal'   },
-  lead_pool:     { label: 'Data Pool',         sub: 'Import & assign to agents',  Icon: Database,  color: 'green'  },
+  overview:      { label: 'Dashboard',           sub: 'Stats & Pipeline',           Icon: BarChart2, color: 'indigo' },
+  website_leads: { label: 'Meta Allocation',      sub: 'Leads from website',         Icon: Globe,     color: 'blue'   },
+  dom_leads:     { label: 'Worked Allocation',    sub: 'Agent submitted leads',      Icon: Briefcase, color: 'purple' },
+  agents:        { label: 'Agent Allocation',     sub: 'Rankings & activity',        Icon: Users,     color: 'teal'   },
+  lead_pool:     { label: 'Data Pool',            sub: 'Import & assign to agents',  Icon: Database,  color: 'green'  },
 };
 
-const DomAdminDashboard = () => {
+const DomAdminDashboard = ({ initialTab } = {}) => {
   const { user, logout } = useAuth();
-  const [tab, setTab] = useState('overview');
+  const [tab, setTab] = useState(initialTab || 'overview');
 
   const [stats,    setStats]    = useState(null);
   const [pipeline, setPipeline] = useState([]);
@@ -459,66 +459,96 @@ const DomAdminDashboard = () => {
   );
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-[#F0FFF8] to-emerald-50/30">
+    <div className="flex h-screen overflow-hidden bg-gray-50">
 
-      {/* Header */}
-      <header className="bg-white/95 backdrop-blur-sm shadow-sm sticky top-0 z-30 border-b border-gray-100">
-        <div className="px-6 flex items-center justify-between h-16">
-          <div className="flex items-center gap-4">
-            <img src={`${process.env.PUBLIC_URL}/mcb-logo.png`} alt="MyCashBridge" className="h-9 object-contain" />
-            <div className="hidden sm:flex items-center gap-2 border-l border-gray-200 pl-4">
-              <div className="w-2 h-2 rounded-full bg-[#00A651] animate-pulse" />
-              <div>
-                <h1 className="text-gray-800 font-bold text-sm leading-tight">Domestic LMS</h1>
-                <p className="text-gray-400 text-xs">
-                  {user.role === 'dom_superadmin' ? 'Super Admin Portal' : 'Admin Dashboard'}
-                </p>
-              </div>
+      {/* ════ ADMIN SIDEBAR ════ */}
+      <aside className="w-[210px] flex-shrink-0 flex flex-col h-screen bg-white border-r border-gray-200 shadow-sm">
+        {/* Brand strip */}
+        <div className="bg-[#065F36] px-4 py-4 flex-shrink-0">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-white/15 flex items-center justify-center flex-shrink-0">
+              <img src={`${process.env.PUBLIC_URL}/mcb-logo.png`} alt="MCB" className="h-5 w-auto object-contain brightness-0 invert" />
             </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="hidden sm:flex items-center gap-2.5 bg-gray-50 border border-gray-100 rounded-xl px-3 py-2">
-              <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#065F36] to-[#00A651] flex items-center justify-center text-white font-bold text-xs shadow-sm">
-                {user.name?.charAt(0)?.toUpperCase()}
-              </div>
-              <div className="hidden md:block">
-                <p className="text-sm font-semibold text-gray-700 leading-tight">{user.name}</p>
-                <p className="text-xs text-gray-400">{user.role === 'dom_admin' ? 'Admin' : 'Super Admin'}</p>
-              </div>
+            <div className="min-w-0">
+              <p className="text-white font-bold text-[13px] leading-none">MyCashBridge</p>
+              <p className="text-white/60 text-[9px] font-medium tracking-wider uppercase mt-1">Admin Portal</p>
             </div>
-            <button onClick={logout}
-              className="flex items-center gap-1.5 bg-red-50 hover:bg-red-100 text-red-600 text-sm px-3 py-2 rounded-xl transition-colors border border-red-100 font-semibold">
-              <LogOut className="h-3.5 w-3.5" /> Logout
-            </button>
           </div>
         </div>
-      </header>
 
-      {/* Tab nav */}
-      <div className="bg-white/80 backdrop-blur-sm border-b border-gray-100 shadow-sm sticky top-16 z-20">
-        <div className="px-6 flex gap-1 py-2 overflow-x-auto scrollbar-hide">
-          {TABS.map((t) => {
-            const { label, sub, Icon } = TAB_META[t];
-            const isActive = tab === t;
+        {/* User pill */}
+        <div className="px-3 py-3 border-b border-gray-100 flex-shrink-0">
+          <div className="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-[#f0faf5] border border-[#d1fae5]">
+            <div className="relative flex-shrink-0">
+              <div className="w-7 h-7 rounded-lg bg-[#065F36] flex items-center justify-center font-bold text-white text-xs shadow-sm">
+                {user.name?.charAt(0)?.toUpperCase()}
+              </div>
+              <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-400 border-[1.5px] border-white" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-gray-800 font-semibold text-[11px] leading-none truncate">{user.name}</p>
+              <p className="text-[#065F36]/70 text-[9px] font-medium mt-1">{user.role === 'dom_admin' ? 'Admin' : 'Super Admin'}</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Navigation */}
+        <nav className="flex-1 px-2 pt-3 pb-2 overflow-y-auto min-h-0">
+          <p className="text-gray-400 text-[9px] font-extrabold uppercase tracking-[0.14em] px-2 mb-1.5">OVERVIEW</p>
+          {[{ key: 'overview', Icon: BarChart2, label: 'Dashboard', sub: 'Stats & pipeline' }].map(({ key, Icon, label, sub }) => {
+            const isActive = tab === key;
             return (
-              <button key={t} onClick={() => setTab(t)}
-                className={`flex flex-col items-start px-4 py-2 rounded-xl transition-all whitespace-nowrap min-w-max ${
-                  isActive
-                    ? 'bg-gradient-to-r from-[#065F36] to-[#00874A] text-white shadow-md shadow-green-200'
-                    : 'text-gray-500 hover:bg-[#E8FFF5] hover:text-[#065F36]'
+              <button key={key} onClick={() => setTab(key)}
+                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg transition-all text-left relative group mb-0.5 ${
+                  isActive ? 'bg-[#e8f5ed] text-[#065F36]' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-800'
                 }`}>
-                <div className="flex items-center gap-2">
-                  <Icon className={`h-4 w-4 flex-shrink-0 ${isActive ? 'text-white' : ''}`} />
-                  <span className="text-sm font-bold">{label}</span>
+                {isActive && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-[#065F36] rounded-r-full" />}
+                <Icon className={`h-[14px] w-[14px] flex-shrink-0 ${isActive ? 'text-[#065F36]' : 'text-gray-400 group-hover:text-gray-600'}`} />
+                <div className="flex-1 min-w-0">
+                  <p className={`text-[12px] font-semibold leading-none ${isActive ? 'text-[#065F36]' : 'text-gray-600 group-hover:text-gray-800'}`}>{label}</p>
+                  <p className={`text-[10px] mt-1 ${isActive ? 'text-[#065F36]/60' : 'text-gray-400'}`}>{sub}</p>
                 </div>
-                {sub && <span className={`text-xs mt-0.5 ml-6 ${isActive ? 'text-white/70' : 'text-gray-400'}`}>{sub}</span>}
               </button>
             );
           })}
-        </div>
-      </div>
 
-      <main className="px-6 py-6 space-y-6">
+          <p className="text-gray-400 text-[9px] font-extrabold uppercase tracking-[0.14em] px-2 mt-3 mb-1.5">ALLOCATIONS</p>
+          {[
+            { key: 'website_leads', Icon: Globe,     label: 'Meta Allocation',  sub: 'Website + meta leads'   },
+            { key: 'dom_leads',     Icon: Briefcase, label: 'Worked Allocation', sub: 'Agent submitted leads'  },
+            { key: 'agents',        Icon: Users,     label: 'Agent Allocation',  sub: 'Performance & tracking' },
+            { key: 'lead_pool',     Icon: Database,  label: 'Data Pool',         sub: 'Import & assign leads'  },
+          ].map(({ key, Icon, label, sub }) => {
+            const isActive = tab === key;
+            return (
+              <button key={key} onClick={() => setTab(key)}
+                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg transition-all text-left relative group mb-0.5 ${
+                  isActive ? 'bg-[#e8f5ed] text-[#065F36]' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-800'
+                }`}>
+                {isActive && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-[#065F36] rounded-r-full" />}
+                <Icon className={`h-[14px] w-[14px] flex-shrink-0 ${isActive ? 'text-[#065F36]' : 'text-gray-400 group-hover:text-gray-600'}`} />
+                <div className="flex-1 min-w-0">
+                  <p className={`text-[12px] font-semibold leading-none ${isActive ? 'text-[#065F36]' : 'text-gray-600 group-hover:text-gray-800'}`}>{label}</p>
+                  <p className={`text-[10px] mt-1 ${isActive ? 'text-[#065F36]/60' : 'text-gray-400'}`}>{sub}</p>
+                </div>
+              </button>
+            );
+          })}
+        </nav>
+
+        {/* Sign out */}
+        <div className="flex-shrink-0 px-2 pb-3 pt-2 border-t border-gray-100">
+          <button onClick={logout}
+            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-all text-left">
+            <LogOut className="h-[14px] w-[14px] flex-shrink-0" />
+            <span className="text-[12px] font-semibold">Sign out</span>
+          </button>
+        </div>
+      </aside>
+
+      {/* ════ CONTENT ════ */}
+      <div className="flex-1 overflow-y-auto min-w-0">
+        <main className="px-6 py-6 space-y-6">
 
         {/* OVERVIEW */}
         {tab === 'overview' && stats && (
@@ -1367,7 +1397,7 @@ const DomAdminDashboard = () => {
 
                       {/* Info grid */}
                       <div>
-                        <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Lead Details</p>
+                        <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Lead Details — Agent Filled</p>
                         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                           {[
                             { label: 'Product / Service', val: l.productType?.replace(/_/g,' '), bold: true },
@@ -1397,6 +1427,54 @@ const DomAdminDashboard = () => {
                           </div>
                         )}
                       </div>
+
+                      {/* ── Original Imported Data ── */}
+                      {l.sourceImportedLead && (() => {
+                        const imp = l.sourceImportedLead;
+                        return (
+                          <div className="border-2 border-violet-200 bg-violet-50/40 rounded-2xl p-4">
+                            <div className="flex items-center gap-2 mb-3">
+                              <div className="p-1.5 bg-violet-100 rounded-lg"><Database className="h-4 w-4 text-violet-600" /></div>
+                              <div>
+                                <p className="text-xs font-bold text-violet-700 uppercase tracking-wide">Original Imported Data — Excel Source</p>
+                                <p className="text-xs text-violet-500">Data from the uploaded Excel batch before agent worked this lead</p>
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                              {[
+                                { label: 'Total Outstanding', val: imp.totalOutstandingAmount, amber: true },
+                                { label: 'Principal Outstanding', val: imp.principalOutstanding, amber: true },
+                                { label: 'EMI Overdue',      val: imp.noOfInstallmentOverdue },
+                                { label: 'CIBIL Score',      val: imp.cibilScore },
+                                { label: 'CIBIL Date',       val: imp.cibilScoreDate },
+                                { label: 'Loan Type',        val: imp.loanType },
+                                { label: 'Bank Name',        val: imp.bankName },
+                                { label: 'Amount Financed',  val: imp.amountFinanced },
+                                { label: 'Disbursal Amount', val: imp.disbursalAmount },
+                                { label: 'Sanction Date',    val: imp.sanctionDate },
+                                { label: 'Expiry Status',    val: imp.expiryStatus },
+                                { label: 'Expiry Date',      val: imp.expiryDate },
+                                { label: 'Vintage',          val: imp.vintage },
+                                { label: 'Employment',       val: imp.employment },
+                                { label: 'Firm / Employer',  val: imp.firmEmployeeName },
+                                { label: 'DOB / Age',        val: [imp.dateOfBirth, imp.age].filter(Boolean).join(' / ') || null },
+                                { label: 'Live Loans',       val: imp.countOfLiveLoans },
+                                { label: 'Residence Phone',  val: imp.residencePhoneNumber },
+                                { label: 'Office Phone',     val: imp.officePhoneNumber },
+                                { label: 'Residence Addr',   val: imp.residenceAddress },
+                                { label: 'Office Addr',      val: imp.officeAddress },
+                                { label: 'Asset',            val: imp.assetDescription },
+                                { label: 'Language',         val: imp.customerPreferredLanguage },
+                              ].filter(r => r.val).map(({ label, val, amber }) => (
+                                <div key={label} className={`rounded-xl p-2.5 ${amber ? 'bg-amber-100 border border-amber-200' : 'bg-white border border-violet-100'}`}>
+                                  <p className="text-xs text-gray-400 font-medium">{label}</p>
+                                  <p className={`text-sm font-semibold mt-0.5 ${amber ? 'text-amber-800' : 'text-gray-700'}`}>{val}</p>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })()}
 
                       {/* Timeline */}
                       <div className="flex items-center gap-6 text-xs text-gray-400 bg-gray-50 rounded-xl p-4 border border-gray-100 flex-wrap">
@@ -2142,6 +2220,7 @@ const DomAdminDashboard = () => {
           </div>
         </Modal>
       )}
+      </div>
     </div>
   );
 };
