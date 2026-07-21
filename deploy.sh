@@ -3,9 +3,7 @@ set -e
 
 cd /root/Olivialms
 
-echo ">> Pulling latest code..."
-git reset --hard HEAD
-git pull origin main
+echo ">> Code already pulled by CI — skipping git pull"
 
 echo ">> Building LMS backend..."
 docker build -t olivialms-backend ./server
