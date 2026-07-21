@@ -209,6 +209,32 @@ router.patch('/:id', protect, authorize('domagent', 'dom_admin', 'dom_superadmin
   }
 });
 
+// ── GET /domestic-api/leads/followups ─────────────────────────────────────
+// Agent: get all leads requiring a follow-up call (callback / not_reachable / wrong_number)
+// Sorted by callbackDate ascending (overdue first), then updatedAt desc
+router.get('/followups', protect, authorize('domagent', 'dom_admin', 'dom_superadmin'), async (req, res) => {
+  try {
+    const agentId = req.user.role === 'domagent' ? req.user._id : (req.query.agentId || null);
+    const filter  = {
+      callOutcome: { $in: ['callback', 'not_reachable', 'wrong_number'] },
+      status:      { $nin: ['completed'] },
+    };
+    if (agentId) filter.assignedTo = agentId;
+
+    const leads = await DomLead.find(filter)
+      .populate('sourceWebsiteLead',  'name mobile productType')
+      .populate('sourceImportedLead', 'name mobile loanType totalOutstandingAmount')
+      .sort({ callbackDate: 1, updatedAt: -1 })
+      .limit(200)
+      .lean();
+
+    return res.status(200).json({ success: true, data: leads });
+  } catch (err) {
+    console.error('[Leads] Followups error:', err.message);
+    return res.status(500).json({ success: false, message: 'Failed to fetch follow-ups.' });
+  }
+});
+
 // ── GET /domestic-api/leads ────────────────────────────────────────────────
 // Domagent: their own leads. Admin/SuperAdmin: all leads with filters.
 router.get('/', protect, async (req, res) => {

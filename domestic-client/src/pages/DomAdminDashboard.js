@@ -16,6 +16,26 @@ const fmtDate = (d) =>
 const fmtShort = (d) =>
   d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Never';
 
+// ── Lead Source colour system ── applied consistently everywhere
+const SOURCE_META = {
+  website:  { label: 'Website',  emoji: '🌐', badge: 'bg-teal-100 text-teal-700 border border-teal-300',     dot: 'bg-teal-500',   borderL: 'border-l-4 border-l-teal-500',   rowHover: 'hover:bg-teal-50/40'   },
+  imported: { label: 'Imported', emoji: '📊', badge: 'bg-violet-100 text-violet-700 border border-violet-300', dot: 'bg-violet-500', borderL: 'border-l-4 border-l-violet-500', rowHover: 'hover:bg-violet-50/40' },
+  manual:   { label: 'Manual',   emoji: '✍️', badge: 'bg-gray-100 text-gray-600 border border-gray-300',       dot: 'bg-gray-400',   borderL: 'border-l-4 border-l-gray-300',   rowHover: 'hover:bg-gray-50/40'   },
+};
+const getSourceMeta = (lead) =>
+  lead?.sourceWebsiteLead  ? SOURCE_META.website  :
+  lead?.sourceImportedLead ? SOURCE_META.imported :
+                             SOURCE_META.manual;
+
+const SourceBadge = ({ lead, size = 'sm' }) => {
+  const src = getSourceMeta(lead);
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-bold border ${src.badge} ${size === 'xs' ? 'text-xs' : 'text-xs'}`}>
+      {src.emoji} {src.label}
+    </span>
+  );
+};
+
 const STATUS_META = {
   new:       { label: 'New',       cls: 'bg-orange-100 text-orange-800 border border-orange-200' },
   loaded:    { label: 'Loaded',    cls: 'bg-yellow-100 text-yellow-800 border border-yellow-200' },
@@ -46,11 +66,11 @@ const LeadRefBadge = ({ code }) =>
 
 const TABS = ['overview', 'website_leads', 'dom_leads', 'agents', 'lead_pool'];
 const TAB_META = {
-  overview:      { label: 'Overview',      Icon: BarChart2, color: 'indigo' },
-  website_leads: { label: 'Website Leads', Icon: Globe,     color: 'blue'   },
-  dom_leads:     { label: 'Worked Leads',  Icon: Briefcase, color: 'purple' },
-  agents:        { label: 'Agents',        Icon: Users,     color: 'teal'   },
-  lead_pool:     { label: 'Lead Pool',     Icon: Database,  color: 'green'  },
+  overview:      { label: 'Dashboard',        sub: 'Stats & Pipeline',           Icon: BarChart2, color: 'indigo' },
+  website_leads: { label: 'Enquiries',         sub: 'Leads from website',         Icon: Globe,     color: 'blue'   },
+  dom_leads:     { label: 'Worked Cases',      sub: 'Agent submitted leads',      Icon: Briefcase, color: 'purple' },
+  agents:        { label: 'Agent Performance', sub: 'Rankings & activity',        Icon: Users,     color: 'teal'   },
+  lead_pool:     { label: 'Data Pool',         sub: 'Import & assign to agents',  Icon: Database,  color: 'green'  },
 };
 
 const DomAdminDashboard = () => {
@@ -113,6 +133,12 @@ const DomAdminDashboard = () => {
   // Drag & drop state
   const [dragItem,  setDragItem]  = useState(null); // { id, type: 'website' | 'pool', name }
   const [dropAgent, setDropAgent] = useState(null); // agentId being hovered during drag
+
+  // Agent activity tracker (admin click-to-inspect)
+  const [selectedAgent,         setSelectedAgent]         = useState(null);
+  const [agentActivity,         setAgentActivity]         = useState({ workedLeads: [], poolLeads: [] });
+  const [agentActivityLoading,  setAgentActivityLoading]  = useState(false);
+  const [agentLeadDetail,       setAgentLeadDetail]       = useState(null); // lead clicked in agent panel
 
   // Refs hold current filter values so callbacks stay stable (no re-creation on every keystroke)
   const searchRef          = useRef('');
@@ -181,6 +207,23 @@ const DomAdminDashboard = () => {
       setAgents(res.data?.data || []);
     } catch { toast.error('Failed to load agents.'); }
     finally { setAgentsLoading(false); }
+  }, []);
+
+  const handleSelectAgent = useCallback(async (agent) => {
+    setSelectedAgent(agent);
+    setAgentActivityLoading(true);
+    setAgentActivity({ workedLeads: [], poolLeads: [] });
+    try {
+      const [workedRes, poolRes] = await Promise.all([
+        api.get(`/domestic-api/leads?agentId=${agent._id}&limit=15`),
+        api.get(`/domestic-api/import-leads?agentId=${agent._id}&limit=15`).catch(() => ({ data: { data: [] } })),
+      ]);
+      setAgentActivity({
+        workedLeads: workedRes.data?.data || [],
+        poolLeads:   poolRes.data?.data   || [],
+      });
+    } catch { toast.error('Failed to load agent activity.'); }
+    finally { setAgentActivityLoading(false); }
   }, []);
 
   const fetchPoolStats = useCallback(async () => {
@@ -455,17 +498,20 @@ const DomAdminDashboard = () => {
       <div className="bg-white/80 backdrop-blur-sm border-b border-gray-100 shadow-sm sticky top-16 z-20">
         <div className="px-6 flex gap-1 py-2 overflow-x-auto scrollbar-hide">
           {TABS.map((t) => {
-            const { label, Icon } = TAB_META[t];
+            const { label, sub, Icon } = TAB_META[t];
             const isActive = tab === t;
             return (
               <button key={t} onClick={() => setTab(t)}
-                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all whitespace-nowrap ${
+                className={`flex flex-col items-start px-4 py-2 rounded-xl transition-all whitespace-nowrap min-w-max ${
                   isActive
                     ? 'bg-gradient-to-r from-[#065F36] to-[#00874A] text-white shadow-md shadow-green-200'
                     : 'text-gray-500 hover:bg-[#E8FFF5] hover:text-[#065F36]'
                 }`}>
-                <Icon className={`h-4 w-4 ${isActive ? 'text-white' : ''}`} />
-                {label}
+                <div className="flex items-center gap-2">
+                  <Icon className={`h-4 w-4 flex-shrink-0 ${isActive ? 'text-white' : ''}`} />
+                  <span className="text-sm font-bold">{label}</span>
+                </div>
+                {sub && <span className={`text-xs mt-0.5 ml-6 ${isActive ? 'text-white/70' : 'text-gray-400'}`}>{sub}</span>}
               </button>
             );
           })}
@@ -777,6 +823,18 @@ const DomAdminDashboard = () => {
             </div>
 
             {domLeadsLoading ? <Spinner /> : domLeads.length === 0 ? <Empty label="No worked leads found. Try adjusting the filters." /> : (
+              <>
+                {/* Source colour legend */}
+                <div className="px-5 py-2.5 bg-gray-50 border-b border-gray-100 flex items-center gap-4 flex-wrap">
+                  <span className="text-xs font-bold text-gray-400 uppercase tracking-wide">Lead Source:</span>
+                  {Object.values(SOURCE_META).map(s => (
+                    <div key={s.label} className="flex items-center gap-1.5">
+                      <span className={`w-2.5 h-2.5 rounded-full ${s.dot}`} />
+                      <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${s.badge}`}>{s.emoji} {s.label}</span>
+                    </div>
+                  ))}
+                  <span className="text-xs text-gray-400 ml-auto">← left border colour = source type</span>
+                </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
@@ -803,14 +861,9 @@ const DomAdminDashboard = () => {
                         dl.status === 'pending' && dl.callOutcome === 'not_reachable' ? 'Try Again' :
                         dl.status === 'pending' && !dl.callOutcome                   ? 'Not Called' :
                         null;
-                      // Determine lead source
-                      const leadSource =
-                        dl.sourceWebsiteLead  ? { label: 'Website',  cls: 'bg-teal-100 text-teal-700 border-teal-300',     emoji: '🌐' } :
-                        dl.sourceImportedLead ? { label: 'Imported',  cls: 'bg-violet-100 text-violet-700 border-violet-300', emoji: '📊' } :
-                        dl.isManual           ? { label: 'Manual',    cls: 'bg-gray-100 text-gray-600 border-gray-300',       emoji: '✍️' } :
-                                                { label: 'Unknown',   cls: 'bg-gray-100 text-gray-400 border-gray-200',       emoji: '?' };
+                      const src = getSourceMeta(dl);
                       return (
-                        <tr key={dl._id} className="hover:bg-[#E8FFF5]/40 transition-colors group">
+                        <tr key={dl._id} className={`transition-colors group ${src.borderL} ${src.rowHover}`}>
                           <td className="pl-6 pr-3 py-3.5"><LeadRefBadge code={dl.leadRef} /></td>
                           <td className="px-3 py-3.5 font-semibold text-gray-800">{dl.name || '—'}</td>
                           <td className="px-3 py-3.5 font-mono text-xs text-gray-600 tracking-wide">{dl.mobile || '—'}</td>
@@ -821,9 +874,7 @@ const DomAdminDashboard = () => {
                               : <span className="text-gray-300 text-xs">—</span>}
                           </td>
                           <td className="px-3 py-3.5">
-                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold border ${leadSource.cls}`}>
-                              {leadSource.emoji} {leadSource.label}
-                            </span>
+                            <SourceBadge lead={dl} />
                           </td>
                           <td className="px-3 py-3.5 text-gray-700 text-sm">{dl.assignedTo?.name || '—'}</td>
                           <td className="px-3 py-3.5">
@@ -868,6 +919,7 @@ const DomAdminDashboard = () => {
                   </tbody>
                 </table>
               </div>
+              </>
             )}
             <Pagination total={domLeadsTotal} page={domLeadsPage} perPage={30} count={domLeads.length}
               onPrev={() => fetchDomLeads(domLeadsPage - 1)} onNext={() => fetchDomLeads(domLeadsPage + 1)} />
@@ -876,195 +928,487 @@ const DomAdminDashboard = () => {
 
         {/* AGENTS */}
         {tab === 'agents' && (
-          <div className="space-y-5">
-            {/* Top 3 hero cards */}
-            {!agentsLoading && agents.filter(a => a.isActive).length > 0 && (() => {
-              const sorted = [...agents.filter(a => a.isActive)].sort((a, b) => getAgentTier(b).score - getAgentTier(a).score);
-              const top3 = sorted.slice(0, 3);
-              return (
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  {top3.map((a, i) => {
-                    const tier = getAgentTier(a);
-                    const conv = a.leadsLoaded > 0 ? Math.round((a.leadsCompleted / a.leadsLoaded) * 100) : 0;
-                    const podium = ['🥇', '🥈', '🥉'][i];
-                    const gradients = [
-                      'from-amber-400 via-orange-400 to-amber-500',
-                      'from-slate-400 via-gray-400 to-slate-500',
-                      'from-orange-600 via-orange-700 to-amber-700',
-                    ];
-                    return (
-                      <div key={a._id} className={`relative overflow-hidden rounded-2xl p-5 bg-gradient-to-br ${gradients[i]} text-white shadow-xl`}>
-                        <div className="absolute top-3 right-3 text-3xl opacity-80">{podium}</div>
-                        <div className="flex items-center gap-3 mb-4">
-                          <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center font-black text-xl shadow-inner">
-                            {a.name?.charAt(0)?.toUpperCase()}
+          <div className={selectedAgent ? 'flex gap-5 h-[calc(100vh-170px)]' : 'space-y-5'}>
+
+            {/* ── LEFT: Rankings list ── */}
+            <div className={`flex flex-col gap-5 overflow-y-auto ${selectedAgent ? 'w-80 flex-shrink-0' : 'flex-1'}`}>
+
+              {/* Top 3 hero cards — only when no agent selected */}
+              {!selectedAgent && !agentsLoading && agents.filter(a => a.isActive).length > 0 && (() => {
+                const sorted = [...agents.filter(a => a.isActive)].sort((a, b) => getAgentTier(b).score - getAgentTier(a).score);
+                const top3 = sorted.slice(0, 3);
+                return (
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    {top3.map((a, i) => {
+                      const tier = getAgentTier(a);
+                      const conv = a.leadsLoaded > 0 ? Math.round((a.leadsCompleted / a.leadsLoaded) * 100) : 0;
+                      const podium = ['🥇', '🥈', '🥉'][i];
+                      const gradients = [
+                        'from-amber-400 via-orange-400 to-amber-500',
+                        'from-slate-400 via-gray-400 to-slate-500',
+                        'from-orange-600 via-orange-700 to-amber-700',
+                      ];
+                      return (
+                        <div key={a._id} onClick={() => handleSelectAgent(a)}
+                          className={`relative overflow-hidden rounded-2xl p-5 bg-gradient-to-br ${gradients[i]} text-white shadow-xl cursor-pointer hover:scale-[1.02] transition-transform`}>
+                          <div className="absolute top-3 right-3 text-3xl opacity-80">{podium}</div>
+                          <div className="flex items-center gap-3 mb-4">
+                            <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center font-black text-xl shadow-inner">
+                              {a.name?.charAt(0)?.toUpperCase()}
+                            </div>
+                            <div>
+                              <p className="font-black text-base leading-tight">{a.name}</p>
+                              <p className="text-white/70 text-xs">{tier.emoji} {tier.label}</p>
+                            </div>
                           </div>
-                          <div>
-                            <p className="font-black text-base leading-tight">{a.name}</p>
-                            <p className="text-white/70 text-xs">{tier.emoji} {tier.label}</p>
+                          <div className="grid grid-cols-3 gap-2 text-center mb-3">
+                            <div className="bg-white/15 rounded-xl py-2">
+                              <p className="text-xl font-black">{a.leadsLoaded}</p>
+                              <p className="text-white/70 text-xs">Loaded</p>
+                            </div>
+                            <div className="bg-white/15 rounded-xl py-2">
+                              <p className="text-xl font-black">{a.leadsCompleted}</p>
+                              <p className="text-white/70 text-xs">Done</p>
+                            </div>
+                            <div className="bg-white/15 rounded-xl py-2">
+                              <p className="text-xl font-black">{a.domLeadsCreated}</p>
+                              <p className="text-white/70 text-xs">Worked</p>
+                            </div>
+                          </div>
+                          <div className="space-y-1">
+                            <div className="flex justify-between text-xs text-white/70">
+                              <span>Conversion Rate</span>
+                              <span className="font-bold text-white">{conv}%</span>
+                            </div>
+                            <div className="h-2 bg-white/20 rounded-full overflow-hidden">
+                              <div className="h-full bg-white rounded-full transition-all duration-1000"
+                                style={{ width: `${conv}%` }} />
+                            </div>
+                          </div>
+                          <div className="absolute -bottom-6 -right-6 w-24 h-24 rounded-full bg-white/10" />
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+
+              {/* Full agent list */}
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-gradient-to-br from-teal-500 to-emerald-600 rounded-xl shadow-sm">
+                      <Users className="h-5 w-5 text-white" />
+                    </div>
+                    <div>
+                      <h2 className="font-bold text-gray-800">All Agents — Performance Ranking</h2>
+                      <p className="text-xs text-gray-400">Click any agent to inspect their activity</p>
+                    </div>
+                  </div>
+                  <button onClick={fetchAgents}
+                    className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-[#065F36] border border-gray-200 rounded-xl px-3 py-2 hover:border-[#065F36] transition-all">
+                    <RefreshCw className="h-4 w-4" /> Refresh
+                  </button>
+                </div>
+
+                {agentsLoading ? <Spinner /> : agents.length === 0 ? <Empty label="No agents found." /> : (
+                  <div className="divide-y divide-gray-50">
+                    {[...agents].sort((a, b) => getAgentTier(b).score - getAgentTier(a).score).map((a, idx) => {
+                      const tier = getAgentTier(a);
+                      const conv = a.leadsLoaded > 0 ? Math.round((a.leadsCompleted / a.leadsLoaded) * 100) : 0;
+                      const tierStyle = TIER_STYLES[tier.color] || TIER_STYLES.gray;
+                      const isSelected = selectedAgent?._id === a._id;
+                      return (
+                        <div key={a._id}
+                          onClick={() => handleSelectAgent(a)}
+                          className={`px-6 py-4 cursor-pointer transition-colors border-l-4 ${
+                            isSelected ? 'bg-[#E8FFF5] border-l-[#065F36]' :
+                            tier.tier === 5 ? 'hover:bg-amber-50/40 border-l-amber-400' :
+                            tier.tier === 4 ? 'hover:bg-violet-50/40 border-l-violet-400' :
+                            tier.tier === 3 ? 'hover:bg-emerald-50/40 border-l-emerald-400' :
+                            tier.tier === 2 ? 'hover:bg-teal-50/40 border-l-teal-300' : 'hover:bg-gray-50/50 border-l-gray-200'
+                          }`}>
+                          <div className="flex items-center gap-4">
+                            {/* Rank + Avatar */}
+                            <div className="flex items-center gap-3 flex-shrink-0">
+                              <span className="text-xs font-bold text-gray-300 w-5 text-center">#{idx + 1}</span>
+                              <div className="relative">
+                                <div className={`w-11 h-11 rounded-2xl flex items-center justify-center text-white font-black text-base shadow-md ${
+                                  tier.tier === 5 ? 'bg-gradient-to-br from-amber-400 to-orange-500' :
+                                  tier.tier === 4 ? 'bg-gradient-to-br from-violet-500 to-purple-600' :
+                                  tier.tier === 3 ? 'bg-gradient-to-br from-emerald-500 to-teal-600' :
+                                  tier.tier === 1 ? 'bg-gradient-to-br from-sky-400 to-blue-500' :
+                                  'bg-gradient-to-br from-[#065F36] to-[#00A651]'
+                                }`}>
+                                  {a.name?.charAt(0)?.toUpperCase()}
+                                </div>
+                                <span className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-white ${
+                                  !a.isActive ? 'bg-gray-300' :
+                                  a.agentStatus === 'break'       ? 'bg-amber-400' :
+                                  a.agentStatus === 'unavailable' ? 'bg-red-500' :
+                                                                     'bg-emerald-500'
+                                } ${a.isActive && a.agentStatus === 'available' ? 'animate-pulse' : ''}`} />
+                              </div>
+                            </div>
+
+                            {/* Info + performance */}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-bold text-gray-800">{a.name}</span>
+                                <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold border ${tierStyle}`}>
+                                  {tier.emoji} {tier.label}
+                                </span>
+                                {a.isActive && (
+                                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold border ${
+                                    a.agentStatus === 'break'       ? 'bg-amber-100 text-amber-700 border-amber-300' :
+                                    a.agentStatus === 'unavailable' ? 'bg-red-100 text-red-700 border-red-300' :
+                                                                       'bg-emerald-100 text-emerald-700 border-emerald-300'
+                                  }`}>
+                                    <span className={`w-1.5 h-1.5 rounded-full ${
+                                      a.agentStatus === 'break'       ? 'bg-amber-400 animate-pulse' :
+                                      a.agentStatus === 'unavailable' ? 'bg-red-500' :
+                                                                         'bg-emerald-500 animate-pulse'
+                                    }`} />
+                                    {a.agentStatus === 'break' ? '☕ Break' : a.agentStatus === 'unavailable' ? '🔴 Off' : '✅ Live'}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-xs text-gray-400 mt-0.5 truncate">{a.email}</p>
+                              {!selectedAgent && (
+                                <div className="flex items-center gap-2 mt-2">
+                                  <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                                    <div className={`h-full rounded-full transition-all duration-1000 ${
+                                      conv >= 65 ? 'bg-gradient-to-r from-amber-400 to-orange-500' :
+                                      conv >= 45 ? 'bg-gradient-to-r from-violet-500 to-purple-500' :
+                                      conv >= 25 ? 'bg-gradient-to-r from-emerald-500 to-teal-500' :
+                                      'bg-gradient-to-r from-gray-300 to-gray-400'
+                                    }`} style={{ width: `${conv}%` }} />
+                                  </div>
+                                  <span className={`text-xs font-black w-9 text-right ${
+                                    conv >= 65 ? 'text-amber-600' : conv >= 45 ? 'text-violet-600' : conv >= 25 ? 'text-emerald-600' : 'text-gray-400'
+                                  }`}>{conv}%</span>
+                                  <span className="text-xs text-gray-400">conv.</span>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Stats row — full when not selected */}
+                            {!selectedAgent && (
+                              <div className="hidden sm:flex items-center gap-3 flex-shrink-0">
+                                <div className="text-center bg-blue-50 border border-blue-100 rounded-xl px-4 py-2">
+                                  <p className="text-xl font-black text-blue-600">{a.leadsLoaded}</p>
+                                  <p className="text-xs text-gray-400">Loaded</p>
+                                </div>
+                                <div className="text-center bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-2">
+                                  <p className="text-xl font-black text-emerald-600">{a.leadsCompleted}</p>
+                                  <p className="text-xs text-gray-400">Done</p>
+                                </div>
+                                <div className={`text-center rounded-xl px-4 py-2 ${
+                                  tier.tier === 5 ? 'bg-amber-50 border border-amber-100' : 'bg-gray-50 border border-gray-100'
+                                }`}>
+                                  <p className={`text-xl font-black ${tier.tier === 5 ? 'text-amber-600' : 'text-gray-700'}`}>
+                                    {a.domLeadsCreated}
+                                  </p>
+                                  <p className="text-xs text-gray-400">Worked</p>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         </div>
-                        <div className="grid grid-cols-3 gap-2 text-center mb-3">
-                          <div className="bg-white/15 rounded-xl py-2">
-                            <p className="text-xl font-black">{a.leadsLoaded}</p>
-                            <p className="text-white/70 text-xs">Loaded</p>
-                          </div>
-                          <div className="bg-white/15 rounded-xl py-2">
-                            <p className="text-xl font-black">{a.leadsCompleted}</p>
-                            <p className="text-white/70 text-xs">Done</p>
-                          </div>
-                          <div className="bg-white/15 rounded-xl py-2">
-                            <p className="text-xl font-black">{a.domLeadsCreated}</p>
-                            <p className="text-white/70 text-xs">Worked</p>
-                          </div>
-                        </div>
-                        {/* Conversion bar */}
-                        <div className="space-y-1">
-                          <div className="flex justify-between text-xs text-white/70">
-                            <span>Conversion Rate</span>
-                            <span className="font-bold text-white">{conv}%</span>
-                          </div>
-                          <div className="h-2 bg-white/20 rounded-full overflow-hidden">
-                            <div className="h-full bg-white rounded-full transition-all duration-1000"
-                              style={{ width: `${conv}%` }} />
-                          </div>
-                        </div>
-                        <div className="absolute -bottom-6 -right-6 w-24 h-24 rounded-full bg-white/10" />
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* ── RIGHT: Agent Activity Panel ── */}
+            {selectedAgent && (
+              <div className="flex-1 overflow-y-auto space-y-5">
+                {/* Agent header card */}
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-white font-black text-xl shadow-md ${
+                        getAgentTier(selectedAgent).tier === 5 ? 'bg-gradient-to-br from-amber-400 to-orange-500' :
+                        getAgentTier(selectedAgent).tier === 4 ? 'bg-gradient-to-br from-violet-500 to-purple-600' :
+                        getAgentTier(selectedAgent).tier === 3 ? 'bg-gradient-to-br from-emerald-500 to-teal-600' :
+                        'bg-gradient-to-br from-[#065F36] to-[#00A651]'
+                      }`}>
+                        {selectedAgent.name?.charAt(0)?.toUpperCase()}
                       </div>
-                    );
-                  })}
+                      <div>
+                        <h2 className="text-xl font-black text-gray-800">{selectedAgent.name}</h2>
+                        <p className="text-sm text-gray-400">{selectedAgent.email}</p>
+                        <div className="flex items-center gap-2 mt-1 flex-wrap">
+                          <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold border ${TIER_STYLES[getAgentTier(selectedAgent).color] || TIER_STYLES.gray}`}>
+                            {getAgentTier(selectedAgent).emoji} {getAgentTier(selectedAgent).label}
+                          </span>
+                          <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold border ${
+                            selectedAgent.agentStatus === 'break'       ? 'bg-amber-100 text-amber-700 border-amber-300' :
+                            selectedAgent.agentStatus === 'unavailable' ? 'bg-red-100 text-red-700 border-red-300' :
+                                                                           'bg-emerald-100 text-emerald-700 border-emerald-300'
+                          }`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${
+                              selectedAgent.agentStatus === 'break'       ? 'bg-amber-400 animate-pulse' :
+                              selectedAgent.agentStatus === 'unavailable' ? 'bg-red-500' :
+                                                                             'bg-emerald-500 animate-pulse'
+                            }`} />
+                            {selectedAgent.agentStatus === 'break' ? '☕ On Break' : selectedAgent.agentStatus === 'unavailable' ? '🔴 Unavailable' : '✅ Available'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    <button onClick={() => { setSelectedAgent(null); setAgentActivity({ workedLeads: [], poolLeads: [] }); }}
+                      className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100 transition-colors">
+                      <X className="h-5 w-5" />
+                    </button>
+                  </div>
+
+                  {/* Quick stats */}
+                  <div className="grid grid-cols-4 gap-3 mt-5">
+                    {[
+                      { label: 'Leads Loaded',  val: selectedAgent.leadsLoaded,     color: 'text-blue-600',    bg: 'bg-blue-50' },
+                      { label: 'Completed',      val: selectedAgent.leadsCompleted,  color: 'text-emerald-600', bg: 'bg-emerald-50' },
+                      { label: 'Worked Cases',   val: selectedAgent.domLeadsCreated, color: 'text-[#065F36]',   bg: 'bg-[#E8FFF5]' },
+                      { label: 'Pool Assigned',  val: agentActivity.poolLeads.length, color: 'text-violet-600', bg: 'bg-violet-50' },
+                    ].map(s => (
+                      <div key={s.label} className={`${s.bg} rounded-xl p-3 text-center`}>
+                        <p className={`text-2xl font-black ${s.color}`}>{s.val}</p>
+                        <p className="text-xs text-gray-500 mt-0.5">{s.label}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-xs text-gray-400 mt-3">Last login: {fmtShort(selectedAgent.lastLogin)}</p>
+                </div>
+
+                {agentActivityLoading ? (
+                  <div className="flex items-center justify-center py-16 gap-3 bg-white rounded-2xl border border-gray-100">
+                    <div className="w-8 h-8 border-4 border-gray-100 border-t-[#065F36] rounded-full animate-spin" />
+                    <span className="text-sm text-gray-400">Loading activity…</span>
+                  </div>
+                ) : (
+                  <>
+                    {/* Recent Worked Cases */}
+                    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                      <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-3">
+                        <div className="p-2 bg-[#E8FFF5] rounded-xl"><Briefcase className="h-4 w-4 text-[#065F36]" /></div>
+                        <div>
+                          <h3 className="font-bold text-gray-800 text-sm">Recent Worked Cases</h3>
+                          <p className="text-xs text-gray-400">Leads this agent has filled the work form for</p>
+                        </div>
+                      </div>
+                      {agentActivity.workedLeads.length === 0 ? (
+                        <p className="text-center text-gray-400 text-sm py-8">No worked cases yet.</p>
+                      ) : (
+                        <div className="divide-y divide-gray-50">
+                          {agentActivity.workedLeads.map((l) => {
+                            const src = getSourceMeta(l);
+                            return (
+                            <div key={l._id}
+                              onClick={() => setAgentLeadDetail(l)}
+                              className={`px-5 py-3 flex items-center justify-between cursor-pointer transition-colors ${src.borderL} ${src.rowHover}`}>
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <span className="font-mono text-xs font-bold bg-gray-900 text-emerald-400 px-1.5 py-0.5 rounded">{l.leadRef || '—'}</span>
+                                  <span className="font-semibold text-sm text-gray-800">{l.name || '—'}</span>
+                                  <SourceBadge lead={l} />
+                                </div>
+                                <p className="text-xs text-gray-400 mt-0.5">{l.mobile} · {l.productType?.replace(/_/g,' ')} · {fmtDate(l.createdAt)}</p>
+                              </div>
+                              <div className="flex flex-col items-end gap-1">
+                                {l.callOutcome && (
+                                  <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
+                                    l.callOutcome === 'interested'     ? 'bg-emerald-100 text-emerald-700' :
+                                    l.callOutcome === 'not_interested' ? 'bg-red-100 text-red-700' :
+                                    l.callOutcome === 'callback'       ? 'bg-amber-100 text-amber-700' :
+                                    l.callOutcome === 'not_reachable'  ? 'bg-orange-100 text-orange-700' :
+                                    'bg-gray-100 text-gray-600'
+                                  }`}>{l.callOutcome.replace(/_/g,' ')}</span>
+                                )}
+                                <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
+                                  l.status === 'completed' ? 'bg-emerald-100 text-emerald-700' :
+                                  l.status === 'rejected'  ? 'bg-red-100 text-red-700' :
+                                  'bg-blue-100 text-blue-700'
+                                }`}>{l.status}</span>
+                              </div>
+                            </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Pool Leads Assigned */}
+                    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                      <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-3">
+                        <div className="p-2 bg-violet-100 rounded-xl"><Database className="h-4 w-4 text-violet-600" /></div>
+                        <div>
+                          <h3 className="font-bold text-gray-800 text-sm">Data Pool Assigned</h3>
+                          <p className="text-xs text-gray-400">Imported leads assigned to this agent</p>
+                        </div>
+                      </div>
+                      {agentActivity.poolLeads.length === 0 ? (
+                        <p className="text-center text-gray-400 text-sm py-8">No pool leads assigned.</p>
+                      ) : (
+                        <div className="divide-y divide-gray-50">
+                          {agentActivity.poolLeads.slice(0, 10).map((l) => (
+                            <div key={l._id} className="px-5 py-3 flex items-center justify-between hover:bg-gray-50">
+                              <div>
+                                <p className="font-semibold text-sm text-gray-800">{l.name || '—'}</p>
+                                <p className="text-xs text-gray-400">{l.mobile} · {l.loanType || l.productType || '—'}</p>
+                              </div>
+                              <span className={`text-xs px-2 py-0.5 rounded-full font-semibold border ${
+                                l.workStatus === 'interested'     ? 'bg-emerald-100 text-emerald-700 border-emerald-200' :
+                                l.workStatus === 'not_interested' ? 'bg-red-100 text-red-700 border-red-200' :
+                                l.workStatus === 'in_progress'    ? 'bg-blue-100 text-blue-700 border-blue-200' :
+                                l.workStatus === 'closed'         ? 'bg-gray-100 text-gray-600 border-gray-200' :
+                                'bg-orange-100 text-orange-700 border-orange-200'
+                              }`}>{l.workStatus === 'new' ? 'Not Called' : (l.workStatus?.replace(/_/g,' ') || 'New')}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* ── Lead Disposition Detail Modal ── */}
+            {agentLeadDetail && (() => {
+              const l = agentLeadDetail;
+              const OUTCOME_CFG = {
+                interested:     { label: 'Interested',     cls: 'bg-emerald-100 text-emerald-700 border-emerald-300', icon: '✅' },
+                not_interested: { label: 'Not Interested', cls: 'bg-red-100 text-red-700 border-red-300',             icon: '❌' },
+                callback:       { label: 'Callback',       cls: 'bg-amber-100 text-amber-700 border-amber-300',       icon: '📞' },
+                not_reachable:  { label: 'Not Reachable',  cls: 'bg-orange-100 text-orange-700 border-orange-300',    icon: '📵' },
+                wrong_number:   { label: 'Wrong Number',   cls: 'bg-gray-100 text-gray-600 border-gray-300',          icon: '❓' },
+              };
+              const oc  = OUTCOME_CFG[l.callOutcome] || { label: l.callOutcome || 'No Disposition', cls: 'bg-gray-100 text-gray-500 border-gray-200', icon: '—' };
+              const fmt = (d) => d ? new Date(d).toLocaleString('en-IN', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '—';
+              const CIBIL_LABEL = { below_600:'< 600 (Poor)', '600_699':'600–699 (Fair)', '700_749':'700–749 (Good)', '750_800':'750–800 (Very Good)', above_800:'> 800 (Excellent)', unknown:'Unknown' };
+
+              return (
+                <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+                  onClick={() => setAgentLeadDetail(null)}>
+                  <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto"
+                    onClick={e => e.stopPropagation()}>
+
+                    {/* Header */}
+                    <div className={`px-6 py-5 rounded-t-3xl ${
+                      l.callOutcome === 'interested'     ? 'bg-gradient-to-r from-emerald-500 to-teal-600' :
+                      l.callOutcome === 'not_interested' ? 'bg-gradient-to-r from-red-500 to-rose-600' :
+                      l.callOutcome === 'callback'       ? 'bg-gradient-to-r from-amber-400 to-orange-500' :
+                      l.callOutcome === 'not_reachable'  ? 'bg-gradient-to-r from-orange-400 to-amber-500' :
+                      l.callOutcome === 'wrong_number'   ? 'bg-gradient-to-r from-gray-500 to-gray-600' :
+                      'bg-gradient-to-r from-[#065F36] to-[#00874A]'
+                    } text-white`}>
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap mb-1">
+                            <span className="text-2xl">{oc.icon}</span>
+                            <span className="text-xl font-black">{l.name || '—'}</span>
+                            {l.leadRef && (
+                              <span className="font-mono text-xs font-bold bg-white/20 text-white px-2 py-0.5 rounded-lg tracking-widest">{l.leadRef}</span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-white/80 text-sm">{l.mobile}</span>
+                            {(l.city || l.state) && <span className="text-white/60 text-xs">· {[l.city, l.state].filter(Boolean).join(', ')}</span>}
+                            <span className="text-xs bg-white/20 text-white px-2 py-0.5 rounded-full font-bold border border-white/30">
+                              {l.sourceWebsiteLead ? '🌐 Website' : l.sourceImportedLead ? '📊 Imported' : '✍️ Manual'}
+                            </span>
+                          </div>
+                        </div>
+                        <button onClick={() => setAgentLeadDetail(null)}
+                          className="p-2 bg-white/20 hover:bg-white/30 rounded-xl transition-colors">
+                          <X className="h-5 w-5" />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="p-6 space-y-5">
+                      {/* Disposition & Notes */}
+                      <div className={`rounded-2xl border-2 p-5 ${
+                        l.callOutcome === 'not_interested' || l.status === 'rejected' ? 'border-red-200 bg-red-50' :
+                        l.callOutcome === 'interested'     ? 'border-emerald-200 bg-emerald-50' :
+                        l.callOutcome === 'callback'       ? 'border-amber-200 bg-amber-50' :
+                        l.callOutcome === 'not_reachable'  ? 'border-orange-200 bg-orange-50' :
+                        'border-gray-200 bg-gray-50'
+                      }`}>
+                        <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Disposition & Outcome</p>
+                        <div className="flex items-center gap-3 flex-wrap mb-3">
+                          <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-bold border ${oc.cls}`}>
+                            {oc.icon} {oc.label}
+                          </span>
+                          <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-bold border ${
+                            l.status === 'completed' ? 'bg-emerald-100 text-emerald-700 border-emerald-300' :
+                            l.status === 'rejected'  ? 'bg-red-100 text-red-700 border-red-300' :
+                                                       'bg-blue-100 text-blue-700 border-blue-300'
+                          }`}>
+                            {l.status === 'completed' ? '✔ Completed' : l.status === 'rejected' ? '✖ Rejected' : '⏳ Pending'}
+                          </span>
+                          {l.callbackDate && (
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-bold bg-violet-100 text-violet-700 border border-violet-300">
+                              📅 Callback: {l.callbackDate}
+                            </span>
+                          )}
+                        </div>
+                        {l.notes ? (
+                          <div className="bg-white rounded-xl p-4 border border-gray-200">
+                            <p className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-1.5">Agent Notes / Reason</p>
+                            <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">"{l.notes}"</p>
+                          </div>
+                        ) : (
+                          <p className="text-xs text-gray-400 italic bg-white rounded-xl p-4 border border-gray-200">No notes added by agent.</p>
+                        )}
+                      </div>
+
+                      {/* Info grid */}
+                      <div>
+                        <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Lead Details</p>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                          {[
+                            { label: 'Product / Service', val: l.productType?.replace(/_/g,' '), bold: true },
+                            { label: 'Loan Amount',        val: l.loanAmountRequired ? `₹${l.loanAmountRequired.toLocaleString('en-IN')}` : null },
+                            { label: 'Employment Type',    val: l.employmentType?.replace(/_/g,' ') },
+                            { label: 'Company',            val: l.companyName },
+                            { label: 'Monthly Salary',     val: l.monthlySalary ? `₹${l.monthlySalary.toLocaleString('en-IN')}` : null },
+                            { label: 'CIBIL Score Range',  val: CIBIL_LABEL[l.cibilScoreRange] || l.cibilScoreRange },
+                            { label: 'Existing EMI',       val: l.existingEMI ? `₹${l.existingEMI.toLocaleString('en-IN')}/mo` : null },
+                            { label: 'Existing Bank',      val: l.existingBank },
+                            { label: 'City / State',       val: [l.city, l.state].filter(Boolean).join(', ') || null },
+                          ].filter(r => r.val).map(({ label, val, bold }) => (
+                            <div key={label} className="bg-gray-50 border border-gray-100 rounded-xl p-3">
+                              <p className="text-xs text-gray-400 font-medium">{label}</p>
+                              <p className={`text-sm mt-0.5 ${bold ? 'font-bold text-[#065F36] capitalize' : 'font-semibold text-gray-700'}`}>{val}</p>
+                            </div>
+                          ))}
+                        </div>
+                        {l.existingLoans?.length > 0 && (
+                          <div className="mt-3 bg-gray-50 border border-gray-100 rounded-xl p-3">
+                            <p className="text-xs text-gray-400 font-medium mb-1">Existing Loans</p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {l.existingLoans.map((loan, i) => (
+                                <span key={i} className="text-xs bg-white border border-gray-200 text-gray-700 px-2 py-1 rounded-lg font-medium">{loan}</span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Timeline */}
+                      <div className="flex items-center gap-6 text-xs text-gray-400 bg-gray-50 rounded-xl p-4 border border-gray-100 flex-wrap">
+                        <div><span className="font-semibold text-gray-600">Submitted:</span> {fmt(l.createdAt)}</div>
+                        {l.updatedAt !== l.createdAt && <div><span className="font-semibold text-gray-600">Updated:</span> {fmt(l.updatedAt)}</div>}
+                        {l.assignedTo?.name && <div><span className="font-semibold text-gray-600">Agent:</span> {l.assignedTo.name}</div>}
+                      </div>
+                    </div>
+                  </div>
                 </div>
               );
             })()}
-
-            {/* Full agent list */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-              <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-gradient-to-br from-teal-500 to-emerald-600 rounded-xl shadow-sm">
-                    <Users className="h-5 w-5 text-white" />
-                  </div>
-                  <div>
-                    <h2 className="font-bold text-gray-800">All Agents — Performance Ranking</h2>
-                    <p className="text-xs text-gray-400">Sorted by performance score · Assign leads to top performers for best results</p>
-                  </div>
-                </div>
-                <button onClick={fetchAgents}
-                  className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-[#065F36] border border-gray-200 rounded-xl px-3 py-2 hover:border-[#065F36] transition-all">
-                  <RefreshCw className="h-4 w-4" /> Refresh
-                </button>
-              </div>
-
-              {agentsLoading ? <Spinner /> : agents.length === 0 ? <Empty label="No agents found." /> : (
-                <div className="divide-y divide-gray-50">
-                  {[...agents].sort((a, b) => getAgentTier(b).score - getAgentTier(a).score).map((a, idx) => {
-                    const tier = getAgentTier(a);
-                    const conv = a.leadsLoaded > 0 ? Math.round((a.leadsCompleted / a.leadsLoaded) * 100) : 0;
-                    const tierStyle = TIER_STYLES[tier.color] || TIER_STYLES.gray;
-                    return (
-                      <div key={a._id} className={`px-6 py-4 hover:bg-gray-50/50 transition-colors border-l-4 ${
-                        tier.tier === 5 ? 'border-l-amber-400' :
-                        tier.tier === 4 ? 'border-l-violet-400' :
-                        tier.tier === 3 ? 'border-l-emerald-400' :
-                        tier.tier === 2 ? 'border-l-teal-300' : 'border-l-gray-200'
-                      }`}>
-                        <div className="flex items-center gap-4">
-                          {/* Rank + Avatar */}
-                          <div className="flex items-center gap-3 flex-shrink-0">
-                            <span className="text-xs font-bold text-gray-300 w-5 text-center">#{idx + 1}</span>
-                            <div className="relative">
-                              <div className={`w-11 h-11 rounded-2xl flex items-center justify-center text-white font-black text-base shadow-md ${
-                                tier.tier === 5 ? 'bg-gradient-to-br from-amber-400 to-orange-500' :
-                                tier.tier === 4 ? 'bg-gradient-to-br from-violet-500 to-purple-600' :
-                                tier.tier === 3 ? 'bg-gradient-to-br from-emerald-500 to-teal-600' :
-                                tier.tier === 1 ? 'bg-gradient-to-br from-sky-400 to-blue-500' :
-                                'bg-gradient-to-br from-[#065F36] to-[#00A651]'
-                              }`}>
-                                {a.name?.charAt(0)?.toUpperCase()}
-                              </div>
-                              {/* Online indicator — now shows agent status */}
-                              <span className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-white ${
-                                !a.isActive ? 'bg-gray-300' :
-                                a.agentStatus === 'break'       ? 'bg-amber-400' :
-                                a.agentStatus === 'unavailable' ? 'bg-red-500' :
-                                                                   'bg-emerald-500'
-                              } ${a.isActive && a.agentStatus === 'available' ? 'animate-pulse' : ''}`} />
-                            </div>
-                          </div>
-
-                          {/* Info + performance */}
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="font-bold text-gray-800">{a.name}</span>
-                              {/* Tier badge */}
-                              <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold border ${tierStyle}`}>
-                                {tier.emoji} {tier.label}
-                              </span>
-                              {/* Availability status badge */}
-                              {a.isActive && (
-                                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold border ${
-                                  a.agentStatus === 'break'       ? 'bg-amber-100 text-amber-700 border-amber-300' :
-                                  a.agentStatus === 'unavailable' ? 'bg-red-100 text-red-700 border-red-300' :
-                                                                     'bg-emerald-100 text-emerald-700 border-emerald-300'
-                                }`}>
-                                  <span className={`w-1.5 h-1.5 rounded-full ${
-                                    a.agentStatus === 'break'       ? 'bg-amber-400 animate-pulse' :
-                                    a.agentStatus === 'unavailable' ? 'bg-red-500' :
-                                                                       'bg-emerald-500 animate-pulse'
-                                  }`} />
-                                  {a.agentStatus === 'break' ? '☕ On Break' : a.agentStatus === 'unavailable' ? '🔴 Unavailable' : '✅ Available'}
-                                </span>
-                              )}
-                              {tier.tier === 5 && (
-                                <span className="text-xs font-bold text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full animate-pulse">
-                                  Recommended ✨
-                                </span>
-                              )}
-                            </div>
-                            <p className="text-xs text-gray-400 mt-0.5">{a.email} · Last login {fmtShort(a.lastLogin)}</p>
-                            {/* Conversion bar */}
-                            <div className="flex items-center gap-2 mt-2">
-                              <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
-                                <div className={`h-full rounded-full transition-all duration-1000 ${
-                                  conv >= 65 ? 'bg-gradient-to-r from-amber-400 to-orange-500' :
-                                  conv >= 45 ? 'bg-gradient-to-r from-violet-500 to-purple-500' :
-                                  conv >= 25 ? 'bg-gradient-to-r from-emerald-500 to-teal-500' :
-                                  'bg-gradient-to-r from-gray-300 to-gray-400'
-                                }`} style={{ width: `${conv}%` }} />
-                              </div>
-                              <span className={`text-xs font-black w-9 text-right ${
-                                conv >= 65 ? 'text-amber-600' : conv >= 45 ? 'text-violet-600' : conv >= 25 ? 'text-emerald-600' : 'text-gray-400'
-                              }`}>{conv}%</span>
-                              <span className="text-xs text-gray-400">conversion</span>
-                            </div>
-                          </div>
-
-                          {/* Stats row */}
-                          <div className="hidden sm:flex items-center gap-3 flex-shrink-0">
-                            <div className="text-center bg-blue-50 border border-blue-100 rounded-xl px-4 py-2">
-                              <p className="text-xl font-black text-blue-600">{a.leadsLoaded}</p>
-                              <p className="text-xs text-gray-400">Loaded</p>
-                            </div>
-                            <div className="text-center bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-2">
-                              <p className="text-xl font-black text-emerald-600">{a.leadsCompleted}</p>
-                              <p className="text-xs text-gray-400">Done</p>
-                            </div>
-                            <div className={`text-center rounded-xl px-4 py-2 ${
-                              tier.tier === 5 ? 'bg-amber-50 border border-amber-100' : 'bg-gray-50 border border-gray-100'
-                            }`}>
-                              <p className={`text-xl font-black ${tier.tier === 5 ? 'text-amber-600' : 'text-gray-700'}`}>
-                                {a.domLeadsCreated}
-                              </p>
-                              <p className="text-xs text-gray-400">Worked</p>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
           </div>
         )}
 
@@ -1254,7 +1598,7 @@ const DomAdminDashboard = () => {
                         <th className="px-3 py-3.5 text-left">Source</th>
                         <th className="px-3 py-3.5 text-left">Income</th>
                         <th className="px-3 py-3.5 text-left">Assigned To</th>
-                        <th className="px-3 py-3.5 text-left">Work Status</th>
+                        <th className="px-3 py-3.5 text-left">Disposition</th>
                         <th className="px-3 pr-6 py-3.5 text-left">Pool Status</th>
                       </tr>
                     </thead>
@@ -1309,9 +1653,26 @@ const DomAdminDashboard = () => {
                           <td className="px-3 py-3.5 text-gray-500 text-xs">{l.monthlyIncome || '—'}</td>
                           <td className="px-3 py-3.5 text-gray-700 text-sm">{l.assignedTo?.name || <span className="text-amber-500 text-xs font-medium">Unassigned</span>}</td>
                           <td className="px-3 py-3.5">
-                            <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold border ${wsInfo.cls}`}>
-                              {wsInfo.label}
-                            </span>
+                            {/* Show actual callOutcome disposition — not the mapped workStatus */}
+                            {l.callOutcome ? (
+                              <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold border ${
+                                l.callOutcome === 'interested'     ? 'bg-emerald-100 text-emerald-700 border-emerald-200' :
+                                l.callOutcome === 'not_interested' ? 'bg-red-100 text-red-700 border-red-200' :
+                                l.callOutcome === 'callback'       ? 'bg-amber-100 text-amber-700 border-amber-200' :
+                                l.callOutcome === 'not_reachable'  ? 'bg-orange-100 text-orange-700 border-orange-200' :
+                                l.callOutcome === 'wrong_number'   ? 'bg-gray-100 text-gray-500 border-gray-200' :
+                                'bg-gray-100 text-gray-400 border-gray-200'
+                              }`}>
+                                {l.callOutcome === 'interested'     ? '✅ Interested' :
+                                 l.callOutcome === 'not_interested' ? '❌ Not Interested' :
+                                 l.callOutcome === 'callback'       ? '📞 Callback' :
+                                 l.callOutcome === 'not_reachable'  ? '📵 Not Reachable' :
+                                 l.callOutcome === 'wrong_number'   ? '❓ Wrong No.' :
+                                 l.callOutcome.replace(/_/g,' ')}
+                              </span>
+                            ) : (
+                              <span className="text-xs text-gray-400 bg-gray-50 border border-gray-100 px-2.5 py-0.5 rounded-full">Not Called</span>
+                            )}
                           </td>
                           <td className="px-3 pr-6 py-3.5">
                             <div className="flex items-center gap-2">

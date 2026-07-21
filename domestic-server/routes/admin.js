@@ -3,6 +3,7 @@ const express        = require('express');
 const DomUser        = require('../models/DomUser');
 const DomWebsiteLead = require('../models/DomWebsiteLead');
 const DomLead        = require('../models/DomLead');
+const DomImportedLead = require('../models/DomImportedLead');
 const bcrypt         = require('bcryptjs');
 const { protect, authorize, generateToken } = require('../middleware/auth');
 
@@ -236,6 +237,167 @@ router.get('/api-key', authorize('dom_superadmin'), (req, res) => {
   const key = process.env.DOM_WEBSITE_API_KEY;
   if (!key) return res.status(500).json({ success: false, message: 'API key not configured.' });
   return res.status(200).json({ success: true, apiKey: key });
+});
+
+// ── GET /domestic-api/admin/reports ───────────────────────────────────────
+// Comprehensive date-range analytics for super admin
+// Query: ?from=YYYY-MM-DD&to=YYYY-MM-DD
+router.get('/reports', authorize('dom_superadmin'), async (req, res) => {
+  try {
+    const { from, to } = req.query;
+
+    const fromDate = from ? new Date(from) : (() => {
+      const d = new Date(); d.setDate(1); d.setHours(0, 0, 0, 0); return d;
+    })();
+    fromDate.setHours(0, 0, 0, 0);
+
+    const toDate = to ? new Date(to) : new Date();
+    toDate.setHours(23, 59, 59, 999);
+
+    const df  = { createdAt: { $gte: fromDate, $lte: toDate } };
+
+    const [
+      // Website leads
+      webTotal, webNew, webLoaded, webCompleted, webRejected,
+      // Worked leads
+      wkTotal, wkCompleted, wkPending, wkRejected, wkInterested, wkCallback,
+      // Breakdowns
+      outcomeAgg, productAgg, sourceAgg,
+      // Agent leaderboard
+      agentAgg,
+      // Daily trend (DomLeads)
+      dailyDomLeads,
+      // Daily trend (WebsiteLeads)
+      dailyWebLeads,
+      // Hourly breakdown
+      hourlyAgg,
+      // Pool imported in range
+      poolTotal,
+    ] = await Promise.all([
+      DomWebsiteLead.countDocuments(df),
+      DomWebsiteLead.countDocuments({ ...df, status: 'new' }),
+      DomWebsiteLead.countDocuments({ ...df, status: 'loaded' }),
+      DomWebsiteLead.countDocuments({ ...df, status: 'completed' }),
+      DomWebsiteLead.countDocuments({ ...df, status: 'rejected' }),
+
+      DomLead.countDocuments(df),
+      DomLead.countDocuments({ ...df, status: 'completed' }),
+      DomLead.countDocuments({ ...df, status: 'pending' }),
+      DomLead.countDocuments({ ...df, status: 'rejected' }),
+      DomLead.countDocuments({ ...df, callOutcome: 'interested' }),
+      DomLead.countDocuments({ ...df, callOutcome: 'callback' }),
+
+      DomLead.aggregate([
+        { $match: df },
+        { $group: { _id: { $ifNull: ['$callOutcome', 'none'] }, count: { $sum: 1 } } },
+        { $sort: { count: -1 } },
+      ]),
+
+      DomLead.aggregate([
+        { $match: df },
+        { $group: { _id: { $ifNull: ['$productType', 'other'] }, count: { $sum: 1 } } },
+        { $sort: { count: -1 } },
+        { $limit: 12 },
+      ]),
+
+      DomLead.aggregate([
+        { $match: df },
+        { $group: {
+          _id: {
+            $switch: {
+              branches: [
+                { case: { $ne: ['$sourceWebsiteLead', null] },  then: 'Website'  },
+                { case: { $ne: ['$sourceImportedLead', null] }, then: 'Imported' },
+              ],
+              default: 'Manual',
+            },
+          },
+          count: { $sum: 1 },
+        }},
+      ]),
+
+      DomLead.aggregate([
+        { $match: df },
+        { $group: {
+          _id: '$assignedTo',
+          total:     { $sum: 1 },
+          completed: { $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] } },
+          interested:{ $sum: { $cond: [{ $eq: ['$callOutcome', 'interested'] }, 1, 0] } },
+        }},
+        { $sort: { total: -1 } },
+        { $limit: 15 },
+        { $lookup: { from: 'domusers', localField: '_id', foreignField: '_id', as: 'agent' } },
+        { $unwind: { path: '$agent', preserveNullAndEmptyArrays: true } },
+        { $project: { total: 1, completed: 1, interested: 1, 'agent.name': 1, 'agent.agentStatus': 1 } },
+      ]),
+
+      DomLead.aggregate([
+        { $match: df },
+        { $group: {
+          _id: {
+            y: { $year: '$createdAt' },
+            m: { $month: '$createdAt' },
+            d: { $dayOfMonth: '$createdAt' },
+          },
+          total:     { $sum: 1 },
+          completed: { $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] } },
+        }},
+        { $sort: { '_id.y': 1, '_id.m': 1, '_id.d': 1 } },
+      ]),
+
+      DomWebsiteLead.aggregate([
+        { $match: df },
+        { $group: {
+          _id: {
+            y: { $year: '$createdAt' },
+            m: { $month: '$createdAt' },
+            d: { $dayOfMonth: '$createdAt' },
+          },
+          count: { $sum: 1 },
+        }},
+        { $sort: { '_id.y': 1, '_id.m': 1, '_id.d': 1 } },
+      ]),
+
+      // Hourly breakdown (DomLeads by hour 0-23)
+      DomLead.aggregate([
+        { $match: df },
+        { $group: {
+          _id: { $hour: '$createdAt' },
+          total:     { $sum: 1 },
+          completed: { $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] } },
+          interested:{ $sum: { $cond: [{ $eq: ['$callOutcome', 'interested'] }, 1, 0] } },
+        }},
+        { $sort: { _id: 1 } },
+      ]),
+
+      DomImportedLead.countDocuments(df),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      range: { from: fromDate, to: toDate },
+      summary: {
+        websiteLeads: { total: webTotal, new: webNew, loaded: webLoaded, completed: webCompleted, rejected: webRejected },
+        workedLeads:  { total: wkTotal, completed: wkCompleted, pending: wkPending, rejected: wkRejected, interested: wkInterested, callback: wkCallback },
+        poolLeads:    { total: poolTotal },
+        conversionRate: wkTotal > 0 ? +((wkCompleted / wkTotal) * 100).toFixed(1) : 0,
+        interestRate:   wkTotal > 0 ? +((wkInterested / wkTotal) * 100).toFixed(1) : 0,
+      },
+      breakdown: { outcome: outcomeAgg, product: productAgg, source: sourceAgg },
+      agents: agentAgg,
+      trend: {
+        domLeads:     dailyDomLeads.map(d => ({ date: `${d._id.y}-${String(d._id.m).padStart(2,'0')}-${String(d._id.d).padStart(2,'0')}`, total: d.total, completed: d.completed })),
+        websiteLeads: dailyWebLeads.map(d => ({ date: `${d._id.y}-${String(d._id.m).padStart(2,'0')}-${String(d._id.d).padStart(2,'0')}`, count: d.count })),
+        hourly: Array.from({ length: 24 }, (_, h) => {
+          const found = hourlyAgg.find(x => x._id === h) || {};
+          return { hour: h, total: found.total || 0, completed: found.completed || 0, interested: found.interested || 0 };
+        }),
+      },
+    });
+  } catch (err) {
+    console.error('[Admin] Reports error:', err.message);
+    return res.status(500).json({ success: false, message: 'Failed to fetch reports.' });
+  }
 });
 
 module.exports = router;

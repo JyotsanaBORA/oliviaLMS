@@ -3,6 +3,8 @@ import {
   LogOut, Plus, Shield, Eye, EyeOff, X, RefreshCw, Key,
   Users, UserPlus, ChevronLeft, CheckCircle2, AlertCircle, Copy,
   Upload, Database, Share2, Globe, Search, UserCheck2,
+  Activity, BarChart2, FileText, Briefcase, Coffee, XCircle,
+  TrendingUp, Calendar, Download, ArrowUp, ArrowDown, Zap,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import DomAdminDashboard from './DomAdminDashboard';
@@ -88,6 +90,24 @@ const DomSuperAdminDashboard = () => {
   const webSearchRef      = useRef('');
   const webStatusRef      = useRef('');
   const webProductRef     = useRef('');
+
+  // Agent Tracker state
+  const [trackerAgents,       setTrackerAgents]       = useState([]);
+
+  // Reports state
+  const [reportRange,   setReportRange]   = useState('month');
+  const [reportFrom,    setReportFrom]    = useState('');
+  const [reportTo,      setReportTo]      = useState('');
+  const [reportData,    setReportData]    = useState(null);
+  const [reportLoading, setReportLoading] = useState(false);
+  const [trendView,     setTrendView]     = useState('daily'); // 'daily' | 'hourly'
+  const [trackerLoading,      setTrackerLoading]      = useState(false);
+  const [selectedTrackAgent,  setSelectedTrackAgent]  = useState(null);
+  const [trackLeads,          setTrackLeads]          = useState([]);
+  const [trackWorkedLeads,    setTrackWorkedLeads]    = useState([]);
+  const [trackPoolLeads,      setTrackPoolLeads]      = useState([]);
+  const [trackLeadsLoading,   setTrackLeadsLoading]   = useState(false);
+  const [trackerLeadDetail,   setTrackerLeadDetail]   = useState(null);  // lead clicked in tracker
 
   const fetchUsers = useCallback(async () => {
     setUsersLoading(true);
@@ -197,6 +217,65 @@ const DomSuperAdminDashboard = () => {
     } finally { setWebAssigning(false); }
   }, [webSelectedIds, fetchWebLeads, webLeadsPage]);
 
+  // ── Agent Tracker ────────────────────────────────────────────────────────
+  const fetchTrackerAgents = useCallback(async () => {
+    setTrackerLoading(true);
+    try {
+      const res = await api.get('/domestic-api/admin/agents');
+      setTrackerAgents(res.data?.data || []);
+    } catch { toast.error('Failed to load agents.'); }
+    finally { setTrackerLoading(false); }
+  }, []);
+
+  const fetchReport = useCallback(async (range, customFrom, customTo) => {
+    setReportLoading(true);
+    try {
+      const today = new Date();
+      const toStr = today.toISOString().split('T')[0];
+      let from, to = toStr;
+      if (range === 'today') {
+        from = toStr;
+      } else if (range === 'week') {
+        const d = new Date(today); d.setDate(d.getDate() - 6);
+        from = d.toISOString().split('T')[0];
+      } else if (range === 'month') {
+        from = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-01`;
+      } else if (range === '3month') {
+        const d = new Date(today); d.setMonth(d.getMonth() - 2); d.setDate(1);
+        from = d.toISOString().split('T')[0];
+      } else if (range === 'year') {
+        from = `${today.getFullYear()}-01-01`;
+      } else {
+        from = customFrom || `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-01`;
+        to   = customTo   || toStr;
+      }
+      const res = await api.get(`/domestic-api/admin/reports?from=${from}&to=${to}`);
+      setReportData(res.data);
+    } catch { toast.error('Failed to load report.'); }
+    finally { setReportLoading(false); }
+  }, []);
+
+  const handleSelectTrackAgent = useCallback(async (agent) => {
+    setSelectedTrackAgent(agent);
+    setTrackLeadsLoading(true);
+    setTrackLeads([]);
+    setTrackWorkedLeads([]);
+    setTrackPoolLeads([]);
+    try {
+      const [webRes, workedRes, poolRes] = await Promise.all([
+        api.get(`/domestic-api/website-leads?limit=10`).catch(() => ({ data: { data: [] } })),
+        api.get(`/domestic-api/leads?agentId=${agent._id}&limit=10`),
+        api.get(`/domestic-api/import-leads?agentId=${agent._id}&limit=10`).catch(() => ({ data: { data: [] } })),
+      ]);
+      // Filter web leads to only this agent's
+      setTrackLeads((webRes.data?.data || []).filter(l => l.loadedBy?._id === agent._id || l.loadedBy === agent._id));
+      setTrackWorkedLeads(workedRes.data?.data || []);
+      setTrackPoolLeads(poolRes.data?.data || []);
+    } catch (err) {
+      toast.error('Failed to load agent activity.');
+    } finally { setTrackLeadsLoading(false); }
+  }, []);
+
   const handleImportUpload = useCallback(async (e) => {
     e.preventDefault();
     if (!importFile) { toast.error('Please select a file.'); return; }
@@ -241,7 +320,9 @@ const DomSuperAdminDashboard = () => {
     if (superTab === 'apikey')    fetchApiKey();
     if (superTab === 'import')    { fetchBatches(); fetchAdmins(); }
     if (superTab === 'web_leads') { fetchWebLeads(1); fetchWebProductTypes(); fetchWebAgents(); fetchWebServiceStats(); }
-  }, [superTab, fetchUsers, fetchApiKey, fetchBatches, fetchAdmins, fetchWebLeads, fetchWebProductTypes, fetchWebAgents, fetchWebServiceStats]);
+    if (superTab === 'tracker')   { fetchTrackerAgents(); setSelectedTrackAgent(null); }
+    if (superTab === 'reports')   { fetchReport('month', '', ''); }
+  }, [superTab, fetchUsers, fetchApiKey, fetchBatches, fetchAdmins, fetchWebLeads, fetchWebProductTypes, fetchWebAgents, fetchWebServiceStats, fetchTrackerAgents, fetchReport]);
 
   const handleToggleActive = async (u) => {
     try {
@@ -251,45 +332,591 @@ const DomSuperAdminDashboard = () => {
     } catch { toast.error('Failed to update user.'); }
   };
 
-  /* ── Main: renders Admin Dashboard + sticky super-admin bar ── */
+  /* ── Main: renders Admin Dashboard + super-admin header + tab nav ── */
   if (superTab === 'main') {
+    const SA_TABS = [
+      { key: 'users',     Icon: Users,      label: 'Manage Users',        sub: 'Agents & admins'         },
+      { key: 'tracker',   Icon: Activity,   label: 'Agent Tracker',       sub: 'Monitor live activity'   },
+      { key: 'reports',   Icon: TrendingUp, label: 'Reports & Analytics', sub: 'Daily · Monthly · Yearly'},
+      { key: 'web_leads', Icon: Globe,      label: 'Lead Monitor',        sub: 'Website enquiries'       },
+      { key: 'import',    Icon: Upload,     label: 'Import & Distribute', sub: 'Upload & share data'     },
+      { key: 'apikey',    Icon: Key,        label: 'Integration',         sub: 'API key setup'           },
+    ];
     return (
       <div>
-        {/* Purple super-admin banner at top */}
-        <div className="bg-[#065F36] text-white px-5 py-2 flex items-center justify-between shadow-md z-40 relative">
-          <div className="flex items-center gap-2.5">
-            <div className="p-1 bg-white/20 rounded-lg">
-              <Shield className="h-4 w-4 text-white/80" />
-            </div>
-            <div>
-              <span className="text-sm font-bold">Super Admin Mode</span>
-              <span className="text-white/70 text-xs ml-2">Full access to all features</span>
+        {/* ── Slim green identity bar ── */}
+        <div className="bg-[#065F36] text-white px-6 py-2.5 flex items-center justify-between shadow-sm z-40 relative border-b border-[#054A2E]">
+          <div className="flex items-center gap-3">
+            <img src={`${process.env.PUBLIC_URL}/mcb-logo.png`} alt="MyCashBridge" className="h-7 object-contain brightness-0 invert opacity-90" />
+            <div className="h-5 w-px bg-white/20" />
+            <div className="flex items-center gap-2">
+              <div className="p-1 bg-white/15 rounded-md">
+                <Shield className="h-3.5 w-3.5 text-white/90" />
+              </div>
+              <span className="text-sm font-bold tracking-wide">Super Admin Portal</span>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <button onClick={() => setSuperTab('users')}
-              className="flex items-center gap-1.5 text-xs bg-white/15 hover:bg-white/25 px-3 py-1.5 rounded-lg transition-colors font-semibold border border-white/20">
-              <Users className="h-3.5 w-3.5" /> User Management
-            </button>
-            <button onClick={() => setSuperTab('web_leads')}
-              className="flex items-center gap-1.5 text-xs bg-white/15 hover:bg-white/25 px-3 py-1.5 rounded-lg transition-colors font-semibold border border-white/20">
-              <Globe className="h-3.5 w-3.5" /> Website Leads
-            </button>
-            <button onClick={() => setSuperTab('import')}
-              className="flex items-center gap-1.5 text-xs bg-white/15 hover:bg-white/25 px-3 py-1.5 rounded-lg transition-colors font-semibold border border-white/20">
-              <Upload className="h-3.5 w-3.5" /> Import & Share
-            </button>
-            <button onClick={() => setSuperTab('apikey')}
-              className="flex items-center gap-1.5 text-xs bg-white/15 hover:bg-white/25 px-3 py-1.5 rounded-lg transition-colors font-semibold border border-white/20">
-              <Key className="h-3.5 w-3.5" /> API Key
-            </button>
+          <div className="flex items-center gap-3">
+            <div className="hidden sm:flex items-center gap-2 bg-white/10 border border-white/15 rounded-xl px-3 py-1.5">
+              <div className="w-6 h-6 rounded-lg bg-white/20 flex items-center justify-center text-white font-black text-xs">
+                {user.name?.charAt(0)?.toUpperCase()}
+              </div>
+              <span className="text-sm font-semibold text-white/90">{user.name}</span>
+            </div>
             <button onClick={logout}
-              className="flex items-center gap-1.5 text-xs bg-red-600/30 hover:bg-red-600/50 px-3 py-1.5 rounded-lg transition-colors border border-white/10">
+              className="flex items-center gap-1.5 text-xs bg-red-500/20 hover:bg-red-500/40 text-white px-3 py-1.5 rounded-lg border border-red-400/20 font-semibold transition-colors">
               <LogOut className="h-3.5 w-3.5" /> Logout
             </button>
           </div>
         </div>
+
+        {/* ── Tab navigation bar ── */}
+        <div className="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-30">
+          <div className="px-6 flex gap-1 py-1.5 overflow-x-auto scrollbar-hide">
+            {SA_TABS.map(({ key, Icon, label, sub }) => (
+              <button key={key}
+                onClick={() => setSuperTab(key)}
+                className="flex flex-col items-start px-4 py-2.5 rounded-xl transition-all whitespace-nowrap min-w-max hover:bg-[#E8FFF5] hover:text-[#065F36] text-gray-500 group">
+                <div className="flex items-center gap-2">
+                  <Icon className="h-4 w-4 flex-shrink-0 group-hover:text-[#065F36]" />
+                  <span className="text-sm font-bold">{label}</span>
+                </div>
+                <span className="text-xs mt-0.5 ml-6 text-gray-400 group-hover:text-[#065F36]/70">{sub}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
         <DomAdminDashboard />
+      </div>
+    );
+  }
+
+  /* ── Reports & Analytics ── */
+  if (superTab === 'reports') {
+    const PRESETS = [
+      { key: 'today',  label: 'Today'     },
+      { key: 'week',   label: 'This Week' },
+      { key: 'month',  label: 'This Month'},
+      { key: '3month', label: '3 Months'  },
+      { key: 'year',   label: 'This Year' },
+      { key: 'custom', label: 'Custom'    },
+    ];
+
+    const s   = reportData?.summary;
+    const brk = reportData?.breakdown;
+    const trend        = reportData?.trend?.domLeads || [];
+    const hourlyTrend  = reportData?.trend?.hourly   || [];
+
+    const maxTrend  = trend.length       ? Math.max(...trend.map(d => d.total), 1)        : 1;
+    const maxHourly = hourlyTrend.length ? Math.max(...hourlyTrend.map(d => d.total), 1)  : 1;
+
+    const fmtHour = (h) => {
+      if (h === 0)  return '12am';
+      if (h < 12)   return `${h}am`;
+      if (h === 12) return '12pm';
+      return `${h - 12}pm`;
+    };
+
+    const OUTCOME_LABEL = {
+      interested: 'Interested', not_interested: 'Not Interested', callback: 'Callback',
+      not_reachable: 'Not Reachable', wrong_number: 'Wrong Number', none: 'No Outcome', '': 'No Outcome',
+    };
+    const OUTCOME_COLOR = {
+      interested: 'bg-emerald-500', not_interested: 'bg-red-400', callback: 'bg-amber-400',
+      not_reachable: 'bg-orange-400', wrong_number: 'bg-gray-400', none: 'bg-gray-300', '': 'bg-gray-300',
+    };
+
+    const maxOutcome = brk?.outcome?.length ? Math.max(...brk.outcome.map(o => o.count), 1) : 1;
+    const maxProduct = brk?.product?.length ? Math.max(...brk.product.map(p => p.count), 1) : 1;
+
+    const fmtProd = (s) => (s || 'other').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+
+    const exportCSV = () => {
+      if (!reportData) return;
+      const rows = [
+        ['Report', 'Reports & Analytics Export'],
+        ['Range', `${reportData.range?.from?.split('T')[0] || ''} to ${reportData.range?.to?.split('T')[0] || ''}`],
+        [],
+        ['Metric', 'Value'],
+        ['Website Leads', s?.websiteLeads?.total],
+        ['Worked Cases', s?.workedLeads?.total],
+        ['Completed', s?.workedLeads?.completed],
+        ['Pending', s?.workedLeads?.pending],
+        ['Rejected', s?.workedLeads?.rejected],
+        ['Interested', s?.workedLeads?.interested],
+        ['Callback', s?.workedLeads?.callback],
+        ['Pool Imported', s?.poolLeads?.total],
+        ['Conversion Rate', `${s?.conversionRate}%`],
+        ['Interest Rate', `${s?.interestRate}%`],
+        [],
+        ['Date', 'Worked Cases', 'Completed'],
+        ...trend.map(d => [d.date, d.total, d.completed]),
+        [],
+        ['Agent', 'Cases', 'Completed', 'Interested'],
+        ...(reportData.agents || []).map(a => [a.agent?.name || '—', a.total, a.completed, a.interested]),
+      ];
+      const csv = rows.map(r => r.join(',')).join('\n');
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a'); a.href = url; a.download = 'lms-report.csv'; a.click();
+      URL.revokeObjectURL(url);
+    };
+
+    return (
+      <div className="min-h-screen bg-gray-50">
+        {/* Green breadcrumb bar */}
+        <div className="bg-[#065F36] text-white px-6 py-2 flex items-center justify-between border-b border-[#054A2E]">
+          <div className="flex items-center gap-1.5 text-xs">
+            <Shield className="h-3 w-3 text-white/60" />
+            <button onClick={() => setSuperTab('main')} className="text-white/60 hover:text-white transition-colors">Super Admin Portal</button>
+            <span className="text-white/30">›</span>
+            <span className="text-white font-semibold flex items-center gap-1"><TrendingUp className="h-3 w-3" /> Reports & Analytics</span>
+          </div>
+          <button onClick={logout} className="flex items-center gap-1 text-xs text-white/60 hover:text-white transition-colors">
+            <LogOut className="h-3 w-3" /> Logout
+          </button>
+        </div>
+
+        {/* White sticky header */}
+        <header className="bg-white shadow-sm sticky top-0 z-30 border-b border-gray-100">
+          <div className="px-6 flex items-center justify-between h-14">
+            <div className="flex items-center gap-3">
+              <button onClick={() => setSuperTab('main')}
+                className="flex items-center gap-1.5 text-sm font-semibold text-gray-500 hover:text-[#065F36] border border-gray-200 hover:border-[#065F36]/30 rounded-xl px-3 py-2 transition-all">
+                <ChevronLeft className="h-4 w-4" /> Dashboard
+              </button>
+              <div className="border-l border-gray-200 pl-3 flex items-center gap-2">
+                <div className="p-1.5 bg-emerald-100 rounded-lg"><TrendingUp className="h-4 w-4 text-emerald-600" /></div>
+                <div>
+                  <h1 className="text-gray-800 font-bold text-sm">Reports & Analytics</h1>
+                  <p className="text-gray-400 text-xs">Daily · Monthly · Yearly performance insights</p>
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button onClick={exportCSV} disabled={!reportData}
+                className="flex items-center gap-1.5 text-sm text-gray-600 hover:text-[#065F36] border border-gray-200 rounded-xl px-3 py-2 disabled:opacity-40 transition-all">
+                <Download className="h-4 w-4" /> Export CSV
+              </button>
+              <button onClick={() => fetchReport(reportRange, reportFrom, reportTo)}
+                className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-[#065F36] border border-gray-200 rounded-xl px-3 py-2 transition-all">
+                <RefreshCw className={`h-4 w-4 ${reportLoading ? 'animate-spin' : ''}`} />
+              </button>
+            </div>
+          </div>
+        </header>
+
+        <main className="px-6 py-5 space-y-6">
+
+          {/* ── Date Range Controls ── */}
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Calendar className="h-4 w-4 text-gray-400" />
+              <span className="text-sm font-semibold text-gray-600 mr-1">Period:</span>
+              {PRESETS.map(p => (
+                <button key={p.key}
+                  onClick={() => { setReportRange(p.key); if (p.key !== 'custom') fetchReport(p.key, '', ''); }}
+                  className={`px-4 py-2 rounded-xl text-sm font-bold border transition-all ${
+                    reportRange === p.key
+                      ? 'bg-[#065F36] text-white border-[#065F36] shadow-sm'
+                      : 'bg-gray-50 text-gray-600 border-gray-200 hover:border-[#065F36]/40 hover:text-[#065F36]'
+                  }`}>
+                  {p.label}
+                </button>
+              ))}
+              {reportRange === 'custom' && (
+                <div className="flex items-center gap-2 ml-2">
+                  <input type="date" value={reportFrom} onChange={e => setReportFrom(e.target.value)}
+                    className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-[#065F36]" />
+                  <span className="text-gray-400 text-sm">to</span>
+                  <input type="date" value={reportTo} onChange={e => setReportTo(e.target.value)}
+                    className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-[#065F36]" />
+                  <button onClick={() => fetchReport('custom', reportFrom, reportTo)}
+                    disabled={!reportFrom || !reportTo}
+                    className="px-4 py-2 bg-[#065F36] text-white rounded-xl text-sm font-bold disabled:opacity-40 hover:bg-[#054A2E] transition-colors">
+                    Apply
+                  </button>
+                </div>
+              )}
+              {reportData?.range && (
+                <span className="ml-auto text-xs text-gray-400 bg-gray-50 border border-gray-100 rounded-xl px-3 py-2">
+                  {new Date(reportData.range.from).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' })}
+                  {' — '}
+                  {new Date(reportData.range.to).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' })}
+                </span>
+              )}
+            </div>
+          </div>
+
+          {reportLoading ? (
+            <div className="flex flex-col items-center justify-center py-24 gap-4">
+              <div className="w-12 h-12 border-4 border-gray-100 border-t-[#065F36] rounded-full animate-spin" />
+              <p className="text-gray-400 text-sm font-medium">Crunching numbers…</p>
+            </div>
+          ) : !reportData ? null : (
+            <>
+              {/* ── KPI Cards ── */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+                {[
+                  { label: 'Website Leads',   val: s?.websiteLeads?.total,    icon: Globe,       bg: 'from-teal-500 to-cyan-600',      sub: `${s?.websiteLeads?.new} new` },
+                  { label: 'Worked Cases',     val: s?.workedLeads?.total,     icon: Briefcase,   bg: 'from-[#065F36] to-[#00A651]',   sub: `${s?.workedLeads?.pending} pending` },
+                  { label: 'Completed',        val: s?.workedLeads?.completed, icon: CheckCircle2,bg: 'from-emerald-500 to-green-600',  sub: `${s?.conversionRate}% conv.` },
+                  { label: 'Interested',       val: s?.workedLeads?.interested,icon: Zap,         bg: 'from-amber-400 to-orange-500',   sub: `${s?.interestRate}% interest` },
+                  { label: 'Callbacks',        val: s?.workedLeads?.callback,  icon: Activity,    bg: 'from-orange-400 to-amber-500',   sub: 'follow-ups' },
+                  { label: 'Pool Imported',    val: s?.poolLeads?.total,       icon: Database,    bg: 'from-violet-500 to-purple-600',  sub: 'data pool' },
+                ].map(({ label, val, icon: Icon, bg, sub }) => (
+                  <div key={label} className={`relative overflow-hidden rounded-2xl p-5 bg-gradient-to-br ${bg} text-white shadow-lg`}>
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="p-2 bg-white/20 rounded-xl"><Icon className="h-5 w-5" /></div>
+                    </div>
+                    <p className="text-3xl font-black">{val ?? '—'}</p>
+                    <p className="text-white/80 text-xs font-semibold mt-1">{label}</p>
+                    <p className="text-white/60 text-xs mt-0.5">{sub}</p>
+                    <div className="absolute -bottom-4 -right-4 w-20 h-20 rounded-full bg-white/10" />
+                  </div>
+                ))}
+              </div>
+
+              {/* ── Conversion gauges ── */}
+              <div className="grid grid-cols-2 gap-4">
+                {[
+                  { label: 'Conversion Rate',  val: s?.conversionRate,  color: 'bg-emerald-500', text: 'text-emerald-600',  desc: 'Completed / Total Worked' },
+                  { label: 'Interest Rate',     val: s?.interestRate,    color: 'bg-amber-400',   text: 'text-amber-600',    desc: 'Interested / Total Worked' },
+                ].map(g => (
+                  <div key={g.label} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+                    <div className="flex items-center justify-between mb-4">
+                      <div>
+                        <p className="font-bold text-gray-800">{g.label}</p>
+                        <p className="text-xs text-gray-400">{g.desc}</p>
+                      </div>
+                      <span className={`text-4xl font-black ${g.text}`}>{g.val}%</span>
+                    </div>
+                    <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
+                      <div className={`h-full rounded-full transition-all duration-1000 ${g.color}`}
+                        style={{ width: `${Math.min(g.val, 100)}%` }} />
+                    </div>
+                    <div className="flex justify-between text-xs text-gray-400 mt-1.5">
+                      <span>0%</span><span>50%</span><span>100%</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* ── Trend Chart ── */}
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+                <div className="flex items-center justify-between mb-5">
+                  <div>
+                    <h2 className="font-bold text-gray-800">{trendView === 'daily' ? 'Daily Activity Trend' : 'Hourly Activity Breakdown'}</h2>
+                    <p className="text-xs text-gray-400">
+                      {trendView === 'daily' ? 'Worked cases per day in selected period' : 'Cases by hour of day (0–23h) · best calling windows'}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 text-xs text-gray-500 mr-2">
+                      <div className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm bg-[#065F36]" /> Total</div>
+                      <div className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm bg-emerald-400" /> Completed</div>
+                      {trendView === 'hourly' && <div className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm bg-amber-400" /> Interested</div>}
+                    </div>
+                    {/* Toggle */}
+                    <div className="flex items-center bg-gray-100 rounded-xl p-1 gap-1">
+                      <button onClick={() => setTrendView('daily')}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${trendView === 'daily' ? 'bg-white text-[#065F36] shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+                        Daily
+                      </button>
+                      <button onClick={() => setTrendView('hourly')}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${trendView === 'hourly' ? 'bg-white text-[#065F36] shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+                        Hourly
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {trendView === 'daily' ? (
+                  trend.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-16 gap-3 text-gray-300">
+                      <BarChart2 className="h-16 w-16" />
+                      <p className="text-sm text-gray-400">No activity in this period</p>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <div className="flex items-end gap-1.5 pb-6 pt-2" style={{ minWidth: trend.length > 20 ? `${trend.length * 32}px` : '100%', height: '180px' }}>
+                        {trend.map((d, i) => {
+                          const barH = Math.max((d.total / maxTrend) * 140, 4);
+                          const compH = d.total > 0 ? Math.round((d.completed / d.total) * barH) : 0;
+                          const label = new Date(d.date + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+                          return (
+                            <div key={i} className="flex flex-col items-center gap-1 flex-1 group min-w-[28px]">
+                              <span className="text-xs font-bold text-[#065F36] opacity-0 group-hover:opacity-100 transition-opacity mb-0.5">{d.total}</span>
+                              <div className="w-full flex flex-col justify-end rounded-t-md overflow-hidden cursor-pointer" style={{ height: `${barH}px`, background: '#E8FFF5' }}>
+                                <div style={{ height: `${compH}px`, background: '#10B981' }} />
+                                <div style={{ flex: 1, background: '#065F36' }} />
+                              </div>
+                              <span className="text-gray-400 whitespace-nowrap" style={{ fontSize: '9px', transform: 'rotate(-35deg)', transformOrigin: 'top left', marginLeft: '8px', marginTop: '2px' }}>{label}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )
+                ) : (
+                  /* Hourly chart — all 24 hours */
+                  <div>
+                    <div className="flex items-end gap-1 pb-6 pt-2" style={{ height: '180px' }}>
+                      {hourlyTrend.map((d) => {
+                        const barH  = Math.max((d.total / maxHourly) * 140, d.total > 0 ? 4 : 0);
+                        const compH = d.total > 0 ? Math.round((d.completed / d.total) * barH) : 0;
+                        const intH  = d.total > 0 ? Math.round((d.interested / d.total) * barH) : 0;
+                        const peak  = d.total === maxHourly && maxHourly > 0;
+                        return (
+                          <div key={d.hour} className="flex flex-col items-center gap-1 flex-1 group min-w-0">
+                            <span className="text-xs font-bold text-[#065F36] opacity-0 group-hover:opacity-100 transition-opacity mb-0.5">{d.total || ''}</span>
+                            <div className={`w-full flex flex-col justify-end rounded-t-md overflow-hidden cursor-pointer transition-all ${peak ? 'ring-2 ring-amber-400 ring-offset-1' : ''}`}
+                              style={{ height: `${barH}px`, minHeight: d.total > 0 ? '4px' : '2px', background: d.total > 0 ? '#E8FFF5' : '#F3F4F6' }}>
+                              <div style={{ height: `${intH}px`,  background: '#F59E0B' }} />
+                              <div style={{ height: `${compH}px`, background: '#10B981' }} />
+                              <div style={{ flex: 1, background: d.total > 0 ? '#065F36' : '#E5E7EB' }} />
+                            </div>
+                            <span className="text-gray-400 font-medium" style={{ fontSize: '8px' }}>{fmtHour(d.hour)}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {/* Peak hour highlight */}
+                    {maxHourly > 0 && (() => {
+                      const peak = hourlyTrend.reduce((a, b) => b.total > a.total ? b : a, { hour: 0, total: 0 });
+                      const slow = hourlyTrend.filter(h => h.total > 0).reduce((a, b) => b.total < a.total ? b : a, { hour: 0, total: Infinity });
+                      return (
+                        <div className="flex items-center gap-4 mt-2 pt-3 border-t border-gray-100">
+                          <div className="flex items-center gap-2 text-sm">
+                            <span className="w-2.5 h-2.5 rounded-full bg-amber-400 ring-2 ring-amber-200" />
+                            <span className="text-gray-600 font-semibold">Peak hour:</span>
+                            <span className="font-black text-amber-600">{fmtHour(peak.hour)} ({peak.total} cases)</span>
+                          </div>
+                          {slow.total !== Infinity && (
+                            <div className="flex items-center gap-2 text-sm">
+                              <span className="w-2.5 h-2.5 rounded-full bg-gray-300" />
+                              <span className="text-gray-600 font-semibold">Slowest:</span>
+                              <span className="font-bold text-gray-500">{fmtHour(slow.hour)} ({slow.total} cases)</span>
+                            </div>
+                          )}
+                          <div className="ml-auto text-xs text-gray-400 bg-amber-50 border border-amber-100 text-amber-700 px-3 py-1.5 rounded-xl font-semibold">
+                            💡 Best calling window: {fmtHour(peak.hour)} – {fmtHour((peak.hour + 2) % 24)}
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
+              </div>
+
+              {/* ── Breakdowns ── */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+
+                {/* Call Outcomes */}
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                  <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
+                    <div className="p-2 bg-amber-100 rounded-xl"><Activity className="h-4 w-4 text-amber-600" /></div>
+                    <div>
+                      <h3 className="font-bold text-gray-800 text-sm">Call Outcomes</h3>
+                      <p className="text-xs text-gray-400">How agents disposed calls</p>
+                    </div>
+                  </div>
+                  <div className="p-5 space-y-3">
+                    {(brk?.outcome || []).sort((a,b) => b.count - a.count).map(o => (
+                      <div key={o._id}>
+                        <div className="flex justify-between text-xs mb-1">
+                          <span className="font-semibold text-gray-700">{OUTCOME_LABEL[o._id] || o._id || 'No Outcome'}</span>
+                          <span className="font-bold text-gray-500">{o.count}</span>
+                        </div>
+                        <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden">
+                          <div className={`h-full rounded-full ${OUTCOME_COLOR[o._id] || 'bg-gray-400'}`}
+                            style={{ width: `${(o.count / maxOutcome) * 100}%` }} />
+                        </div>
+                      </div>
+                    ))}
+                    {(!brk?.outcome?.length) && <p className="text-gray-400 text-sm text-center py-4">No data</p>}
+                  </div>
+                </div>
+
+                {/* Product Types */}
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                  <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
+                    <div className="p-2 bg-blue-100 rounded-xl"><Briefcase className="h-4 w-4 text-blue-600" /></div>
+                    <div>
+                      <h3 className="font-bold text-gray-800 text-sm">Product Mix</h3>
+                      <p className="text-xs text-gray-400">Cases by loan / product type</p>
+                    </div>
+                  </div>
+                  <div className="p-5 space-y-3">
+                    {(brk?.product || []).map((p, i) => {
+                      const colors = ['bg-blue-500','bg-indigo-500','bg-violet-500','bg-purple-500','bg-cyan-500','bg-teal-500','bg-emerald-500','bg-amber-500','bg-orange-500','bg-red-400','bg-pink-500','bg-gray-400'];
+                      return (
+                        <div key={p._id}>
+                          <div className="flex justify-between text-xs mb-1">
+                            <span className="font-semibold text-gray-700">{fmtProd(p._id)}</span>
+                            <span className="font-bold text-gray-500">{p.count}</span>
+                          </div>
+                          <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden">
+                            <div className={`h-full rounded-full ${colors[i % colors.length]}`}
+                              style={{ width: `${(p.count / maxProduct) * 100}%` }} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {(!brk?.product?.length) && <p className="text-gray-400 text-sm text-center py-4">No data</p>}
+                  </div>
+                </div>
+
+                {/* Lead Source */}
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                  <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
+                    <div className="p-2 bg-teal-100 rounded-xl"><Globe className="h-4 w-4 text-teal-600" /></div>
+                    <div>
+                      <h3 className="font-bold text-gray-800 text-sm">Lead Source</h3>
+                      <p className="text-xs text-gray-400">Website vs Imported vs Manual</p>
+                    </div>
+                  </div>
+                  <div className="p-5 space-y-4">
+                    {(brk?.source || []).map(src => {
+                      const total = (brk?.source || []).reduce((a, b) => a + b.count, 0) || 1;
+                      const pct   = Math.round((src.count / total) * 100);
+                      const cfg   = {
+                        Website:  { color: 'bg-teal-500',   icon: '🌐' },
+                        Imported: { color: 'bg-violet-500', icon: '📊' },
+                        Manual:   { color: 'bg-gray-400',   icon: '✍️' },
+                      }[src._id] || { color: 'bg-gray-300', icon: '📋' };
+                      return (
+                        <div key={src._id}>
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-sm font-bold text-gray-700">{cfg.icon} {src._id}</span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xl font-black text-gray-800">{src.count}</span>
+                              <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{pct}%</span>
+                            </div>
+                          </div>
+                          <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
+                            <div className={`h-full rounded-full ${cfg.color}`} style={{ width: `${pct}%` }} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {(!brk?.source?.length) && (
+                      <div className="py-8 text-center">
+                        <p className="text-gray-400 text-sm">No worked cases in this period.</p>
+                      </div>
+                    )}
+
+                    {/* Website leads funnel */}
+                    <div className="mt-4 pt-4 border-t border-gray-100">
+                      <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Website Funnel</p>
+                      {[
+                        { label: 'Enquiries',  val: s?.websiteLeads?.total,     color: 'bg-teal-200' },
+                        { label: 'Loaded',     val: s?.websiteLeads?.loaded,    color: 'bg-teal-400' },
+                        { label: 'Completed',  val: s?.websiteLeads?.completed, color: 'bg-teal-600' },
+                      ].map(f => (
+                        <div key={f.label} className="flex items-center gap-2 mb-2">
+                          <span className="text-xs text-gray-500 w-18">{f.label}</span>
+                          <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                            <div className={`h-full rounded-full ${f.color}`}
+                              style={{ width: s?.websiteLeads?.total > 0 ? `${(f.val / s.websiteLeads.total) * 100}%` : '0%' }} />
+                          </div>
+                          <span className="text-xs font-bold text-gray-600 w-6 text-right">{f.val}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* ── Agent Leaderboard ── */}
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-3">
+                  <div className="p-2 bg-gradient-to-br from-amber-400 to-orange-500 rounded-xl shadow-sm">
+                    <Users className="h-5 w-5 text-white" />
+                  </div>
+                  <div>
+                    <h2 className="font-bold text-gray-800">Agent Leaderboard — Selected Period</h2>
+                    <p className="text-xs text-gray-400">Ranked by cases worked in this date range</p>
+                  </div>
+                </div>
+                {!reportData.agents?.length ? (
+                  <p className="text-center text-gray-400 text-sm py-10">No agent activity in this period.</p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-gray-50 text-xs font-bold text-gray-500 uppercase tracking-wider border-b border-gray-100">
+                          <th className="pl-6 pr-3 py-3.5 text-left">Rank</th>
+                          <th className="px-3 py-3.5 text-left">Agent</th>
+                          <th className="px-3 py-3.5 text-center">Cases</th>
+                          <th className="px-3 py-3.5 text-center">Completed</th>
+                          <th className="px-3 py-3.5 text-center">Interested</th>
+                          <th className="px-3 pr-6 py-3.5 text-center">Conv. Rate</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-50">
+                        {reportData.agents.map((a, i) => {
+                          const conv = a.total > 0 ? Math.round((a.completed / a.total) * 100) : 0;
+                          const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : null;
+                          const statusKey = a.agent?.agentStatus || 'available';
+                          return (
+                            <tr key={a._id} className={`hover:bg-gray-50/70 transition-colors ${i < 3 ? 'bg-amber-50/30' : ''}`}>
+                              <td className="pl-6 pr-3 py-4">
+                                <span className="text-lg">{medal || <span className="text-xs font-bold text-gray-400">#{i+1}</span>}</span>
+                              </td>
+                              <td className="px-3 py-4">
+                                <div className="flex items-center gap-3">
+                                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-white font-black text-sm ${
+                                    i === 0 ? 'bg-gradient-to-br from-amber-400 to-orange-500' :
+                                    i === 1 ? 'bg-gradient-to-br from-slate-400 to-gray-500' :
+                                    i === 2 ? 'bg-gradient-to-br from-orange-600 to-amber-700' :
+                                    'bg-gradient-to-br from-[#065F36] to-[#00A651]'
+                                  }`}>
+                                    {a.agent?.name?.charAt(0)?.toUpperCase() || '?'}
+                                  </div>
+                                  <div>
+                                    <p className="font-bold text-gray-800">{a.agent?.name || 'Unknown'}</p>
+                                    <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
+                                      statusKey === 'break'       ? 'bg-amber-100 text-amber-700' :
+                                      statusKey === 'unavailable' ? 'bg-red-100 text-red-600' :
+                                                                     'bg-emerald-100 text-emerald-700'
+                                    }`}>
+                                      {statusKey === 'break' ? '☕ Break' : statusKey === 'unavailable' ? '🔴 Off' : '✅ Live'}
+                                    </span>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="px-3 py-4 text-center">
+                                <span className="text-xl font-black text-gray-800">{a.total}</span>
+                              </td>
+                              <td className="px-3 py-4 text-center">
+                                <span className="inline-block bg-emerald-100 text-emerald-700 font-bold text-sm px-3 py-1 rounded-xl">{a.completed}</span>
+                              </td>
+                              <td className="px-3 py-4 text-center">
+                                <span className="inline-block bg-amber-100 text-amber-700 font-bold text-sm px-3 py-1 rounded-xl">{a.interested}</span>
+                              </td>
+                              <td className="px-3 pr-6 py-4">
+                                <div className="flex items-center gap-2">
+                                  <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden min-w-[60px]">
+                                    <div className={`h-full rounded-full ${conv >= 50 ? 'bg-gradient-to-r from-amber-400 to-orange-500' : conv >= 25 ? 'bg-gradient-to-r from-emerald-400 to-teal-500' : 'bg-gray-300'}`}
+                                      style={{ width: `${conv}%` }} />
+                                  </div>
+                                  <span className={`text-xs font-black w-9 text-right ${conv >= 50 ? 'text-amber-600' : conv >= 25 ? 'text-emerald-600' : 'text-gray-400'}`}>{conv}%</span>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+            </>
+          )}
+        </main>
       </div>
     );
   }
@@ -302,28 +929,38 @@ const DomSuperAdminDashboard = () => {
 
     return (
       <div className="min-h-screen bg-[#F0FFF8]">
-        {/* Header */}
-        <header className="bg-white shadow-sm sticky top-0 z-30 border-b-2 border-[#E8FFF5]">
+        {/* Green breadcrumb bar */}
+        <div className="bg-[#065F36] text-white px-6 py-2 flex items-center justify-between border-b border-[#054A2E]">
+          <div className="flex items-center gap-1.5 text-xs">
+            <Shield className="h-3 w-3 text-white/60" />
+            <button onClick={() => setSuperTab('main')} className="text-white/60 hover:text-white transition-colors">Super Admin Portal</button>
+            <span className="text-white/30">›</span>
+            <span className="text-white font-semibold flex items-center gap-1"><Users className="h-3 w-3" /> Manage Users</span>
+          </div>
+          <button onClick={logout} className="flex items-center gap-1 text-xs text-white/60 hover:text-white transition-colors">
+            <LogOut className="h-3 w-3" /> Logout
+          </button>
+        </div>
+        {/* White sticky header */}
+        <header className="bg-white shadow-sm sticky top-0 z-30 border-b border-gray-100">
           <div className="px-6 flex items-center justify-between h-14">
             <div className="flex items-center gap-3">
-              <img src={`${process.env.PUBLIC_URL}/mcb-logo.png`} alt="MyCashBridge" className="h-8 object-contain" />
-              <div className="border-l border-gray-200 pl-3 hidden sm:flex items-center gap-2">
-                <Users className="h-4 w-4 text-[#065F36]/70" />
-                <h1 className="text-[#065F36] font-bold text-sm">User Management</h1>
-              </div>
               <button onClick={() => setSuperTab('main')}
-                className="flex items-center gap-1 text-gray-500 hover:text-[#065F36] text-sm font-medium transition-colors border border-gray-200 rounded-lg px-2.5 py-1.5 ml-2">
-                <ChevronLeft className="h-3.5 w-3.5" /> Back
+                className="flex items-center gap-1.5 text-sm font-semibold text-gray-500 hover:text-[#065F36] border border-gray-200 hover:border-[#065F36]/30 rounded-xl px-3 py-2 transition-all">
+                <ChevronLeft className="h-4 w-4" /> Dashboard
               </button>
+              <div className="border-l border-gray-200 pl-3 flex items-center gap-2">
+                <div className="p-1.5 bg-[#E8FFF5] rounded-lg"><Users className="h-4 w-4 text-[#065F36]" /></div>
+                <div>
+                  <h1 className="text-gray-800 font-bold text-sm">Manage Users</h1>
+                  <p className="text-gray-400 text-xs">Create and manage agents & admins</p>
+                </div>
+              </div>
             </div>
             <div className="flex items-center gap-2">
               <button onClick={() => setShowCreateModal(true)}
                 className="flex items-center gap-1.5 bg-[#065F36] text-white text-sm font-bold px-4 py-2 rounded-xl hover:bg-[#054A2E] shadow-sm transition-all">
                 <UserPlus className="h-4 w-4" /> Add User
-              </button>
-              <button onClick={logout}
-                className="flex items-center gap-1 text-gray-500 hover:text-red-600 text-sm transition-colors px-2">
-                <LogOut className="h-4 w-4" />
               </button>
             </div>
           </div>
@@ -460,6 +1097,466 @@ const DomSuperAdminDashboard = () => {
     );
   }
 
+  /* ── Agent Tracker tab ── */
+  if (superTab === 'tracker') {
+    const fmtDate = (d) => d ? new Date(d).toLocaleString('en-IN', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' }) : '—';
+    const fmtShortDt = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' }) : 'Never';
+    const STATUS_DOT = {
+      available:   { dot: 'bg-emerald-500', label: 'Available',   cls: 'bg-emerald-100 text-emerald-700 border-emerald-300' },
+      break:       { dot: 'bg-amber-400',   label: 'On Break',    cls: 'bg-amber-100 text-amber-700 border-amber-300' },
+      unavailable: { dot: 'bg-red-500',     label: 'Unavailable', cls: 'bg-red-100 text-red-700 border-red-300' },
+    };
+
+    const sortedAgents = [...trackerAgents].sort((a, b) => {
+      const order = { available: 0, break: 1, unavailable: 2 };
+      const sa = order[a.agentStatus || 'available'] ?? 3;
+      const sb = order[b.agentStatus || 'available'] ?? 3;
+      if (sa !== sb) return sa - sb;
+      return getAgentTier(b).score - getAgentTier(a).score;
+    });
+
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-gray-50 to-emerald-50/30">
+        {/* Green breadcrumb bar */}
+        <div className="bg-[#065F36] text-white px-6 py-2 flex items-center justify-between border-b border-[#054A2E]">
+          <div className="flex items-center gap-1.5 text-xs">
+            <Shield className="h-3 w-3 text-white/60" />
+            <button onClick={() => setSuperTab('main')} className="text-white/60 hover:text-white transition-colors">Super Admin Portal</button>
+            <span className="text-white/30">›</span>
+            <span className="text-white font-semibold flex items-center gap-1"><Activity className="h-3 w-3" /> Agent Tracker</span>
+          </div>
+          <button onClick={logout} className="flex items-center gap-1 text-xs text-white/60 hover:text-white transition-colors">
+            <LogOut className="h-3 w-3" /> Logout
+          </button>
+        </div>
+        {/* White sticky header */}
+        <header className="bg-white shadow-sm sticky top-0 z-30 border-b border-gray-100">
+          <div className="px-6 flex items-center justify-between h-14">
+            <div className="flex items-center gap-3">
+              <button onClick={() => setSuperTab('main')}
+                className="flex items-center gap-1.5 text-sm font-semibold text-gray-500 hover:text-[#065F36] border border-gray-200 hover:border-[#065F36]/30 rounded-xl px-3 py-2 transition-all">
+                <ChevronLeft className="h-4 w-4" /> Dashboard
+              </button>
+              <div className="border-l border-gray-200 pl-3 flex items-center gap-2">
+                <div className="p-1.5 bg-violet-100 rounded-lg"><Activity className="h-4 w-4 text-violet-600" /></div>
+                <div>
+                  <h1 className="text-gray-800 font-bold text-sm">Agent Tracker</h1>
+                  <p className="text-gray-400 text-xs">Live activity & performance of every agent</p>
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button onClick={fetchTrackerAgents}
+                className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-[#065F36] border border-gray-200 rounded-xl px-3 py-2 transition-all">
+                <RefreshCw className={`h-4 w-4 ${trackerLoading ? 'animate-spin' : ''}`} /> Refresh
+              </button>
+            </div>
+          </div>
+        </header>
+
+        <div className="flex h-[calc(100vh-56px)]">
+          {/* Left: Agent Grid */}
+          <div className={`flex-shrink-0 overflow-y-auto p-5 space-y-4 border-r border-gray-100 bg-white/50 ${selectedTrackAgent ? 'w-80' : 'flex-1'}`}>
+            {/* Status summary bar */}
+            {trackerAgents.length > 0 && (
+              <div className="flex items-center gap-3 flex-wrap">
+                {[
+                  { status: 'available',   label: 'Available',   dot: 'bg-emerald-500', count: trackerAgents.filter(a => (a.agentStatus || 'available') === 'available' && a.isActive).length },
+                  { status: 'break',       label: 'On Break',    dot: 'bg-amber-400',   count: trackerAgents.filter(a => a.agentStatus === 'break').length },
+                  { status: 'unavailable', label: 'Unavailable', dot: 'bg-red-500',     count: trackerAgents.filter(a => a.agentStatus === 'unavailable').length },
+                ].map(s => (
+                  <div key={s.status} className="flex items-center gap-2 bg-white border border-gray-100 rounded-xl px-3 py-2 shadow-sm">
+                    <span className={`w-2.5 h-2.5 rounded-full ${s.dot} ${s.status === 'available' ? 'animate-pulse' : ''}`} />
+                    <span className="text-sm font-bold text-gray-800">{s.count}</span>
+                    <span className="text-xs text-gray-500">{s.label}</span>
+                  </div>
+                ))}
+                <span className="text-xs text-gray-400 ml-auto">{trackerAgents.length} total agents</span>
+              </div>
+            )}
+
+            {trackerLoading ? (
+              <div className="flex flex-col items-center justify-center py-20 gap-3">
+                <div className="w-10 h-10 border-4 border-gray-100 border-t-[#065F36] rounded-full animate-spin" />
+                <span className="text-sm text-gray-400">Loading agents…</span>
+              </div>
+            ) : sortedAgents.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-20 gap-3">
+                <Users className="h-12 w-12 text-gray-200" />
+                <p className="text-gray-400 text-sm font-medium">No agents found.</p>
+              </div>
+            ) : (
+              <div className={`grid gap-3 ${selectedTrackAgent ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'}`}>
+                {sortedAgents.map((a) => {
+                  const tier      = getAgentTier(a);
+                  const tierCls   = SA_TIER_STYLES[tier.color] || SA_TIER_STYLES.gray;
+                  const statusKey = a.agentStatus || 'available';
+                  const statusInfo = STATUS_DOT[statusKey] || STATUS_DOT.available;
+                  const conv      = a.leadsLoaded > 0 ? Math.round((a.leadsCompleted / a.leadsLoaded) * 100) : 0;
+                  const isSelected = selectedTrackAgent?._id === a._id;
+
+                  return (
+                    <div key={a._id}
+                      onClick={() => handleSelectTrackAgent(a)}
+                      className={`bg-white border-2 rounded-2xl p-4 cursor-pointer transition-all hover:shadow-md ${
+                        isSelected ? 'border-[#065F36] shadow-md shadow-green-100' :
+                        !a.isActive ? 'border-gray-100 opacity-60' : 'border-gray-100 hover:border-[#065F36]/30'
+                      }`}>
+                      <div className="flex items-center gap-3 mb-3">
+                        <div className="relative">
+                          <div className={`w-11 h-11 rounded-2xl flex items-center justify-center text-white font-black text-base ${
+                            tier.tier === 5 ? 'bg-gradient-to-br from-amber-400 to-orange-500' :
+                            tier.tier === 4 ? 'bg-gradient-to-br from-violet-500 to-purple-600' :
+                            tier.tier === 3 ? 'bg-gradient-to-br from-emerald-500 to-teal-600' :
+                            'bg-gradient-to-br from-[#065F36] to-[#00A651]'
+                          }`}>
+                            {a.name?.charAt(0)?.toUpperCase()}
+                          </div>
+                          <span className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-white ${statusInfo.dot} ${statusKey === 'available' ? 'animate-pulse' : ''}`} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-bold text-gray-800 truncate">{a.name}</p>
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold border ${statusInfo.cls}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${statusInfo.dot}`} />
+                            {statusInfo.label}
+                          </span>
+                        </div>
+                      </div>
+
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold border ${tierCls} mb-3`}>
+                        {tier.emoji} {tier.label}
+                      </span>
+
+                      <div className="grid grid-cols-3 gap-1 text-center">
+                        <div className="bg-blue-50 rounded-xl py-1.5">
+                          <p className="text-sm font-black text-blue-600">{a.leadsLoaded}</p>
+                          <p className="text-xs text-gray-400">Loaded</p>
+                        </div>
+                        <div className="bg-emerald-50 rounded-xl py-1.5">
+                          <p className="text-sm font-black text-emerald-600">{a.leadsCompleted}</p>
+                          <p className="text-xs text-gray-400">Done</p>
+                        </div>
+                        <div className={`${conv >= 50 ? 'bg-amber-50' : 'bg-gray-50'} rounded-xl py-1.5`}>
+                          <p className={`text-sm font-black ${conv >= 50 ? 'text-amber-600' : 'text-gray-600'}`}>{conv}%</p>
+                          <p className="text-xs text-gray-400">Conv.</p>
+                        </div>
+                      </div>
+
+                      <p className="text-xs text-gray-400 mt-2.5">Last login: {fmtShortDt(a.lastLogin)}</p>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Right: Agent Activity Panel */}
+          {selectedTrackAgent && (
+            <div className="flex-1 overflow-y-auto p-5 space-y-5">
+              {/* Agent detail header */}
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-white font-black text-xl shadow-md ${
+                      getAgentTier(selectedTrackAgent).tier === 5 ? 'bg-gradient-to-br from-amber-400 to-orange-500' :
+                      getAgentTier(selectedTrackAgent).tier === 4 ? 'bg-gradient-to-br from-violet-500 to-purple-600' :
+                      'bg-gradient-to-br from-[#065F36] to-[#00A651]'
+                    }`}>
+                      {selectedTrackAgent.name?.charAt(0)?.toUpperCase()}
+                    </div>
+                    <div>
+                      <h2 className="text-xl font-black text-gray-800">{selectedTrackAgent.name}</h2>
+                      <p className="text-sm text-gray-400">{selectedTrackAgent.email}</p>
+                      <div className="flex items-center gap-2 mt-1 flex-wrap">
+                        <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold border ${SA_TIER_STYLES[getAgentTier(selectedTrackAgent).color]}`}>
+                          {getAgentTier(selectedTrackAgent).emoji} {getAgentTier(selectedTrackAgent).label}
+                        </span>
+                        {(() => {
+                          const sKey = selectedTrackAgent.agentStatus || 'available';
+                          const si   = STATUS_DOT[sKey] || STATUS_DOT.available;
+                          return (
+                            <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold border ${si.cls}`}>
+                              <span className={`w-1.5 h-1.5 rounded-full ${si.dot} ${sKey === 'available' ? 'animate-pulse' : ''}`} />
+                              {si.label}
+                            </span>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                  </div>
+                  <button onClick={() => setSelectedTrackAgent(null)} className="text-gray-400 hover:text-gray-600 p-1">
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+
+                {/* Quick stats */}
+                <div className="grid grid-cols-4 gap-3 mt-5">
+                  {[
+                    { label: 'Leads Loaded',  val: selectedTrackAgent.leadsLoaded,    color: 'text-blue-600',    bg: 'bg-blue-50' },
+                    { label: 'Completed',      val: selectedTrackAgent.leadsCompleted, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+                    { label: 'Worked Cases',   val: selectedTrackAgent.domLeadsCreated,color: 'text-[#065F36]',   bg: 'bg-[#E8FFF5]' },
+                    { label: 'Pool Leads',     val: trackPoolLeads.length,              color: 'text-violet-600',  bg: 'bg-violet-50' },
+                  ].map(s => (
+                    <div key={s.label} className={`${s.bg} rounded-xl p-3 text-center`}>
+                      <p className={`text-2xl font-black ${s.color}`}>{s.val}</p>
+                      <p className="text-xs text-gray-500 mt-0.5">{s.label}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {trackLeadsLoading ? (
+                <div className="flex items-center justify-center py-16 gap-3">
+                  <div className="w-8 h-8 border-4 border-gray-100 border-t-[#065F36] rounded-full animate-spin" />
+                  <span className="text-sm text-gray-400">Loading activity…</span>
+                </div>
+              ) : (
+                <>
+                  {/* Recent Worked Cases */}
+                  <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                    <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-3">
+                      <div className="p-2 bg-[#E8FFF5] rounded-xl"><Briefcase className="h-4 w-4 text-[#065F36]" /></div>
+                      <div>
+                        <h3 className="font-bold text-gray-800 text-sm">Recent Worked Cases</h3>
+                        <p className="text-xs text-gray-400">Click any lead to see full disposition details</p>
+                      </div>
+                    </div>
+                    {trackWorkedLeads.length === 0 ? (
+                      <p className="text-center text-gray-400 text-sm py-8">No worked cases yet.</p>
+                    ) : (
+                      <div className="divide-y divide-gray-50">
+                        {trackWorkedLeads.map((l) => {
+                          const src =
+                            l.sourceWebsiteLead  ? { label: 'Website',  emoji: '🌐', borderL: 'border-l-4 border-l-teal-500',   rowHover: 'hover:bg-teal-50/40',   badge: 'bg-teal-100 text-teal-700 border border-teal-300' } :
+                            l.sourceImportedLead ? { label: 'Imported', emoji: '📊', borderL: 'border-l-4 border-l-violet-500', rowHover: 'hover:bg-violet-50/40', badge: 'bg-violet-100 text-violet-700 border border-violet-300' } :
+                                                   { label: 'Manual',   emoji: '✍️', borderL: 'border-l-4 border-l-gray-300',   rowHover: 'hover:bg-gray-50/40',   badge: 'bg-gray-100 text-gray-600 border border-gray-300' };
+                          return (
+                          <div key={l._id}
+                            onClick={() => setTrackerLeadDetail(l)}
+                            className={`px-5 py-3 flex items-center justify-between cursor-pointer transition-colors ${src.borderL} ${src.rowHover}`}>
+                            <div>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-mono text-xs font-bold bg-gray-900 text-emerald-400 px-1.5 py-0.5 rounded">{l.leadRef || '—'}</span>
+                                <span className="font-semibold text-sm text-gray-800">{l.name || '—'}</span>
+                                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold ${src.badge}`}>{src.emoji} {src.label}</span>
+                              </div>
+                              <p className="text-xs text-gray-400 mt-0.5">
+                                {l.mobile} · {l.productType?.replace(/_/g,' ')} · {fmtDate(l.createdAt)}
+                              </p>
+                            </div>
+                            <div className="flex flex-col items-end gap-1">
+                              {l.callOutcome && (
+                                <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
+                                  l.callOutcome === 'interested'     ? 'bg-emerald-100 text-emerald-700' :
+                                  l.callOutcome === 'not_interested' ? 'bg-red-100 text-red-700' :
+                                  l.callOutcome === 'callback'       ? 'bg-amber-100 text-amber-700' :
+                                  l.callOutcome === 'not_reachable'  ? 'bg-orange-100 text-orange-700' :
+                                  l.callOutcome === 'wrong_number'   ? 'bg-gray-100 text-gray-500' :
+                                  'bg-gray-100 text-gray-600'
+                                }`}>{l.callOutcome.replace(/_/g,' ')}</span>
+                              )}
+                              <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
+                                l.status === 'completed' ? 'bg-emerald-100 text-emerald-700' :
+                                l.status === 'rejected'  ? 'bg-red-100 text-red-700' :
+                                'bg-blue-100 text-blue-700'
+                              }`}>{l.status}</span>
+                            </div>
+                          </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Pool Leads Assigned */}
+                  <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                    <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-3">
+                      <div className="p-2 bg-violet-100 rounded-xl"><Database className="h-4 w-4 text-violet-600" /></div>
+                      <div>
+                        <h3 className="font-bold text-gray-800 text-sm">Data Pool Assigned</h3>
+                        <p className="text-xs text-gray-400">Imported leads assigned to this agent</p>
+                      </div>
+                    </div>
+                    {trackPoolLeads.length === 0 ? (
+                      <p className="text-center text-gray-400 text-sm py-8">No pool leads assigned.</p>
+                    ) : (
+                      <div className="divide-y divide-gray-50">
+                        {trackPoolLeads.slice(0, 8).map((l) => (
+                          <div key={l._id} className="px-5 py-3 flex items-center justify-between hover:bg-gray-50">
+                            <div>
+                              <p className="font-semibold text-sm text-gray-800">{l.name || '—'}</p>
+                              <p className="text-xs text-gray-400">{l.mobile} · {l.loanType || l.productType || '—'} · {l.state || ''}</p>
+                            </div>
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-semibold border ${
+                              l.workStatus === 'interested'     ? 'bg-emerald-100 text-emerald-700 border-emerald-200' :
+                              l.workStatus === 'not_interested' ? 'bg-red-100 text-red-700 border-red-200' :
+                              l.workStatus === 'in_progress'    ? 'bg-blue-100 text-blue-700 border-blue-200' :
+                              l.workStatus === 'closed'         ? 'bg-gray-100 text-gray-600 border-gray-200' :
+                              'bg-orange-100 text-orange-700 border-orange-200'
+                            }`}>
+                              {l.workStatus === 'new' ? 'Not Called' : l.workStatus?.replace(/_/g,' ')}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* ── Lead Disposition Detail Modal ── */}
+        {trackerLeadDetail && (() => {
+          const l = trackerLeadDetail;
+          const OUTCOME_CFG = {
+            interested:     { label: 'Interested',     cls: 'bg-emerald-100 text-emerald-700 border-emerald-300', icon: '✅', bar: 'bg-emerald-500' },
+            not_interested: { label: 'Not Interested', cls: 'bg-red-100 text-red-700 border-red-300',             icon: '❌', bar: 'bg-red-500' },
+            callback:       { label: 'Callback',       cls: 'bg-amber-100 text-amber-700 border-amber-300',       icon: '📞', bar: 'bg-amber-400' },
+            not_reachable:  { label: 'Not Reachable',  cls: 'bg-orange-100 text-orange-700 border-orange-300',    icon: '📵', bar: 'bg-orange-400' },
+            wrong_number:   { label: 'Wrong Number',   cls: 'bg-gray-100 text-gray-600 border-gray-300',          icon: '❓', bar: 'bg-gray-400' },
+          };
+          const oc  = OUTCOME_CFG[l.callOutcome] || { label: l.callOutcome || 'No Disposition', cls: 'bg-gray-100 text-gray-500 border-gray-200', icon: '—', bar: 'bg-gray-300' };
+          const fmt = (d) => d ? new Date(d).toLocaleString('en-IN', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '—';
+          const CIBIL_LABEL = { below_600:'< 600 (Poor)', '600_699':'600–699 (Fair)', '700_749':'700–749 (Good)', '750_800':'750–800 (Very Good)', above_800:'> 800 (Excellent)', unknown:'Unknown' };
+
+          return (
+            <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+              onClick={() => setTrackerLeadDetail(null)}>
+              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto"
+                onClick={e => e.stopPropagation()}>
+
+                {/* Modal Header */}
+                <div className={`px-6 py-5 rounded-t-3xl ${
+                  l.callOutcome === 'interested'     ? 'bg-gradient-to-r from-emerald-500 to-teal-600' :
+                  l.callOutcome === 'not_interested' ? 'bg-gradient-to-r from-red-500 to-rose-600' :
+                  l.callOutcome === 'callback'       ? 'bg-gradient-to-r from-amber-400 to-orange-500' :
+                  l.callOutcome === 'not_reachable'  ? 'bg-gradient-to-r from-orange-400 to-amber-500' :
+                  l.callOutcome === 'wrong_number'   ? 'bg-gradient-to-r from-gray-500 to-gray-600' :
+                  'bg-gradient-to-r from-[#065F36] to-[#00874A]'
+                } text-white`}>
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap mb-1">
+                        <span className="text-2xl">{oc.icon}</span>
+                        <span className="text-xl font-black">{l.name || '—'}</span>
+                        {l.leadRef && (
+                          <span className="font-mono text-xs font-bold bg-white/20 text-white px-2 py-0.5 rounded-lg tracking-widest">{l.leadRef}</span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-white/80 text-sm">{l.mobile}</span>
+                        {l.email && <span className="text-white/60 text-xs">· {l.email}</span>}
+                        {(l.city || l.state) && <span className="text-white/60 text-xs">· {[l.city, l.state].filter(Boolean).join(', ')}</span>}
+                        <span className="text-xs bg-white/20 text-white px-2 py-0.5 rounded-full font-bold border border-white/30">
+                          {l.sourceWebsiteLead ? '🌐 Website' : l.sourceImportedLead ? '📊 Imported' : '✍️ Manual'}
+                        </span>
+                      </div>
+                    </div>
+                    <button onClick={() => setTrackerLeadDetail(null)}
+                      className="p-2 bg-white/20 hover:bg-white/30 rounded-xl transition-colors">
+                      <X className="h-5 w-5" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="p-6 space-y-5">
+
+                  {/* Disposition section — the key info */}
+                  <div className={`rounded-2xl border-2 p-5 ${
+                    l.callOutcome === 'not_interested' || l.status === 'rejected' ? 'border-red-200 bg-red-50' :
+                    l.callOutcome === 'interested'     ? 'border-emerald-200 bg-emerald-50' :
+                    l.callOutcome === 'callback'       ? 'border-amber-200 bg-amber-50' :
+                    l.callOutcome === 'not_reachable'  ? 'border-orange-200 bg-orange-50' :
+                    'border-gray-200 bg-gray-50'
+                  }`}>
+                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Disposition & Outcome</p>
+                    <div className="flex items-center gap-3 flex-wrap mb-3">
+                      <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-bold border ${oc.cls}`}>
+                        {oc.icon} {oc.label}
+                      </span>
+                      <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-bold border ${
+                        l.status === 'completed' ? 'bg-emerald-100 text-emerald-700 border-emerald-300' :
+                        l.status === 'rejected'  ? 'bg-red-100 text-red-700 border-red-300' :
+                                                   'bg-blue-100 text-blue-700 border-blue-300'
+                      }`}>
+                        {l.status === 'completed' ? '✔ Completed' : l.status === 'rejected' ? '✖ Rejected' : '⏳ Pending'}
+                      </span>
+                      {l.callbackDate && (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-bold bg-violet-100 text-violet-700 border border-violet-300">
+                          📅 Callback: {l.callbackDate}
+                        </span>
+                      )}
+                    </div>
+                    {/* Agent Notes — the "why" */}
+                    {l.notes ? (
+                      <div className="bg-white rounded-xl p-4 border border-gray-200">
+                        <p className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-1.5">Agent Notes / Reason</p>
+                        <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">"{l.notes}"</p>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-gray-400 italic bg-white rounded-xl p-4 border border-gray-200">No notes added by agent.</p>
+                    )}
+                  </div>
+
+                  {/* Lead info grid */}
+                  <div>
+                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Lead Details</p>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                      {[
+                        { label: 'Product / Service', val: l.productType?.replace(/_/g,' '), bold: true },
+                        { label: 'Loan Amount',        val: l.loanAmountRequired ? `₹${l.loanAmountRequired.toLocaleString('en-IN')}` : null },
+                        { label: 'Employment Type',    val: l.employmentType?.replace(/_/g,' ') },
+                        { label: 'Company',            val: l.companyName },
+                        { label: 'Monthly Salary',     val: l.monthlySalary ? `₹${l.monthlySalary.toLocaleString('en-IN')}` : null },
+                        { label: 'CIBIL Score Range',  val: CIBIL_LABEL[l.cibilScoreRange] || l.cibilScoreRange },
+                        { label: 'Existing EMI',       val: l.existingEMI ? `₹${l.existingEMI.toLocaleString('en-IN')}/mo` : null },
+                        { label: 'Existing Bank',      val: l.existingBank },
+                        { label: 'PAN',                val: l.pan },
+                        { label: 'Date of Birth',      val: l.dob },
+                        { label: 'City / State',       val: [l.city, l.state].filter(Boolean).join(', ') || null },
+                        { label: 'Pincode',            val: l.pincode },
+                      ].filter(r => r.val).map(({ label, val, bold }) => (
+                        <div key={label} className="bg-gray-50 border border-gray-100 rounded-xl p-3">
+                          <p className="text-xs text-gray-400 font-medium">{label}</p>
+                          <p className={`text-sm mt-0.5 ${bold ? 'font-bold text-[#065F36] capitalize' : 'font-semibold text-gray-700'}`}>{val}</p>
+                        </div>
+                      ))}
+                    </div>
+                    {l.existingLoans?.length > 0 && (
+                      <div className="mt-3 bg-gray-50 border border-gray-100 rounded-xl p-3">
+                        <p className="text-xs text-gray-400 font-medium mb-1">Existing Loans</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {l.existingLoans.map((loan, i) => (
+                            <span key={i} className="text-xs bg-white border border-gray-200 text-gray-700 px-2 py-1 rounded-lg font-medium">{loan}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Timeline */}
+                  <div className="flex items-center gap-6 text-xs text-gray-400 bg-gray-50 rounded-xl p-4 border border-gray-100">
+                    <div><span className="font-semibold text-gray-600">Submitted:</span> {fmt(l.createdAt)}</div>
+                    {l.updatedAt && l.updatedAt !== l.createdAt && (
+                      <div><span className="font-semibold text-gray-600">Updated:</span> {fmt(l.updatedAt)}</div>
+                    )}
+                    {l.assignedTo?.name && (
+                      <div><span className="font-semibold text-gray-600">Agent:</span> {l.assignedTo.name}</div>
+                    )}
+                  </div>
+
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
+      </div>
+    );
+  }
+
   /* ── Website Leads tab ── */
   if (superTab === 'web_leads') {
     const STATUS_META = {
@@ -474,28 +1571,38 @@ const DomSuperAdminDashboard = () => {
 
     return (
       <div className="min-h-screen bg-[#F0FFF8]">
-        {/* Header */}
-        <header className="bg-white shadow-sm sticky top-0 z-30 border-b-2 border-[#E8FFF5]">
+        {/* Green breadcrumb bar */}
+        <div className="bg-[#065F36] text-white px-6 py-2 flex items-center justify-between border-b border-[#054A2E]">
+          <div className="flex items-center gap-1.5 text-xs">
+            <Shield className="h-3 w-3 text-white/60" />
+            <button onClick={() => setSuperTab('main')} className="text-white/60 hover:text-white transition-colors">Super Admin Portal</button>
+            <span className="text-white/30">›</span>
+            <span className="text-white font-semibold flex items-center gap-1"><Globe className="h-3 w-3" /> Lead Monitor</span>
+          </div>
+          <button onClick={logout} className="flex items-center gap-1 text-xs text-white/60 hover:text-white transition-colors">
+            <LogOut className="h-3 w-3" /> Logout
+          </button>
+        </div>
+        {/* White sticky header */}
+        <header className="bg-white shadow-sm sticky top-0 z-30 border-b border-gray-100">
           <div className="px-6 flex items-center justify-between h-14">
             <div className="flex items-center gap-3">
-              <img src={`${process.env.PUBLIC_URL}/mcb-logo.png`} alt="MyCashBridge" className="h-8 object-contain" />
-              <div className="border-l border-gray-200 pl-3 hidden sm:flex items-center gap-2">
-                <Globe className="h-4 w-4 text-[#065F36]/70" />
-                <h1 className="text-[#065F36] font-bold text-sm">Website Lead Management</h1>
-              </div>
               <button onClick={() => setSuperTab('main')}
-                className="flex items-center gap-1 text-gray-500 hover:text-[#065F36] text-sm font-medium transition-colors border border-gray-200 rounded-lg px-2.5 py-1.5 ml-2">
-                <ChevronLeft className="h-3.5 w-3.5" /> Back
+                className="flex items-center gap-1.5 text-sm font-semibold text-gray-500 hover:text-[#065F36] border border-gray-200 hover:border-[#065F36]/30 rounded-xl px-3 py-2 transition-all">
+                <ChevronLeft className="h-4 w-4" /> Dashboard
               </button>
+              <div className="border-l border-gray-200 pl-3 flex items-center gap-2">
+                <div className="p-1.5 bg-teal-100 rounded-lg"><Globe className="h-4 w-4 text-teal-600" /></div>
+                <div>
+                  <h1 className="text-gray-800 font-bold text-sm">Lead Monitor</h1>
+                  <p className="text-gray-400 text-xs">All incoming website enquiries & assignments</p>
+                </div>
+              </div>
             </div>
             <div className="flex items-center gap-2">
               <button onClick={() => fetchWebLeads(webLeadsPage)}
                 className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-[#065F36] border border-gray-200 rounded-xl px-3 py-2">
                 <RefreshCw className="h-4 w-4" />
-              </button>
-              <button onClick={logout}
-                className="flex items-center gap-1.5 bg-red-50 hover:bg-red-100 text-red-600 text-sm px-3 py-1.5 rounded-lg transition-colors border border-red-100">
-                <LogOut className="h-3.5 w-3.5" /> Logout
               </button>
             </div>
           </div>
@@ -890,23 +1997,33 @@ const DomSuperAdminDashboard = () => {
     const fmtNum = (n) => (n || 0).toLocaleString('en-IN');
     return (
       <div className="min-h-screen bg-[#F0FFF8]">
-        <header className="bg-white shadow-sm sticky top-0 z-30 border-b-2 border-[#E8FFF5]">
+        {/* Green breadcrumb bar */}
+        <div className="bg-[#065F36] text-white px-6 py-2 flex items-center justify-between border-b border-[#054A2E]">
+          <div className="flex items-center gap-1.5 text-xs">
+            <Shield className="h-3 w-3 text-white/60" />
+            <button onClick={() => setSuperTab('main')} className="text-white/60 hover:text-white transition-colors">Super Admin Portal</button>
+            <span className="text-white/30">›</span>
+            <span className="text-white font-semibold flex items-center gap-1"><Upload className="h-3 w-3" /> Import & Distribute</span>
+          </div>
+          <button onClick={logout} className="flex items-center gap-1 text-xs text-white/60 hover:text-white transition-colors">
+            <LogOut className="h-3 w-3" /> Logout
+          </button>
+        </div>
+        <header className="bg-white shadow-sm sticky top-0 z-30 border-b border-gray-100">
           <div className="px-6 flex items-center justify-between h-14">
             <div className="flex items-center gap-3">
-              <img src={`${process.env.PUBLIC_URL}/mcb-logo.png`} alt="MyCashBridge" className="h-8 object-contain" />
-              <div className="border-l border-gray-200 pl-3 hidden sm:flex items-center gap-2">
-                <Upload className="h-4 w-4 text-[#065F36]/70" />
-                <h1 className="text-[#065F36] font-bold text-sm">Import & Share Leads</h1>
-              </div>
               <button onClick={() => setSuperTab('main')}
-                className="flex items-center gap-1 text-gray-500 hover:text-[#065F36] text-sm font-medium transition-colors border border-gray-200 rounded-lg px-2.5 py-1.5 ml-2">
-                <ChevronLeft className="h-3.5 w-3.5" /> Back
+                className="flex items-center gap-1.5 text-sm font-semibold text-gray-500 hover:text-[#065F36] border border-gray-200 hover:border-[#065F36]/30 rounded-xl px-3 py-2 transition-all">
+                <ChevronLeft className="h-4 w-4" /> Dashboard
               </button>
+              <div className="border-l border-gray-200 pl-3 flex items-center gap-2">
+                <div className="p-1.5 bg-blue-100 rounded-lg"><Upload className="h-4 w-4 text-blue-600" /></div>
+                <div>
+                  <h1 className="text-gray-800 font-bold text-sm">Import & Distribute</h1>
+                  <p className="text-gray-400 text-xs">Upload Excel data & share batches to admins</p>
+                </div>
+              </div>
             </div>
-            <button onClick={logout}
-              className="flex items-center gap-1.5 bg-red-50 hover:bg-red-100 text-red-600 text-sm px-3 py-1.5 rounded-lg transition-colors border border-red-100">
-              <LogOut className="h-3.5 w-3.5" /> Logout
-            </button>
           </div>
         </header>
 
@@ -1079,18 +2196,32 @@ const DomSuperAdminDashboard = () => {
   /* ── API Key tab ── */
   return (
     <div className="min-h-screen bg-[#F0FFF8]">
-      <header className="bg-white shadow-sm sticky top-0 z-30 border-b-2 border-[#E8FFF5]">
+      {/* Green breadcrumb bar */}
+      <div className="bg-[#065F36] text-white px-6 py-2 flex items-center justify-between border-b border-[#054A2E]">
+        <div className="flex items-center gap-1.5 text-xs">
+          <Shield className="h-3 w-3 text-white/60" />
+          <button onClick={() => setSuperTab('main')} className="text-white/60 hover:text-white transition-colors">Super Admin Portal</button>
+          <span className="text-white/30">›</span>
+          <span className="text-white font-semibold flex items-center gap-1"><Key className="h-3 w-3" /> Integration Setup</span>
+        </div>
+        <button onClick={logout} className="flex items-center gap-1 text-xs text-white/60 hover:text-white transition-colors">
+          <LogOut className="h-3 w-3" /> Logout
+        </button>
+      </div>
+      <header className="bg-white shadow-sm sticky top-0 z-30 border-b border-gray-100">
         <div className="px-6 flex items-center justify-between h-14">
           <div className="flex items-center gap-3">
-            <img src={`${process.env.PUBLIC_URL}/mcb-logo.png`} alt="MyCashBridge" className="h-8 object-contain" />
-            <div className="border-l border-gray-200 pl-3 hidden sm:flex items-center gap-2">
-              <Key className="h-4 w-4 text-[#065F36]/70" />
-              <h1 className="text-[#065F36] font-bold text-sm">Website Intake API Key</h1>
-            </div>
             <button onClick={() => setSuperTab('main')}
-              className="flex items-center gap-1 text-gray-500 hover:text-[#065F36] text-sm font-medium transition-colors border border-gray-200 rounded-lg px-2.5 py-1.5 ml-2">
-              <ChevronLeft className="h-3.5 w-3.5" /> Back
+              className="flex items-center gap-1.5 text-sm font-semibold text-gray-500 hover:text-[#065F36] border border-gray-200 hover:border-[#065F36]/30 rounded-xl px-3 py-2 transition-all">
+              <ChevronLeft className="h-4 w-4" /> Dashboard
             </button>
+            <div className="border-l border-gray-200 pl-3 flex items-center gap-2">
+              <div className="p-1.5 bg-amber-100 rounded-lg"><Key className="h-4 w-4 text-amber-600" /></div>
+              <div>
+                <h1 className="text-gray-800 font-bold text-sm">Integration Setup</h1>
+                <p className="text-gray-400 text-xs">API key for your website intake form</p>
+              </div>
+            </div>
           </div>
         </div>
       </header>

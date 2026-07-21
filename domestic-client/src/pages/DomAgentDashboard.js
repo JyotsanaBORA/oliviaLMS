@@ -3,7 +3,7 @@ import { io } from 'socket.io-client';
 import {
   LogOut, Bell, User, RefreshCw, FileText, CheckCircle,
   Clock, PlusCircle, Wifi, WifiOff, ChevronRight, Inbox, Database,
-  Coffee, CheckCircle2, XCircle,
+  Coffee, CheckCircle2, XCircle, Phone, AlertCircle, Calendar,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import NotificationPanel       from '../components/NotificationPanel';
@@ -40,6 +40,10 @@ const DomAgentDashboard = () => {
   const [importedLeadDomLead,  setImportedLeadDomLead]  = useState(null);
   const [importedModalOpen,    setImportedModalOpen]    = useState(false);
   const [detailModalOpen,      setDetailModalOpen]      = useState(false); // shows all imported data first
+
+  // Follow-up queue
+  const [followups,        setFollowups]        = useState([]);
+  const [followupsLoading, setFollowupsLoading] = useState(false);
 
   // Agent availability status
   const [agentStatus,        setAgentStatus]        = useState('available');
@@ -83,6 +87,15 @@ const DomAgentDashboard = () => {
       setAssignedLeads(res.data?.data || []);
     } catch { toast.error('Failed to load assigned leads.'); }
     finally { setAssignedLeadsLoading(false); }
+  }, []);
+
+  const fetchFollowups = useCallback(async () => {
+    setFollowupsLoading(true);
+    try {
+      const res = await api.get('/domestic-api/leads/followups');
+      setFollowups(res.data?.data || []);
+    } catch { toast.error('Failed to load follow-ups.'); }
+    finally { setFollowupsLoading(false); }
   }, []);
 
   // Fetch agent's own current status on mount
@@ -137,6 +150,7 @@ const DomAgentDashboard = () => {
 
   useEffect(() => {
     if (tab === 'assigned_leads') fetchAssignedLeads();
+    if (tab === 'followups')      fetchFollowups();
   }, [tab, fetchAssignedLeads]);
 
   const handleLeadLoaded = useCallback((newWebsiteLead) => {
@@ -270,6 +284,9 @@ const DomAgentDashboard = () => {
             </TabBtn>
             <TabBtn active={tab === 'assigned_leads'} onClick={() => setTab('assigned_leads')}>
               <Database className="h-3.5 w-3.5" /> Assigned
+            </TabBtn>
+            <TabBtn active={tab === 'followups'} onClick={() => setTab('followups')} badge={followups.length || null}>
+              <Phone className="h-3.5 w-3.5" /> Follow-ups
             </TabBtn>
           </div>
         </div>
@@ -553,6 +570,141 @@ const DomAgentDashboard = () => {
           </div>
         )}
       </main>
+
+      {/* ── Follow-up Queue ── */}
+      {tab === 'followups' && (() => {
+        const today     = new Date(); today.setHours(0,0,0,0);
+        const tomorrow  = new Date(today); tomorrow.setDate(today.getDate() + 1);
+
+        const parseDate = (d) => { if (!d) return null; const p = new Date(d); return isNaN(p) ? null : p; };
+
+        const overdue   = followups.filter(f => { const d = parseDate(f.callbackDate); return d && d < today; });
+        const todayList = followups.filter(f => { const d = parseDate(f.callbackDate); return d && d >= today && d < tomorrow; });
+        const upcoming  = followups.filter(f => { const d = parseDate(f.callbackDate); return d && d >= tomorrow; });
+        const noDate    = followups.filter(f => !parseDate(f.callbackDate));
+
+        const FollowupCard = ({ f }) => {
+          const outcomeColors = {
+            callback:      'bg-amber-100 text-amber-700 border-amber-200',
+            not_reachable: 'bg-orange-100 text-orange-700 border-orange-200',
+            wrong_number:  'bg-gray-100 text-gray-600 border-gray-200',
+          };
+          const outcomeLabels = {
+            callback:      '📞 Callback',
+            not_reachable: '📵 Not Reachable',
+            wrong_number:  '❓ Wrong Number',
+          };
+          const callbackD = parseDate(f.callbackDate);
+          const isOverdue = callbackD && callbackD < today;
+          const isToday   = callbackD && callbackD >= today && callbackD < tomorrow;
+
+          return (
+            <div className={`bg-white border-2 rounded-2xl p-4 transition-all hover:shadow-md ${
+              isOverdue ? 'border-red-200 bg-red-50/20' : isToday ? 'border-amber-200 bg-amber-50/20' : 'border-gray-100'
+            }`}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-bold text-gray-800">{f.name || '—'}</span>
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border ${outcomeColors[f.callOutcome] || 'bg-gray-100 text-gray-500 border-gray-200'}`}>
+                      {outcomeLabels[f.callOutcome] || f.callOutcome}
+                    </span>
+                    {f.leadRef && (
+                      <span className="font-mono text-xs font-bold bg-gray-900 text-emerald-400 px-1.5 py-0.5 rounded">{f.leadRef}</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3 mt-1.5 text-sm text-gray-500 flex-wrap">
+                    <span className="font-mono font-semibold text-gray-700">{f.mobile || '—'}</span>
+                    {f.productType && <span className="text-xs bg-[#E8FFF5] text-[#065F36] border border-[#D1FAE5] px-2 py-0.5 rounded-full capitalize">{f.productType.replace(/_/g,' ')}</span>}
+                    {callbackD && (
+                      <span className={`flex items-center gap-1 text-xs font-semibold ${isOverdue ? 'text-red-600' : isToday ? 'text-amber-600' : 'text-gray-500'}`}>
+                        <Calendar className="h-3 w-3" />
+                        {isOverdue ? '⚠️ Overdue · ' : isToday ? '🔔 Today · ' : ''}
+                        {callbackD.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                      </span>
+                    )}
+                  </div>
+                  {f.notes && <p className="text-xs text-gray-400 mt-1.5 line-clamp-1 italic">"{f.notes}"</p>}
+                </div>
+                <button
+                  onClick={() => {
+                    setSelectedDomLead(f);
+                    setSelectedWLead(null);
+                    setModalOpen(true);
+                  }}
+                  className={`flex-shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold transition-all shadow-sm ${
+                    isOverdue ? 'bg-red-600 hover:bg-red-700 text-white' :
+                    isToday   ? 'bg-amber-500 hover:bg-amber-600 text-white' :
+                                'bg-[#065F36] hover:bg-[#054A2E] text-white'
+                  }`}>
+                  <Phone className="h-3.5 w-3.5" /> Call Now
+                </button>
+              </div>
+            </div>
+          );
+        };
+
+        const Section = ({ title, color, items, icon }) => items.length === 0 ? null : (
+          <div className="space-y-3">
+            <div className={`flex items-center gap-2 px-4 py-2 rounded-xl ${color}`}>
+              <span className="text-lg">{icon}</span>
+              <span className="font-bold text-sm">{title}</span>
+              <span className="ml-auto font-black text-sm">{items.length}</span>
+            </div>
+            {items.map(f => <FollowupCard key={f._id} f={f} />)}
+          </div>
+        );
+
+        return (
+          <div className="px-5 py-5 space-y-4">
+            {/* Header */}
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-gradient-to-br from-amber-400 to-orange-500 rounded-xl shadow-sm">
+                    <Phone className="h-5 w-5 text-white" />
+                  </div>
+                  <div>
+                    <h2 className="font-bold text-gray-800 text-base">Follow-up Queue</h2>
+                    <p className="text-xs text-gray-400">Leads waiting for your call — sorted by urgency</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  {/* Summary chips */}
+                  {overdue.length   > 0 && <span className="flex items-center gap-1 bg-red-100 text-red-700 border border-red-200 px-3 py-1.5 rounded-xl text-xs font-bold"><AlertCircle className="h-3.5 w-3.5" /> {overdue.length} Overdue</span>}
+                  {todayList.length > 0 && <span className="flex items-center gap-1 bg-amber-100 text-amber-700 border border-amber-200 px-3 py-1.5 rounded-xl text-xs font-bold"><Clock className="h-3.5 w-3.5" /> {todayList.length} Today</span>}
+                  <button onClick={fetchFollowups} disabled={followupsLoading}
+                    className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-[#065F36] border border-gray-200 rounded-xl px-3 py-2 transition-all">
+                    <RefreshCw className={`h-4 w-4 ${followupsLoading ? 'animate-spin' : ''}`} />
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {followupsLoading ? (
+              <div className="flex flex-col items-center justify-center py-20 gap-3">
+                <div className="w-10 h-10 border-4 border-gray-100 border-t-amber-500 rounded-full animate-spin" />
+                <p className="text-gray-400 text-sm">Loading follow-ups…</p>
+              </div>
+            ) : followups.length === 0 ? (
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm flex flex-col items-center justify-center py-20 gap-4">
+                <div className="p-5 bg-emerald-100 rounded-3xl"><CheckCircle2 className="h-12 w-12 text-emerald-500" /></div>
+                <div className="text-center">
+                  <p className="font-bold text-gray-700 text-lg">All clear! 🎉</p>
+                  <p className="text-gray-400 text-sm mt-1">No pending callbacks or unreached leads.</p>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                <Section title="Overdue Callbacks" color="bg-red-100 text-red-800"   icon="🔴" items={overdue} />
+                <Section title="Call Today"         color="bg-amber-100 text-amber-800" icon="🟡" items={todayList} />
+                <Section title="Upcoming"           color="bg-emerald-100 text-emerald-800" icon="🟢" items={upcoming} />
+                <Section title="Not Scheduled"      color="bg-gray-100 text-gray-700"  icon="📋" items={noDate} />
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {modalOpen && (
         <LeadFormModal
