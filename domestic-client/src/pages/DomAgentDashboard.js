@@ -60,7 +60,7 @@ const DomAgentDashboard = () => {
     socket.on('lead_assigned_to_you', (data) => {
       // Only act if the socket message is for this agent
       if (data.agentId === socket.auth?.token) return; // id check happens server-side
-      toast.success(`Lead assigned to you: ${data.leadName || data.mobile || 'new lead'}`, { icon: '??' });
+      toast.success(`Lead assigned to you: ${data.leadName || data.mobile || 'new lead'}`, { icon: '📋' });
       fetchMyLeads(true);
     });
     return () => socket.disconnect();
@@ -107,7 +107,7 @@ const DomAgentDashboard = () => {
     try {
       await api.patch('/domestic-api/auth/status', { agentStatus: newStatus });
       setAgentStatus(newStatus);
-      const labels = { available: 'Available ?', break: 'On Break ?', unavailable: 'Unavailable ??' };
+      const labels = { available: 'Available ✅', break: 'On Break ☕', unavailable: 'Unavailable 🔴' };
       toast.success(`Status set to: ${labels[newStatus]}`);
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to update status.');
@@ -359,8 +359,8 @@ const DomAgentDashboard = () => {
                           </td>
                           <td className="px-3 py-3.5">
                             {lead.isManual
-                              ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-gray-100 text-gray-600 border border-gray-200">?? Manual</span>
-                              : <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-teal-100 text-teal-700 border border-teal-200">?? Website</span>
+                              ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-gray-100 text-gray-600 border border-gray-200">✍️ Manual</span>
+                              : <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-teal-100 text-teal-700 border border-teal-200">🌐 Website</span>
                             }
                           </td>
                           <td className="px-3 py-3.5">
@@ -422,7 +422,7 @@ const DomAgentDashboard = () => {
                   <div className="flex items-center gap-2">
                     <h2 className="font-bold text-gray-800 text-base">Assigned Leads</h2>
                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-violet-100 text-violet-700 border border-violet-200">
-                      ?? Excel Import
+                      📊 Excel Import
                     </span>
                   </div>
                   <p className="text-xs text-gray-400 mt-0.5">Click any row to open the full work form and record your call outcome</p>
@@ -556,8 +556,8 @@ const DomAgentDashboard = () => {
             wrong_number:  'bg-gray-100 text-gray-600 border-gray-200',
           };
           const outcomeLabels = {
-            callback:      '?? Callback',
-            not_reachable: '?? Not Reachable',
+            callback:      '📞 Callback',
+            not_reachable: '📵 Not Reachable',
             wrong_number:  '? Wrong Number',
           };
           const callbackD = parseDate(f.callbackDate);
@@ -656,16 +656,16 @@ const DomAgentDashboard = () => {
               <div className="bg-white rounded-2xl border border-gray-100 shadow-sm flex flex-col items-center justify-center py-20 gap-4">
                 <div className="p-5 bg-emerald-100 rounded-3xl"><CheckCircle2 className="h-12 w-12 text-emerald-500" /></div>
                 <div className="text-center">
-                  <p className="font-bold text-gray-700 text-lg">All clear! ??</p>
+                  <p className="font-bold text-gray-700 text-lg">All clear! 🎉</p>
                   <p className="text-gray-400 text-sm mt-1">No pending callbacks or unreached leads.</p>
                 </div>
               </div>
             ) : (
               <div className="space-y-6">
-                <Section title="Overdue Callbacks" color="bg-red-100 text-red-800"   icon="??" items={overdue} />
-                <Section title="Call Today"         color="bg-amber-100 text-amber-800" icon="??" items={todayList} />
-                <Section title="Upcoming"           color="bg-emerald-100 text-emerald-800" icon="??" items={upcoming} />
-                <Section title="Not Scheduled"      color="bg-gray-100 text-gray-700"  icon="??" items={noDate} />
+                <Section title="Overdue Callbacks" color="bg-red-100 text-red-800"   icon="🔴" items={overdue} />
+                <Section title="Call Today"         color="bg-amber-100 text-amber-800" icon="🟡" items={todayList} />
+                <Section title="Upcoming"           color="bg-emerald-100 text-emerald-800" icon="🟢" items={upcoming} />
+                <Section title="Not Scheduled"      color="bg-gray-100 text-gray-700"  icon="📋" items={noDate} />
               </div>
             )}
           </div>
