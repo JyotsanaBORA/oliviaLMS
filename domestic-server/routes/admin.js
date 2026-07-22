@@ -400,4 +400,60 @@ router.get('/reports', authorize('dom_superadmin'), async (req, res) => {
   }
 });
 
+// ── DELETE routes (superadmin only) ─────────────────────────────────────
+
+// DELETE /domestic-api/admin/users/:id — permanently delete a user
+router.delete('/users/:id', authorize('dom_superadmin'), async (req, res) => {
+  try {
+    if (req.params.id === req.user._id.toString()) {
+      return res.status(400).json({ success: false, message: 'You cannot delete your own account.' });
+    }
+    const user = await DomUser.findByIdAndDelete(req.params.id);
+    if (!user) return res.status(404).json({ success: false, message: 'User not found.' });
+    return res.status(200).json({ success: true, message: `User "${user.name}" deleted.` });
+  } catch (err) {
+    console.error('[Admin] Delete user error:', err.message);
+    return res.status(500).json({ success: false, message: 'Failed to delete user.' });
+  }
+});
+
+// DELETE /domestic-api/admin/leads/:id — delete a single worked lead (DomLead)
+router.delete('/leads/:id', authorize('dom_superadmin'), async (req, res) => {
+  try {
+    const lead = await DomLead.findByIdAndDelete(req.params.id);
+    if (!lead) return res.status(404).json({ success: false, message: 'Lead not found.' });
+    return res.status(200).json({ success: true, message: `Lead ${lead.leadRef || lead._id} deleted.` });
+  } catch (err) {
+    console.error('[Admin] Delete lead error:', err.message);
+    return res.status(500).json({ success: false, message: 'Failed to delete lead.' });
+  }
+});
+
+// DELETE /domestic-api/admin/import-batch/:batchId — delete entire import batch + all its leads
+router.delete('/import-batch/:batchId', authorize('dom_superadmin'), async (req, res) => {
+  try {
+    const result = await DomImportedLead.deleteMany({ importBatchId: req.params.batchId });
+    return res.status(200).json({
+      success: true,
+      deleted: result.deletedCount,
+      message: `Deleted ${result.deletedCount} leads from batch.`,
+    });
+  } catch (err) {
+    console.error('[Admin] Delete batch error:', err.message);
+    return res.status(500).json({ success: false, message: 'Failed to delete batch.' });
+  }
+});
+
+// DELETE /domestic-api/admin/imported-lead/:id — delete a single imported lead
+router.delete('/imported-lead/:id', authorize('dom_superadmin'), async (req, res) => {
+  try {
+    const lead = await DomImportedLead.findByIdAndDelete(req.params.id);
+    if (!lead) return res.status(404).json({ success: false, message: 'Lead not found.' });
+    return res.status(200).json({ success: true, message: 'Imported lead deleted.' });
+  } catch (err) {
+    console.error('[Admin] Delete imported lead error:', err.message);
+    return res.status(500).json({ success: false, message: 'Failed to delete lead.' });
+  }
+});
+
 module.exports = router;

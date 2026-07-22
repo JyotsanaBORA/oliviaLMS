@@ -1,12 +1,11 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { io } from 'socket.io-client';
 import {
-  LogOut, Bell, User, RefreshCw, FileText, CheckCircle,
+  LogOut, RefreshCw, FileText, CheckCircle,
   Clock, PlusCircle, Wifi, WifiOff, ChevronRight, Inbox, Database,
   Coffee, CheckCircle2, XCircle, Phone, AlertCircle, Calendar,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import NotificationPanel       from '../components/NotificationPanel';
 import LeadFormModal           from '../components/LeadFormModal';
 import ImportedLeadDetailModal from '../components/ImportedLeadDetailModal';
 import api   from '../utils/axios';
@@ -28,16 +27,13 @@ const DomAgentDashboard = () => {
   const [myLeads,   setMyLeads]   = useState([]);
   const [loading,   setLoading]   = useState(true);
   const [refreshing,setRefreshing]= useState(false);
-  const [tab, setTab] = useState('notifications');
+  const [tab, setTab] = useState('my_leads');
   const [modalOpen,       setModalOpen]       = useState(false);
   const [selectedWLead,   setSelectedWLead]   = useState(null);
   const [selectedDomLead, setSelectedDomLead] = useState(null);
-  const [notifCount, setNotifCount] = useState(0);
 
   const [assignedLeads,        setAssignedLeads]        = useState([]);
   const [assignedLeadsLoading, setAssignedLeadsLoading] = useState(false);
-  const [selectedImportedLead, setSelectedImportedLead] = useState(null);
-  const [importedLeadDomLead,  setImportedLeadDomLead]  = useState(null);
   const [importedModalOpen,    setImportedModalOpen]    = useState(false);
   const [detailModalOpen,      setDetailModalOpen]      = useState(false); // shows all imported data first
 
@@ -61,7 +57,6 @@ const DomAgentDashboard = () => {
     socketRef.current = socket;
     socket.on('connect',    () => { setConnected(true); socket.emit('join_room', user.role); });
     socket.on('disconnect', () => setConnected(false));
-    socket.on('new_website_lead', () => setNotifCount((p) => p + 1));
     socket.on('lead_assigned_to_you', (data) => {
       // Only act if the socket message is for this agent
       if (data.agentId === socket.auth?.token) return; // id check happens server-side
@@ -138,29 +133,12 @@ const DomAgentDashboard = () => {
     setImportedModalOpen(true);
   }, []);
 
-  // Fetch initial notification count from dedicated count field � avoids double-fetching full list
-  const fetchNotifCount = useCallback(async () => {
-    try {
-      const res = await api.get('/domestic-api/notifications?countOnly=1');
-      setNotifCount(res.data?.count || 0);
-    } catch {}
-  }, []);
-
-  useEffect(() => { fetchMyLeads(); fetchNotifCount(); fetchMyStatus(); }, [fetchMyLeads, fetchNotifCount, fetchMyStatus]);
+  useEffect(() => { fetchMyLeads(); fetchMyStatus(); }, [fetchMyLeads, fetchMyStatus]);
 
   useEffect(() => {
     if (tab === 'assigned_leads') fetchAssignedLeads();
     if (tab === 'followups')      fetchFollowups();
   }, [tab, fetchAssignedLeads]);
-
-  const handleLeadLoaded = useCallback((newWebsiteLead) => {
-    fetchMyLeads(true);
-    setNotifCount((p) => Math.max(0, p - 1));
-    setTab('my_leads');
-    setSelectedWLead(newWebsiteLead);
-    setSelectedDomLead(null);
-    setModalOpen(true);
-  }, [fetchMyLeads]);
 
   const handleOpenLead = useCallback(async (lead) => {
     const domLeadId = lead.domLead?._id || lead.domLead;
@@ -248,14 +226,13 @@ const DomAgentDashboard = () => {
 
           <p className="text-gray-400 text-[9px] font-extrabold uppercase tracking-[0.14em] px-2 mb-1.5">LEADS</p>
           {[
-            { key: 'notifications',  Icon: Bell,     label: 'New Leads',  sub: 'Incoming enquiries', badge: notifCount || null },
-            { key: 'my_leads',       Icon: FileText, label: 'My Leads',   sub: 'Website & manual'   },
+            { key: 'my_leads',       Icon: FileText, label: 'My Leads',   sub: 'Assigned by admin'  },
             { key: 'assigned_leads', Icon: Database, label: 'Assigned',   sub: 'Pool leads'         },
             { key: 'followups',      Icon: Phone,    label: 'Follow-ups', sub: 'Callbacks & retry',  badge: followups.length || null },
           ].map(({ key, Icon, label, sub, badge }) => {
             const isActive = tab === key;
             return (
-              <button key={key} onClick={() => { setTab(key); if (key === 'notifications') fetchNotifCount(); }}
+              <button key={key} onClick={() => { setTab(key); }}
                 className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg transition-all text-left relative group mb-0.5 ${
                   isActive ? 'bg-[#e8f5ed] text-[#065F36]' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-800'
                 }`}>
@@ -304,25 +281,6 @@ const DomAgentDashboard = () => {
       <div className="flex-1 overflow-y-auto min-w-0">
       <main className="px-5 py-5 space-y-5">
 
-        {/* New Leads Tab */}
-        {tab === 'notifications' && (
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100">
-            <div className="px-6 py-5 border-b border-gray-100">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 bg-gradient-to-br from-[#065F36] to-[#00874A] rounded-xl shadow-sm"><Bell className="h-5 w-5 text-white" />
-                </div>
-                <div>
-                  <h2 className="font-bold text-gray-800 text-base">Incoming Website Leads</h2>
-                  <p className="text-xs text-gray-400 mt-0.5">Click <span className="font-semibold text-[#065F36]">Load</span> to claim a lead and start working it</p>
-                </div>
-              </div>
-            </div>
-            <div className="p-4">
-              <NotificationPanel socket={socketRef.current} onLeadLoaded={handleLeadLoaded} />
-            </div>
-          </div>
-        )}
-
         {/* My Leads Tab */}
         {tab === 'my_leads' && (
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100">
@@ -363,7 +321,7 @@ const DomAgentDashboard = () => {
               <div className="flex flex-col items-center justify-center py-20 text-gray-400">
                 <Inbox className="h-14 w-14 text-gray-200 mb-4" />
                 <p className="font-semibold text-gray-500 text-base">No leads yet</p>
-                <p className="text-sm mt-1 text-gray-400">Go to <strong className="text-[#065F36]">New Leads</strong> to claim a website lead, or add a manual one.</p>
+                <p className="text-sm mt-1 text-gray-400">Your admin will assign website leads to you. Use <strong className="text-[#065F36]">Add Manual Lead</strong> to enter a lead directly.</p>
               </div>
             ) : (
               <div className="overflow-x-auto">

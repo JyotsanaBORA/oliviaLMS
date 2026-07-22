@@ -76,7 +76,7 @@ router.get('/product-types', protect, authorize('dom_admin', 'dom_superadmin'), 
 // - Sets loadedBy, status = loaded
 // - Deletes ALL notifications for this lead (removes popup for all agents)
 // - Emits socket `lead_loaded` to all agents
-router.post('/:id/load', protect, authorize('domagent', 'dom_admin', 'dom_superadmin'), async (req, res) => {
+router.post('/:id/load', protect, authorize('dom_admin', 'dom_superadmin'), async (req, res) => {
   try {
     // Atomic update — only update if status is still 'new'
     const lead = await DomWebsiteLead.findOneAndUpdate(

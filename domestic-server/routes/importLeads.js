@@ -38,66 +38,68 @@ function buildHeaderMap(headerRow) {
 
 /** Extract lead fields from a single row using the header map */
 function mapRow(row, hm) {
+  // Normalize keys before lookup so mixed-case or typo keys in the code never fail
   const get = (...keys) => {
     for (const k of keys) {
-      const idx = hm[k];
+      const idx = hm[norm(k)]; // always normalize the lookup key
       if (idx !== undefined && row[idx] !== undefined && row[idx] !== null && row[idx] !== '') {
         return String(row[idx]).trim();
       }
     }
     return '';
   };
+
   return {
-    // Core identifiers
-    name:   get('customername', 'name', 'fullname', 'customer'),
-    mobile: get('mobilenumber', 'mobile', 'mobileno', 'phone', 'phoneno', 'contact'),
-    email:  get('email', 'emailid', 'emailaddress', 'emai', 'mail'),
+    // ── Core identifiers ──────────────────────────────────────────────────
+    name:   get('customer name','customername','name','fullname','customer','client name','clientname','borrower name','borrowername'),
+    mobile: get('mobile number','mobilenumber','mobile','mobile no','mobileno','phone number','phonenumber','phone','phone no','phoneno','contact number','contactnumber','contact','mob no','mobno','mob'),
+    email:  get('e mail','email','email id','emailid','email address','emailaddress','e-mail','emai','mail'),
 
-    // Customer profile
-    dateOfBirth:               get('dateofbirth', 'dob', 'birthdate'),
-    age:                       get('age'),
-    customerAadharNo:          get('customeraadharno', 'aadharno', 'aadharnumber', 'aadhar', 'adharnumber'),
-    panNumber:                 get('pannumber', 'pan', 'panno'),
-    customerPreferredLanguage: get('customerpreferredlanguage', 'preferredlanguage', 'language'),
+    // ── Customer profile ──────────────────────────────────────────────────
+    dateOfBirth:              get('date of birth','dateofbirth','dob','birth date','birthdate','d.o.b','dob date'),
+    age:                      get('age','customer age','customerage'),
+    customerAadharNo:         get('customer aadhar no','customeraadharno','aadhar no','aadharno','aadhar number','aadharnumber','aadhar','adhar no','adharno','uid','uid number'),
+    panNumber:                get('pan number','pannumber','pan no','panno','pan','pan card no','pancardno'),
+    customerPreferredLanguage:get('customer preferred language','customerpreferredlanguage','preferred language','preferredlanguage','language'),
 
-    // Address
-    residenceAddress:     get('residenceaddress', 'address', 'homeaddress'),
-    residencePhoneNumber: get('residencephonenumber', 'residencephone', 'homephone'),
-    officeAddress:        get('officeaddress'),
-    officePhoneNumber:    get('officephonenumber', 'officephone'),
-    zipCode:              get('zipcode', 'zip', 'pincode'),
-    city:                 get('city', 'location'),
-    state:                get('state'),
+    // ── Address ───────────────────────────────────────────────────────────
+    residenceAddress:    get('residence address','residenceaddress','res address','resaddress','home address','homeaddress','resi address','resiaddress','address','resi. address','res. address'),
+    residencePhoneNumber:get('residence phone number','residencephonenumber','res phone number','resphone','residence phone','home phone','homephone','resi phone','resiphone','res ph no'),
+    officeAddress:       get('office address','officeaddress','off address','offaddress','work address','workaddress','office add'),
+    officePhoneNumber:   get('office phone number','officephonenumber','off phone number','officephone','office phone','work phone','workphone','off ph no'),
+    zipCode:             get('zip code','zipcode','zip','pin code','pincode','pin','postal code','postalcode'),
+    city:                get('city','location','district'),
+    state:               get('state'),
 
-    // Loan / financial
-    vintage:                get('vintage'),
-    loanType:               get('loantype', 'loan'),
-    productType:            get('producttype', 'product', 'service'),
-    amountFinanced:         get('amountfinanced', 'financed'),
-    totalOutstandingAmount: get('totaloutstandingamount', 'totaloutstanding', 'outstandingamount'),
-    principalOutstanding:   get('principaloutstanding', 'principal'),
-    noOfInstallmentOverdue: get('noofinstallmentoverdue', 'installmentoverdue', 'overdueinstallments'),
-    expiryStatus:           get('expirystatus'),
-    expiryDate:             get('expirydate'),
-    disbursalAmount:        get('disbursalamount', 'disbursal'),
-    sanctionDate:           get('sanctiondate'),
-    countOfLiveLoans:       get('countofliveLOans', 'countliveloans', 'liveloans', 'countofliveloans'),
-    bankName:               get('bankname', 'bank'),
-    loanAmount:             get('loanamount', 'loanamountrequired', 'amount'),
+    // ── Loan / financial ──────────────────────────────────────────────────
+    vintage:                get('vintage','loan vintage','loanvintage','product vintage'),
+    loanType:               get('loan type','loantype','loan','type of loan','typeofloan','product','product name','productname'),
+    productType:            get('product type','producttype','product name','productname','service type','servicetype'),
+    amountFinanced:         get('amount financed','amountfinanced','financed amount','financedamount','loan amt financed','financed','original amount','originalamount'),
+    totalOutstandingAmount: get('total outstanding amount','totaloutstandingamount','total outstanding','totaloutstanding','outstanding amount','outstandingamount','total os','os amount','osamount','outstanding'),
+    principalOutstanding:   get('principal outstanding','principaloutstanding','principal os','principalos','principal amount outstanding','principal balance'),
+    noOfInstallmentOverdue: get('no of installment overdue','noofinstallmentoverdue','no. of installment overdue','installment overdue','installmentoverdue','overdue installments','overdueinstallments','emi overdue','emioverdue','dpd','no of emi overdue','no. of emi overdue','overdue emi'),
+    expiryStatus:           get('expiry status','expirystatus','expiry','loan expiry status','product expiry status'),
+    expiryDate:             get('expiry date','expirydate','expiry dt','expiry dt.','loan expiry date'),
+    disbursalAmount:        get('disbursal amount','disbursalamount','disbursed amount','disbursedamount','disbursal amt','disbursed','loan disbursed','loan disbursal'),
+    sanctionDate:           get('sanction date','sanctiondate','sanctioned date','sanctioneddate','loan sanction date','date of sanction','sanction dt'),
+    countOfLiveLoans:       get('count of live loans','countofliveloans','live loans count','liveloanscount','live loan count','live loans','liveloans','no of live loans','active loans','activeloans'),
+    bankName:               get('bank name','bankname','bank','lender name','lendername','financier','financier name'),
+    loanAmount:             get('loan amount','loanamount','loan amt','loanamt','amount','sanctioned amount','sanctionedamount','loan amount required'),
 
-    // Employment
-    employment:       get('employementtype', 'employmenttype', 'employment', 'jobtype'),
-    firmEmployeeName: get('firmemployeename', 'firmname', 'employeename', 'firm'),
-    monthlyIncome:    get('monthlyincome', 'income', 'salary', 'monthlysalary'),
+    // ── Employment ────────────────────────────────────────────────────────
+    employment:       get('employement type','employementtype','employment type','employmenttype','employment','emp type','emptype','job type','jobtype','occupation','occupation type'),
+    firmEmployeeName: get('firm/ employee name','firmemployeename','firm employee name','firm name','firmname','employer name','employername','firm','employee name','employeename','company name','companyname','employer'),
+    monthlyIncome:    get('monthly income','monthlyincome','income','salary','monthly salary','monthlysalary','net income','netincome','monthly salary income','income monthly'),
 
-    // Asset / CIBIL
-    cibilScore:          get('cibilscore', 'cibil', 'creditscore'),
-    cibilScoreDate:      get('cibilscoredate', 'cibildate'),
-    assetDescription:    get('assetdescription', 'asset'),
-    make:                get('make'),
-    propertyValueLatest: get('propertyvaluelatest', 'propertyvalue'),
+    // ── Asset / CIBIL ─────────────────────────────────────────────────────
+    cibilScore:          get('cibil score','cibilscore','cibil','credit score','creditscore','cibil score value','bureau score','bureauscore'),
+    cibilScoreDate:      get('cibil score date','cibilscoredate','cibil date','cibildate','credit score date','bureau date','bureaudate'),
+    assetDescription:    get('asset description','assetdescription','asset','vehicle description','vehicledescription','asset desc','property description','propertydescription'),
+    make:                get('make','vehicle make','vehiclemake','asset make','car make','carmake'),
+    propertyValueLatest: get('property value (latest)','propertyvaluelatest','property value latest','property value','propertyvalue','latest property value','current property value'),
 
-    remarks: get('remarks', 'notes', 'comment', 'comments'),
+    remarks: get('remarks','remark','notes','note','comment','comments','observation','observations'),
   };
 }
 
@@ -139,22 +141,64 @@ router.post(
 
       const hm = buildHeaderMap(rows[0]);
 
-      if (hm['customername'] === undefined && hm['name'] === undefined &&
-          hm['mobilenumber'] === undefined && hm['mobile'] === undefined) {
-        return res.status(400).json({
-          success: false,
-          message: `File must have at least a "Customer Name" or "Mobile Number" column. Found: ${rows[0].join(', ')}`,
-        });
+      // Show which of the 32 mapped fields were found vs missing (for info only — never blocks upload)
+      const MAPPED_FIELDS = {
+        'Customer Name':            ['customername','name','fullname','customer'],
+        'Mobile Number':            ['mobilenumber','mobile','mobileno','phone','phoneno'],
+        'Email':                    ['email','emailid','emailaddress'],
+        'Date of Birth':            ['dateofbirth','dob'],
+        'Age':                      ['age'],
+        'Aadhar No':                ['customeraadharno','aadharno'],
+        'PAN':                      ['pannumber','pan'],
+        'Language':                 ['customerpreferredlanguage','language'],
+        'Residence Address':        ['residenceaddress','address'],
+        'Residence Phone':          ['residencephonenumber','residencephone'],
+        'Office Address':           ['officeaddress'],
+        'Office Phone':             ['officephonenumber','officephone'],
+        'Zip Code':                 ['zipcode','zip','pincode'],
+        'City':                     ['city'],
+        'State':                    ['state'],
+        'Vintage':                  ['vintage'],
+        'Loan Type':                ['loantype','loan'],
+        'Product Type':             ['producttype','product'],
+        'Amount Financed':          ['amountfinanced'],
+        'Total Outstanding':        ['totaloutstandingamount','totaloutstanding'],
+        'Principal Outstanding':    ['principaloutstanding','principal'],
+        'EMI Overdue':              ['noofinstallmentoverdue','installmentoverdue'],
+        'Expiry Status':            ['expirystatus'],
+        'Expiry Date':              ['expirydate'],
+        'Disbursal Amount':         ['disbursalamount'],
+        'Sanction Date':            ['sanctiondate'],
+        'Live Loans Count':         ['countofliveloans','liveloans'],
+        'Bank Name':                ['bankname','bank'],
+        'Employment Type':          ['employementtype','employmenttype','employment'],
+        'Firm / Employee Name':     ['firmemployeename','firmname'],
+        'CIBIL Score':              ['cibilscore','cibil'],
+        'Remarks':                  ['remarks','notes'],
+      };
+
+      const foundFields   = [];
+      const missingFields = [];
+      for (const [label, keys] of Object.entries(MAPPED_FIELDS)) {
+        // Use norm() when checking hm so it matches correctly
+        const found = keys.some(k => hm[norm(k)] !== undefined);
+        if (found) foundFields.push(label);
+        else missingFields.push(label);
       }
 
       const batchId = crypto.randomUUID();
       const leads   = [];
+      let skippedRows = 0;
 
       for (let i = 1; i < rows.length; i++) {
         const row = rows[i];
-        if (!row || row.every((c) => c === '' || c === null || c === undefined)) continue;
+        // Skip rows where ALL cells are completely empty
+        if (!row || row.every((c) => c === '' || c === null || c === undefined)) {
+          skippedRows++;
+          continue;
+        }
         const fields = mapRow(row, hm);
-        if (!fields.name && !fields.mobile) continue;
+        // Accept the row even if name/mobile are blank — just store whatever was found
         leads.push({
           ...fields,
           importBatchId:   batchId,
@@ -165,17 +209,23 @@ router.post(
       }
 
       if (leads.length === 0) {
-        return res.status(400).json({ success: false, message: 'No valid data rows found in file.' });
+        return res.status(400).json({ success: false, message: 'No data rows found in file (all rows were empty).' });
       }
 
       await DomImportedLead.insertMany(leads, { ordered: false });
 
       return res.status(201).json({
-        success:   true,
+        success:        true,
         batchId,
         batchName,
-        count:     leads.length,
-        message:   `Successfully imported ${leads.length} leads.`,
+        count:          leads.length,
+        skippedRows,
+        foundFields,
+        missingFields,
+        message: `Successfully imported ${leads.length} lead${leads.length !== 1 ? 's' : ''}${skippedRows > 0 ? ` (${skippedRows} empty rows skipped)` : ''}.`,
+        ...(missingFields.length > 0 && {
+          warning: `${missingFields.length} field${missingFields.length !== 1 ? 's' : ''} not found in Excel (will be blank): ${missingFields.join(', ')}`,
+        }),
       });
     } catch (err) {
       console.error('[ImportLeads] Upload error:', err.message);

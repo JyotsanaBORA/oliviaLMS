@@ -68,7 +68,7 @@ const TABS = ['overview', 'website_leads', 'dom_leads', 'agents', 'lead_pool'];
 const TAB_META = {
   overview:      { label: 'Dashboard',           sub: 'Stats & Pipeline',           Icon: BarChart2, color: 'indigo' },
   website_leads: { label: 'Meta Allocation',      sub: 'Leads from website',         Icon: Globe,     color: 'blue'   },
-  dom_leads:     { label: 'Worked Allocation',    sub: 'Agent submitted leads',      Icon: Briefcase, color: 'purple' },
+  dom_leads:     { label: 'Disposition Allocation',    sub: 'Agent submitted leads',      Icon: Briefcase, color: 'purple' },
   agents:        { label: 'Agent Allocation',     sub: 'Rankings & activity',        Icon: Users,     color: 'teal'   },
   lead_pool:     { label: 'Data Pool',            sub: 'Import & assign to agents',  Icon: Database,  color: 'green'  },
 };
@@ -515,7 +515,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
           <p className="text-gray-400 text-[9px] font-extrabold uppercase tracking-[0.14em] px-2 mt-3 mb-1.5">ALLOCATIONS</p>
           {[
             { key: 'website_leads', Icon: Globe,     label: 'Meta Allocation',  sub: 'Website + meta leads'   },
-            { key: 'dom_leads',     Icon: Briefcase, label: 'Worked Allocation', sub: 'Agent submitted leads'  },
+            { key: 'dom_leads',     Icon: Briefcase, label: 'Disposition Allocation', sub: 'Agent submitted leads'  },
             { key: 'agents',        Icon: Users,     label: 'Agent Allocation',  sub: 'Performance & tracking' },
             { key: 'lead_pool',     Icon: Database,  label: 'Data Pool',         sub: 'Import & assign leads'  },
           ].map(({ key, Icon, label, sub }) => {
@@ -1200,7 +1200,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                     {[
                       { label: 'Leads Loaded',  val: selectedAgent.leadsLoaded,     color: 'text-blue-600',    bg: 'bg-blue-50' },
                       { label: 'Completed',      val: selectedAgent.leadsCompleted,  color: 'text-emerald-600', bg: 'bg-emerald-50' },
-                      { label: 'Worked Cases',   val: selectedAgent.domLeadsCreated, color: 'text-[#065F36]',   bg: 'bg-[#E8FFF5]' },
+                      { label: 'Disposition Allocation', val: selectedAgent.domLeadsCreated, color: 'text-[#065F36]',   bg: 'bg-[#E8FFF5]' },
                       { label: 'Pool Assigned',  val: agentActivity.poolLeads.length, color: 'text-violet-600', bg: 'bg-violet-50' },
                     ].map(s => (
                       <div key={s.label} className={`${s.bg} rounded-xl p-3 text-center`}>
@@ -1219,12 +1219,12 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                   </div>
                 ) : (
                   <>
-                    {/* Recent Worked Cases */}
+                    {/* Recent Disposition Allocation */}
                     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
                       <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-3">
                         <div className="p-2 bg-[#E8FFF5] rounded-xl"><Briefcase className="h-4 w-4 text-[#065F36]" /></div>
                         <div>
-                          <h3 className="font-bold text-gray-800 text-sm">Recent Worked Cases</h3>
+                          <h3 className="font-bold text-gray-800 text-sm">Recent Disposition Allocation</h3>
                           <p className="text-xs text-gray-400">Leads this agent has filled the work form for</p>
                         </div>
                       </div>

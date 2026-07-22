@@ -57,6 +57,7 @@ const DomSuperAdminDashboard = () => {
   const [usersLoading,    setUsersLoading]    = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editUser,        setEditUser]        = useState(null);
+  const [deleteConfirm,   setDeleteConfirm]   = useState(null); // { type, id, name } — universal delete confirm
 
   const [apiKey,         setApiKey]        = useState(null);
   const [apiKeyVisible,  setApiKeyVisible]  = useState(false);
@@ -68,6 +69,7 @@ const DomSuperAdminDashboard = () => {
   const [importFile,      setImportFile]      = useState(null);
   const [batchName,       setBatchName]       = useState('');
   const [uploading,       setUploading]       = useState(false);
+  const [lastImportResult, setLastImportResult] = useState(null); // { count, skippedRows, foundFields, missingFields }
   const [allAdmins,       setAllAdmins]       = useState([]);
   const [shareModal,      setShareModal]      = useState(null);
   const [selectedAdmins,  setSelectedAdmins]  = useState([]);
@@ -312,6 +314,17 @@ const DomSuperAdminDashboard = () => {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       toast.success(res.data.message);
+      // Show warning if some mapped fields were not found in the Excel
+      if (res.data.warning) {
+        toast(res.data.warning, { icon: '⚠️', duration: 6000 });
+      }
+      setLastImportResult({
+        count:         res.data.count,
+        skippedRows:   res.data.skippedRows || 0,
+        foundFields:   res.data.foundFields || [],
+        missingFields: res.data.missingFields || [],
+        batchName:     res.data.batchName,
+      });
       setImportFile(null);
       setBatchName('');
       fetchBatches();
@@ -358,6 +371,23 @@ const DomSuperAdminDashboard = () => {
     } catch { toast.error('Failed to update user.'); }
   };
 
+  const handleDelete = async () => {
+    if (!deleteConfirm) return;
+    const { type, id, batchId } = deleteConfirm;
+    try {
+      if (type === 'user')           await api.delete(`/domestic-api/admin/users/${id}`);
+      else if (type === 'lead')      await api.delete(`/domestic-api/admin/leads/${id}`);
+      else if (type === 'batch')     await api.delete(`/domestic-api/admin/import-batch/${batchId}`);
+      else if (type === 'import_lead') await api.delete(`/domestic-api/admin/imported-lead/${id}`);
+      toast.success(deleteConfirm.successMsg || 'Deleted successfully.');
+      setDeleteConfirm(null);
+      if (type === 'user')              fetchUsers();
+      else if (type === 'batch' || type === 'import_lead') fetchBatches();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Delete failed.');
+    }
+  };
+
   /* ── Main: renders Admin Dashboard + super-admin header + tab nav ── */
   /* ── Sidebar nav config ── */
   const SIDEBAR_GROUPS = [
@@ -374,7 +404,7 @@ const DomSuperAdminDashboard = () => {
       items: [
         { key: 'tracker',          Icon: Activity,  label: 'Track Agents',      sub: 'Live monitoring'         },
         { key: 'users',            Icon: Users,     label: 'No. of Agents',     sub: 'Agents & admins'        },
-        { key: 'agent_performance',Icon: BarChart2, label: 'Agent Performance', sub: 'Rankings & stats'        },
+        { key: 'agent_performance',Icon: BarChart2, label: 'Agent Allocation', sub: 'Rankings & stats'        },
       ],
     },
     {
@@ -547,8 +577,8 @@ const DomSuperAdminDashboard = () => {
         ['Range', `${reportData.range?.from?.split('T')[0] || ''} to ${reportData.range?.to?.split('T')[0] || ''}`],
         [],
         ['Metric', 'Value'],
-        ['Website Leads', s?.websiteLeads?.total],
-        ['Worked Cases', s?.workedLeads?.total],
+        ['Meta Allocation (Website)', s?.websiteLeads?.total],
+        ['Disposition Allocation', s?.workedLeads?.total],
         ['Completed', s?.workedLeads?.completed],
         ['Pending', s?.workedLeads?.pending],
         ['Rejected', s?.workedLeads?.rejected],
@@ -558,7 +588,7 @@ const DomSuperAdminDashboard = () => {
         ['Conversion Rate', `${s?.conversionRate}%`],
         ['Interest Rate', `${s?.interestRate}%`],
         [],
-        ['Date', 'Worked Cases', 'Completed'],
+        ['Date', 'Disposition Allocation', 'Completed'],
         ...trend.map(d => [d.date, d.total, d.completed]),
         [],
         ['Agent', 'Cases', 'Completed', 'Interested'],
@@ -667,12 +697,12 @@ const DomSuperAdminDashboard = () => {
               {/* ── KPI Cards ── */}
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
                 {[
-                  { label: 'Website Leads',   val: s?.websiteLeads?.total,    icon: Globe,       bg: 'from-teal-500 to-cyan-600',      sub: `${s?.websiteLeads?.new} new` },
-                  { label: 'Worked Cases',     val: s?.workedLeads?.total,     icon: Briefcase,   bg: 'from-[#065F36] to-[#00A651]',   sub: `${s?.workedLeads?.pending} pending` },
-                  { label: 'Completed',        val: s?.workedLeads?.completed, icon: CheckCircle2,bg: 'from-emerald-500 to-green-600',  sub: `${s?.conversionRate}% conv.` },
-                  { label: 'Interested',       val: s?.workedLeads?.interested,icon: Zap,         bg: 'from-amber-400 to-orange-500',   sub: `${s?.interestRate}% interest` },
-                  { label: 'Callbacks',        val: s?.workedLeads?.callback,  icon: Activity,    bg: 'from-orange-400 to-amber-500',   sub: 'follow-ups' },
-                  { label: 'Pool Imported',    val: s?.poolLeads?.total,       icon: Database,    bg: 'from-violet-500 to-purple-600',  sub: 'data pool' },
+                  { label: 'Meta Allocation',  val: s?.websiteLeads?.total,    icon: Globe,       bg: 'from-teal-500 to-cyan-600',      sub: `${s?.websiteLeads?.new} new` },
+                  { label: 'Disposition Allocation', val: s?.workedLeads?.total,     icon: Briefcase,   bg: 'from-[#065F36] to-[#00A651]',   sub: `${s?.workedLeads?.pending} pending` },
+                  { label: 'Completed',         val: s?.workedLeads?.completed, icon: CheckCircle2,bg: 'from-emerald-500 to-green-600',  sub: `${s?.conversionRate}% conv.` },
+                  { label: 'Interested',        val: s?.workedLeads?.interested,icon: Zap,         bg: 'from-amber-400 to-orange-500',   sub: `${s?.interestRate}% interest` },
+                  { label: 'Callbacks',         val: s?.workedLeads?.callback,  icon: Activity,    bg: 'from-orange-400 to-amber-500',   sub: 'follow-ups' },
+                  { label: 'Pool Imported',     val: s?.poolLeads?.total,       icon: Database,    bg: 'from-violet-500 to-purple-600',  sub: 'data pool' },
                 ].map(({ label, val, icon: Icon, bg, sub }) => (
                   <div key={label} className={`relative overflow-hidden rounded-2xl p-5 bg-gradient-to-br ${bg} text-white shadow-lg`}>
                     <div className="flex items-start justify-between mb-3">
@@ -919,7 +949,7 @@ const DomSuperAdminDashboard = () => {
                     <div className="mt-4 pt-4 border-t border-gray-100">
                       <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Website Funnel</p>
                       {[
-                        { label: 'Enquiries',  val: s?.websiteLeads?.total,     color: 'bg-teal-200' },
+                    { label: 'Meta Allocation',  val: s?.websiteLeads?.total,     color: 'bg-teal-200' },
                         { label: 'Loaded',     val: s?.websiteLeads?.loaded,    color: 'bg-teal-400' },
                         { label: 'Completed',  val: s?.websiteLeads?.completed, color: 'bg-teal-600' },
                       ].map(f => (
@@ -1178,6 +1208,14 @@ const DomSuperAdminDashboard = () => {
                                 {u.isActive ? 'Deactivate' : 'Activate'}
                               </button>
                             )}
+                            {u._id !== user._id && (
+                              <button
+                                onClick={() => setDeleteConfirm({ type: 'user', id: u._id, name: u.name, successMsg: `User "${u.name}" deleted.` })}
+                                className="text-xs px-2 py-1.5 rounded-lg font-semibold border bg-gray-50 text-gray-500 hover:bg-red-50 hover:text-red-600 hover:border-red-100 border-gray-200 transition-colors"
+                                title="Delete user permanently">
+                                🗑
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -1199,6 +1237,40 @@ const DomSuperAdminDashboard = () => {
         {editUser && (
           <UserFormModal title="Edit User" user={editUser} onClose={() => setEditUser(null)}
             onSaved={() => { setEditUser(null); fetchUsers(); }} />
+        )}
+
+        {/* Universal Delete Confirmation Modal */}
+        {deleteConfirm && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+            onClick={() => setDeleteConfirm(null)}>
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden"
+              onClick={e => e.stopPropagation()}>
+              <div className="bg-gradient-to-r from-red-500 to-rose-600 px-6 py-4">
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl">🗑️</span>
+                  <h3 className="text-white font-bold text-base">Confirm Delete</h3>
+                </div>
+              </div>
+              <div className="p-6">
+                <p className="text-gray-700 text-sm mb-1 font-semibold">You are about to permanently delete:</p>
+                <p className="text-gray-500 text-sm bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 mb-4">
+                  {deleteConfirm.name}
+                  {deleteConfirm.type === 'batch' && <span className="block text-xs text-orange-600 font-semibold mt-1">⚠️ This will delete all leads in the entire batch.</span>}
+                </p>
+                <p className="text-red-600 text-xs font-semibold mb-5">This action cannot be undone.</p>
+                <div className="flex gap-3">
+                  <button onClick={() => setDeleteConfirm(null)}
+                    className="flex-1 py-2.5 text-sm border border-gray-200 rounded-xl hover:bg-gray-50 font-medium text-gray-600 transition-colors">
+                    Cancel
+                  </button>
+                  <button onClick={handleDelete}
+                    className="flex-1 py-2.5 text-sm bg-red-600 text-white rounded-xl hover:bg-red-700 font-bold transition-colors shadow-sm">
+                    Yes, Delete
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     );
@@ -1400,7 +1472,7 @@ const DomSuperAdminDashboard = () => {
                   {[
                     { label: 'Leads Loaded',  val: selectedTrackAgent.leadsLoaded,    color: 'text-blue-600',    bg: 'bg-blue-50' },
                     { label: 'Completed',      val: selectedTrackAgent.leadsCompleted, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-                    { label: 'Worked Cases',   val: selectedTrackAgent.domLeadsCreated,color: 'text-[#065F36]',   bg: 'bg-[#E8FFF5]' },
+                    { label: 'Disposition Allocation',  val: selectedTrackAgent.domLeadsCreated,color: 'text-[#065F36]',   bg: 'bg-[#E8FFF5]' },
                     { label: 'Pool Leads',     val: trackPoolLeads.length,              color: 'text-violet-600',  bg: 'bg-violet-50' },
                   ].map(s => (
                     <div key={s.label} className={`${s.bg} rounded-xl p-3 text-center`}>
@@ -1423,7 +1495,7 @@ const DomSuperAdminDashboard = () => {
                     <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-3">
                       <div className="p-2 bg-[#E8FFF5] rounded-xl"><Briefcase className="h-4 w-4 text-[#065F36]" /></div>
                       <div>
-                        <h3 className="font-bold text-gray-800 text-sm">Recent Worked Cases</h3>
+                        <h3 className="font-bold text-gray-800 text-sm">Recent Disposition Allocation</h3>
                         <p className="text-xs text-gray-400">Click any lead to see full disposition details</p>
                       </div>
                     </div>
@@ -2187,7 +2259,7 @@ const DomSuperAdminDashboard = () => {
               <div className="p-2.5 bg-[#E8FFF5] rounded-xl"><Upload className="h-5 w-5 text-[#065F36]" /></div>
               <div>
                 <h3 className="font-bold text-gray-800">Import Excel / CSV</h3>
-                <p className="text-xs text-gray-400 mt-0.5">Upload a file with columns: Name, Mobile, Email, City, Product Type, Monthly Income, Loan Amount, etc.</p>
+                <p className="text-xs text-gray-400 mt-0.5">Any Excel is accepted — 32 fields are auto-mapped. Missing columns are stored as blank, extra columns are ignored.</p>
               </div>
             </div>
             <form onSubmit={handleImportUpload} className="p-6 space-y-4">
@@ -2224,6 +2296,61 @@ const DomSuperAdminDashboard = () => {
               </button>
             </form>
           </div>
+
+          {/* Last Import Result — field mapping summary */}
+          {lastImportResult && (
+            <div className={`rounded-2xl border-2 p-5 ${lastImportResult.missingFields.length > 0 ? 'border-amber-200 bg-amber-50' : 'border-emerald-200 bg-emerald-50'}`}>
+              <div className="flex items-start justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <div className={`p-2 rounded-xl ${lastImportResult.missingFields.length > 0 ? 'bg-amber-100' : 'bg-emerald-100'}`}>
+                    <Upload className={`h-5 w-5 ${lastImportResult.missingFields.length > 0 ? 'text-amber-600' : 'text-emerald-600'}`} />
+                  </div>
+                  <div>
+                    <p className="font-bold text-gray-800 text-sm">
+                      Import Complete — {lastImportResult.count} leads imported
+                      {lastImportResult.skippedRows > 0 && <span className="text-gray-500 font-normal"> · {lastImportResult.skippedRows} empty rows skipped</span>}
+                    </p>
+                    <p className="text-xs text-gray-500">{lastImportResult.batchName}</p>
+                  </div>
+                </div>
+                <button onClick={() => setLastImportResult(null)} className="text-gray-400 hover:text-gray-600 p-1"><X className="h-4 w-4" /></button>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Found fields */}
+                <div className="bg-white rounded-xl p-4 border border-emerald-200">
+                  <p className="text-xs font-bold text-emerald-700 uppercase tracking-wide mb-2.5 flex items-center gap-1.5">
+                    <CheckCircle2 className="h-3.5 w-3.5" /> {lastImportResult.foundFields.length} Fields Found & Mapped
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {lastImportResult.foundFields.map(f => (
+                      <span key={f} className="text-xs bg-emerald-100 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full font-medium">{f}</span>
+                    ))}
+                  </div>
+                </div>
+                {/* Missing fields */}
+                <div className={`bg-white rounded-xl p-4 border ${lastImportResult.missingFields.length > 0 ? 'border-amber-200' : 'border-gray-100'}`}>
+                  <p className={`text-xs font-bold uppercase tracking-wide mb-2.5 flex items-center gap-1.5 ${lastImportResult.missingFields.length > 0 ? 'text-amber-700' : 'text-gray-400'}`}>
+                    <AlertCircle className="h-3.5 w-3.5" />
+                    {lastImportResult.missingFields.length > 0 ? `${lastImportResult.missingFields.length} Fields Not Found (stored as blank)` : 'All Fields Found!'}
+                  </p>
+                  {lastImportResult.missingFields.length > 0 ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {lastImportResult.missingFields.map(f => (
+                        <span key={f} className="text-xs bg-amber-100 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full font-medium">{f}</span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-gray-400">Every mapped column was present in the Excel.</p>
+                  )}
+                </div>
+              </div>
+              {lastImportResult.missingFields.length > 0 && (
+                <p className="text-xs text-amber-700 mt-3 bg-amber-100 rounded-xl px-3 py-2 border border-amber-200">
+                  💡 Tip: The missing fields will be blank for all {lastImportResult.count} leads. You can still assign and work these leads normally.
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Batch List */}
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
@@ -2269,11 +2396,19 @@ const DomSuperAdminDashboard = () => {
                         </p>
                       </div>
                     </div>
-                    <button
-                      onClick={() => { setShareModal({ batchId: b._id, batchName: b.batchName || b._id }); setSelectedAdmins([]); }}
-                      className="flex-shrink-0 flex items-center gap-1.5 text-sm bg-[#065F36] text-white px-4 py-2 rounded-xl hover:bg-[#054A2E] font-semibold shadow-sm ml-4 transition-all">
-                      <Share2 className="h-4 w-4" /> Share with Admin
-                    </button>
+                    <div className="flex items-center gap-2 flex-shrink-0 ml-4">
+                      <button
+                        onClick={() => { setShareModal({ batchId: b._id, batchName: b.batchName || b._id }); setSelectedAdmins([]); }}
+                        className="flex items-center gap-1.5 text-sm bg-[#065F36] text-white px-4 py-2 rounded-xl hover:bg-[#054A2E] font-semibold shadow-sm transition-all">
+                        <Share2 className="h-4 w-4" /> Share
+                      </button>
+                      <button
+                        onClick={() => setDeleteConfirm({ type: 'batch', batchId: b._id, name: b.batchName || b._id, successMsg: `Batch "${b.batchName || b._id}" and all its leads deleted.` })}
+                        className="flex items-center gap-1 text-sm px-3 py-2 rounded-xl border border-gray-200 text-gray-500 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-all"
+                        title="Delete entire batch">
+                        🗑 Delete
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
