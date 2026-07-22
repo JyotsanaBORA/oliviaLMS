@@ -366,7 +366,7 @@ const DomAgentDashboard = () => {
                           <td className="px-3 py-3.5">
                             <div className="flex items-center gap-2">
                               <div className={`w-2 h-2 rounded-full flex-shrink-0 ${isWorked ? 'bg-[#065F36]' : 'bg-red-400 animate-pulse'}`} />
-                              <p className="font-semibold text-gray-800 leading-tight">{lead.name || '�'}</p>
+                              <p className="font-semibold text-gray-800 leading-tight">{lead.name || '—'}</p>
                             </div>
                           </td>
                           <td className="px-3 py-3.5 text-gray-600 font-mono text-xs tracking-wide">{lead.mobile || '—'}</td>
@@ -437,7 +437,7 @@ const DomAgentDashboard = () => {
             {assignedLeadsLoading ? (
               <div className="flex flex-col items-center justify-center py-20 text-gray-300">
                 <span className="w-8 h-8 border-2 border-gray-200 border-t-[#065F36] rounded-full animate-spin mb-3" />
-                <span className="text-sm text-gray-400">Loading assigned leads�</span>
+                <span className="text-sm text-gray-400">Loading assigned leads…</span>
               </div>
             ) : assignedLeads.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-20 text-gray-400">
@@ -483,30 +483,30 @@ const DomAgentDashboard = () => {
                             <div className="flex items-center gap-2">
                               <div className={`w-2 h-2 rounded-full flex-shrink-0 ${isWorked ? 'bg-violet-500' : 'bg-orange-400 animate-pulse'}`} />
                               <div>
-                                <p className="font-semibold text-gray-800 leading-tight">{lead.name || '�'}</p>
+                                <p className="font-semibold text-gray-800 leading-tight">{lead.name || '—'}</p>
                                 <p className="text-xs text-gray-400">{lead.state || lead.city || ''}</p>
                               </div>
                             </div>
                           </td>
-                          <td className="px-3 py-3.5 text-gray-600 font-mono text-xs tracking-wide">{lead.mobile || '�'}</td>
+                          <td className="px-3 py-3.5 text-gray-600 font-mono text-xs tracking-wide">{lead.mobile || '—'}</td>
                           <td className="px-3 py-3.5">
                             {(lead.loanType || lead.productType)
                               ? <span className="bg-violet-100 text-violet-700 border border-violet-200 px-2 py-0.5 rounded-full text-xs font-medium capitalize">
                                   {(lead.loanType || lead.productType).replace(/_/g,' ')}
                                 </span>
-                              : <span className="text-gray-300 text-xs">�</span>}
+                              : <span className="text-gray-300 text-xs">—</span>}
                           </td>
                           <td className="px-3 py-3.5">
                             {lead.totalOutstandingAmount
                               ? <span className="text-xs font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-lg">?{lead.totalOutstandingAmount}</span>
-                              : <span className="text-gray-300 text-xs">�</span>}
+                              : <span className="text-gray-300 text-xs">—</span>}
                           </td>
                           <td className="px-3 py-3.5">
                             {overdue > 0
                               ? <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${overdue > 3 ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'}`}>
                                   {overdue} EMI
                                 </span>
-                              : <span className="text-gray-300 text-xs">�</span>}
+                              : <span className="text-gray-300 text-xs">—</span>}
                           </td>
                           <td className="px-3 py-3.5">
                             {lead.cibilScore
@@ -514,7 +514,7 @@ const DomAgentDashboard = () => {
                                   parseInt(lead.cibilScore) >= 700 ? 'text-emerald-600' :
                                   parseInt(lead.cibilScore) >= 600 ? 'text-amber-600' : 'text-red-600'
                                 }`}>{lead.cibilScore}</span>
-                              : <span className="text-gray-300 text-xs">�</span>}
+                              : <span className="text-gray-300 text-xs">—</span>}
                           </td>
                           <td className="px-3 py-3.5">
                             <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold border ${wsInfo.cls}`}>
@@ -571,7 +571,7 @@ const DomAgentDashboard = () => {
               <div className="flex items-start justify-between gap-3">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-bold text-gray-800">{f.name || '�'}</span>
+                    <span className="font-bold text-gray-800">{f.name || '—'}</span>
                     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border ${outcomeColors[f.callOutcome] || 'bg-gray-100 text-gray-500 border-gray-200'}`}>
                       {outcomeLabels[f.callOutcome] || f.callOutcome}
                     </span>
@@ -580,12 +580,12 @@ const DomAgentDashboard = () => {
                     )}
                   </div>
                   <div className="flex items-center gap-3 mt-1.5 text-sm text-gray-500 flex-wrap">
-                    <span className="font-mono font-semibold text-gray-700">{f.mobile || '�'}</span>
+                    <span className="font-mono font-semibold text-gray-700">{f.mobile || '—'}</span>
                     {f.productType && <span className="text-xs bg-[#E8FFF5] text-[#065F36] border border-[#D1FAE5] px-2 py-0.5 rounded-full capitalize">{f.productType.replace(/_/g,' ')}</span>}
                     {callbackD && (
                       <span className={`flex items-center gap-1 text-xs font-semibold ${isOverdue ? 'text-red-600' : isToday ? 'text-amber-600' : 'text-gray-500'}`}>
                         <Calendar className="h-3 w-3" />
-                        {isOverdue ? '?? Overdue � ' : isToday ? '?? Today � ' : ''}
+                        {isOverdue ? '⚠️ Overdue · ' : isToday ? '🔔 Today · ' : ''}
                         {callbackD.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
                       </span>
                     )}
@@ -632,7 +632,7 @@ const DomAgentDashboard = () => {
                   </div>
                   <div>
                     <h2 className="font-bold text-gray-800 text-base">Follow-up Queue</h2>
-                    <p className="text-xs text-gray-400">Leads waiting for your call � sorted by urgency</p>
+                    <p className="text-xs text-gray-400">Leads waiting for your call — sorted by urgency</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
@@ -650,7 +650,7 @@ const DomAgentDashboard = () => {
             {followupsLoading ? (
               <div className="flex flex-col items-center justify-center py-20 gap-3">
                 <div className="w-10 h-10 border-4 border-gray-100 border-t-amber-500 rounded-full animate-spin" />
-                <p className="text-gray-400 text-sm">Loading follow-ups�</p>
+                <p className="text-gray-400 text-sm">Loading follow-ups…</p>
               </div>
             ) : followups.length === 0 ? (
               <div className="bg-white rounded-2xl border border-gray-100 shadow-sm flex flex-col items-center justify-center py-20 gap-4">
@@ -681,7 +681,7 @@ const DomAgentDashboard = () => {
         />
       )}
 
-      {/* Step 1: Show all imported lead data � agent reviews before calling */}
+      {/* Step 1: Show all imported lead data — agent reviews before calling */}
       {detailModalOpen && selectedImportedLead && (
         <ImportedLeadDetailModal
           lead={selectedImportedLead}
@@ -694,7 +694,7 @@ const DomAgentDashboard = () => {
         />
       )}
 
-      {/* Step 2: Full work form � agent fills in call outcome, uploads docs, etc. */}
+      {/* Step 2: Full work form — agent fills in call outcome, uploads docs, etc. */}
       {importedModalOpen && (
         <LeadFormModal
           importedLead={selectedImportedLead}
