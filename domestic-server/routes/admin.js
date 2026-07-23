@@ -15,8 +15,9 @@ router.use(protect, authorize('dom_admin', 'dom_superadmin'));
 // ── GET /domestic-api/admin/stats ──────────────────────────────────────────
 router.get('/stats', async (req, res) => {
   try {
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
+    // Use local midnight so "today" is correct for IST/any timezone
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
 
     const [
       totalWebsiteLeads,
@@ -25,10 +26,14 @@ router.get('/stats', async (req, res) => {
       completedLeads,
       rejectedLeads,
       todayLeads,
+      todayImported,
       totalDomLeads,
       completedDomLeads,
+      pendingDomLeads,
       totalAgents,
       activeAgents,
+      assignedWebLeads,
+      assignedImportedLeads,
     ] = await Promise.all([
       DomWebsiteLead.countDocuments(),
       DomWebsiteLead.countDocuments({ status: 'new' }),
@@ -36,10 +41,14 @@ router.get('/stats', async (req, res) => {
       DomWebsiteLead.countDocuments({ status: 'completed' }),
       DomWebsiteLead.countDocuments({ status: 'rejected' }),
       DomWebsiteLead.countDocuments({ createdAt: { $gte: todayStart } }),
+      DomImportedLead.countDocuments({ createdAt: { $gte: todayStart } }),
       DomLead.countDocuments(),
       DomLead.countDocuments({ status: 'completed' }),
+      DomLead.countDocuments({ status: 'pending' }),
       DomUser.countDocuments({ role: 'domagent' }),
       DomUser.countDocuments({ role: 'domagent', isActive: true }),
+      DomWebsiteLead.countDocuments({ status: 'loaded' }),
+      DomImportedLead.countDocuments({ status: 'assigned' }),
     ]);
 
     const conversionRate = totalWebsiteLeads > 0
@@ -60,7 +69,14 @@ router.get('/stats', async (req, res) => {
         domLeads: {
           total:     totalDomLeads,
           completed: completedDomLeads,
+          pending:   pendingDomLeads,
         },
+        assigned: {
+          websiteLeads:   assignedWebLeads,
+          importedLeads:  assignedImportedLeads,
+          total:          assignedWebLeads + assignedImportedLeads,
+        },
+        todayImported,
         agents: {
           total:  totalAgents,
           active: activeAgents,
@@ -453,6 +469,66 @@ router.delete('/imported-lead/:id', authorize('dom_superadmin'), async (req, res
   } catch (err) {
     console.error('[Admin] Delete imported lead error:', err.message);
     return res.status(500).json({ success: false, message: 'Failed to delete lead.' });
+  }
+});
+
+// ── POST /domestic-api/admin/agents/transfer-leads ─────────────────────────
+// Transfer all (or filtered) leads from one agent to another
+router.post('/agents/transfer-leads', async (req, res) => {
+  try {
+    const { fromAgentId, toAgentId, types = ['website', 'pool'], workedOnly = false } = req.body;
+
+    if (!fromAgentId || !toAgentId) {
+      return res.status(400).json({ success: false, message: 'fromAgentId and toAgentId are required.' });
+    }
+    if (fromAgentId === toAgentId) {
+      return res.status(400).json({ success: false, message: 'Source and target agent must be different.' });
+    }
+
+    const [fromAgent, toAgent] = await Promise.all([
+      DomUser.findById(fromAgentId).lean(),
+      DomUser.findById(toAgentId).lean(),
+    ]);
+    if (!fromAgent) return res.status(404).json({ success: false, message: 'Source agent not found.' });
+    if (!toAgent)   return res.status(404).json({ success: false, message: 'Target agent not found.' });
+
+    const results = {};
+
+    // Transfer website leads (DomWebsiteLead.loadedBy)
+    if (types.includes('website')) {
+      const filter = { loadedBy: fromAgentId, status: { $in: ['loaded', 'pending'] } };
+      const r = await DomWebsiteLead.updateMany(filter, { $set: { loadedBy: toAgentId } });
+      results.websiteLeads = r.modifiedCount;
+    }
+
+    // Transfer pool / imported leads (DomImportedLead.assignedTo)
+    if (types.includes('pool')) {
+      const filter = { assignedTo: fromAgentId };
+      if (!workedOnly) filter.workStatus = 'new';   // only unworked by default
+      const r = await DomImportedLead.updateMany(filter, { $set: { assignedTo: toAgentId } });
+      results.poolLeads = r.modifiedCount;
+    }
+
+    // Transfer worked DomLeads (optional — admin explicitly requests)
+    if (types.includes('worked')) {
+      const r = await DomLead.updateMany(
+        { assignedTo: fromAgentId },
+        { $set: { assignedTo: toAgentId, lastUpdatedBy: req.user._id } }
+      );
+      results.workedLeads = r.modifiedCount;
+    }
+
+    const total = Object.values(results).reduce((s, v) => s + v, 0);
+    return res.status(200).json({
+      success: true,
+      message: `${total} lead(s) transferred from ${fromAgent.name} to ${toAgent.name}.`,
+      results,
+      from: { _id: fromAgent._id, name: fromAgent.name },
+      to:   { _id: toAgent._id,   name: toAgent.name   },
+    });
+  } catch (err) {
+    console.error('[Admin] Transfer leads error:', err.message);
+    return res.status(500).json({ success: false, message: 'Failed to transfer leads.' });
   }
 });
 

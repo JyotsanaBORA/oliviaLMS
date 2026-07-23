@@ -33,6 +33,18 @@ router.get('/', protect, authorize('dom_admin', 'dom_superadmin'), async (req, r
         { city:   { $regex: search, $options: 'i' } },
       ];
     }
+    // Date range filter — parse as LOCAL date
+    if (req.query.dateFrom || req.query.dateTo) {
+      filter.createdAt = {};
+      if (req.query.dateFrom) {
+        const [y, m, d] = req.query.dateFrom.split('-').map(Number);
+        filter.createdAt.$gte = new Date(y, m - 1, d, 0, 0, 0, 0);
+      }
+      if (req.query.dateTo) {
+        const [y, m, d] = req.query.dateTo.split('-').map(Number);
+        filter.createdAt.$lte = new Date(y, m - 1, d, 23, 59, 59, 999);
+      }
+    }
 
     const [leads, total] = await Promise.all([
       DomWebsiteLead.find(filter)

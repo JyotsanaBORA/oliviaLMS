@@ -1,11 +1,11 @@
 ﻿import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   LogOut, Plus, Shield, Eye, EyeOff, X, RefreshCw, Key,
-  Users, UserPlus, ChevronLeft, CheckCircle2, AlertCircle, Copy,
+  Users, UserPlus, ChevronLeft, ChevronRight, CheckCircle2, AlertCircle, Copy,
   Upload, Database, Share2, Globe, Search, UserCheck2,
   Activity, BarChart2, FileText, Briefcase, Coffee, XCircle,
   TrendingUp, Calendar, Download, ArrowUp, ArrowDown, Zap,
-  ChevronDown,
+  ChevronDown, Menu, Send,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import DomAdminDashboard from './DomAdminDashboard';
@@ -120,6 +120,13 @@ const DomSuperAdminDashboard = () => {
 
   // Sidebar collapse state — 'agents' group is expanded by default
   const [openGroups, setOpenGroups] = useState(new Set(['agents']));
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+
+  // Transfer leads (SA)
+  const [saTransferAgent,   setSaTransferAgent]   = useState(null); // from-agent object
+  const [saTransferTo,      setSaTransferTo]      = useState('');
+  const [saTransferTypes,   setSaTransferTypes]   = useState({ website: true, pool: true, worked: false });
+  const [saTransferring,    setSaTransferring]    = useState(false);
   const toggleGroup = (key) => setOpenGroups(prev => {
     const next = new Set(prev);
     next.has(key) ? next.delete(key) : next.add(key);
@@ -134,6 +141,26 @@ const DomSuperAdminDashboard = () => {
     } catch { toast.error('Failed to load users.'); }
     finally { setUsersLoading(false); }
   }, []);
+
+  const handleSaTransfer = useCallback(async () => {
+    if (!saTransferTo) { toast.error('Please select a target agent.'); return; }
+    const types = Object.entries(saTransferTypes).filter(([,v]) => v).map(([k]) => k);
+    if (types.length === 0) { toast.error('Select at least one lead type to transfer.'); return; }
+    setSaTransferring(true);
+    try {
+      const res = await api.post('/domestic-api/admin/agents/transfer-leads', {
+        fromAgentId: saTransferAgent._id,
+        toAgentId:   saTransferTo,
+        types,
+      });
+      toast.success(res.data.message);
+      setSaTransferAgent(null);
+      setSaTransferTo('');
+      setSaTransferTypes({ website: true, pool: true, worked: false });
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Transfer failed.');
+    } finally { setSaTransferring(false); }
+  }, [saTransferAgent, saTransferTo, saTransferTypes]);
 
   const fetchApiKey = useCallback(async () => {
     setApiKeyLoading(true);
@@ -428,34 +455,46 @@ const DomSuperAdminDashboard = () => {
     <div className="flex h-screen overflow-hidden bg-gray-50">
 
       {/* ════ SIDEBAR ════ */}
-      <aside className="w-[230px] flex-shrink-0 flex flex-col h-screen bg-white border-r border-gray-200 shadow-sm">
+      <aside className={`${sidebarOpen ? 'w-[230px]' : 'w-14'} flex-shrink-0 flex flex-col h-screen bg-white border-r border-gray-200 shadow-sm transition-all duration-300 overflow-hidden`}>
 
         {/* Brand strip */}
-        <div className="bg-[#065F36] px-4 py-4 flex-shrink-0">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-white/15 flex items-center justify-center flex-shrink-0">
-              <img src={`${process.env.PUBLIC_URL}/mcb-logo.png`} alt="MCB" className="h-5 w-auto object-contain brightness-0 invert" />
+        <div className="bg-[#065F36] px-3 py-3 flex-shrink-0 flex items-center gap-2">
+          {sidebarOpen ? (
+            <div className="flex items-center gap-2 flex-1 min-w-0">
+              <div className="w-7 h-7 rounded-lg bg-white/15 flex items-center justify-center flex-shrink-0">
+                <img src={`${process.env.PUBLIC_URL}/mcb-logo.png`} alt="MCB" className="h-4 w-auto object-contain brightness-0 invert" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-white font-bold text-[12px] leading-none">MyCashBridge</p>
+                <p className="text-white/60 text-[9px] font-medium tracking-wider uppercase mt-0.5">Super Admin Portal</p>
+              </div>
             </div>
-            <div className="min-w-0">
-              <p className="text-white font-bold text-[13px] leading-none">MyCashBridge</p>
-              <p className="text-white/60 text-[9px] font-medium tracking-wider uppercase mt-1">Super Admin Portal</p>
+          ) : (
+            <div className="mx-auto w-7 h-7 rounded-lg bg-white/15 flex items-center justify-center flex-shrink-0">
+              <img src={`${process.env.PUBLIC_URL}/mcb-logo.png`} alt="MCB" className="h-4 w-auto object-contain brightness-0 invert" />
             </div>
-          </div>
+          )}
+          <button onClick={() => setSidebarOpen(o => !o)} title={sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
+            className="flex-shrink-0 w-7 h-7 rounded-lg bg-white flex items-center justify-center shadow-sm hover:bg-gray-100 active:scale-95 transition-all">
+            {sidebarOpen ? <ChevronLeft className="h-4 w-4 text-[#065F36]" /> : <ChevronRight className="h-4 w-4 text-[#065F36]" />}
+          </button>
         </div>
 
         {/* User card */}
-        <div className="px-3 py-3 border-b border-gray-100 flex-shrink-0">
-          <div className="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-[#f0faf5] border border-[#d1fae5]">
+        <div className="px-2 py-2 border-b border-gray-100 flex-shrink-0">
+          <div className={`flex items-center ${sidebarOpen ? 'gap-2 px-2' : 'justify-center px-1'} py-2 rounded-xl bg-[#f0faf5] border border-[#d1fae5]`}>
             <div className="relative flex-shrink-0">
               <div className="w-7 h-7 rounded-lg bg-[#065F36] flex items-center justify-center font-bold text-white text-xs shadow-sm">
                 {user.name?.charAt(0)?.toUpperCase()}
               </div>
               <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-400 border-[1.5px] border-white" />
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-gray-800 font-semibold text-[11px] leading-none truncate">{user.name}</p>
-              <p className="text-[#065F36]/70 text-[9px] font-medium mt-1">Super Admin</p>
-            </div>
+            {sidebarOpen && (
+              <div className="flex-1 min-w-0">
+                <p className="text-gray-800 font-semibold text-[11px] leading-none truncate">{user.name}</p>
+                <p className="text-[#065F36]/70 text-[9px] font-medium mt-1">Super Admin</p>
+              </div>
+            )}
           </div>
         </div>
 
@@ -463,7 +502,7 @@ const DomSuperAdminDashboard = () => {
         <nav className="flex-1 px-2 pt-2 pb-2 overflow-y-auto min-h-0">
           {SIDEBAR_GROUPS.map((group) => (
             <div key={group.key} className="mb-0.5">
-              {group.label && (
+              {sidebarOpen && group.label && (
                 group.collapsible ? (
                   <button
                     onClick={() => toggleGroup(group.key)}
@@ -479,31 +518,36 @@ const DomSuperAdminDashboard = () => {
                   </div>
                 )
               )}
-              {(!group.collapsible || openGroups.has(group.key)) && (
+              {(!group.collapsible || openGroups.has(group.key) || !sidebarOpen) && (
                 <div className="space-y-px">
                   {group.items.map(({ key, Icon, label, sub }) => {
                     const isActive = superTab === key;
                     return (
-                      <button key={key} onClick={() => setSuperTab(key)}
-                        className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg transition-all duration-100 text-left relative group ${
+                      <button key={key} onClick={() => setSuperTab(key)} title={!sidebarOpen ? label : undefined}
+                        className={`w-full flex items-center ${sidebarOpen ? 'gap-2.5 px-3' : 'justify-center px-0 py-2.5'} py-2 rounded-lg transition-all duration-100 text-left relative group ${
                           isActive
                             ? 'bg-[#e8f5ed] text-[#065F36]'
                             : 'text-gray-500 hover:bg-gray-50 hover:text-gray-800'
                         }`}>
-                        {isActive && (
+                        {isActive && sidebarOpen && (
                           <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-[#065F36] rounded-r-full" />
                         )}
-                        <Icon className={`h-[14px] w-[14px] flex-shrink-0 ${
-                          isActive ? 'text-[#065F36]' : 'text-gray-400 group-hover:text-gray-600'
-                        }`} />
-                        <div className="flex-1 min-w-0">
-                          <p className={`text-[12px] font-semibold leading-none ${
-                            isActive ? 'text-[#065F36]' : 'text-gray-600 group-hover:text-gray-800'
-                          }`}>{label}</p>
-                          <p className={`text-[10px] mt-1 truncate ${
-                            isActive ? 'text-[#065F36]/60' : 'text-gray-400'
-                          }`}>{sub}</p>
+                        <div className="relative flex-shrink-0">
+                          <Icon className={`h-[14px] w-[14px] ${
+                            isActive ? 'text-[#065F36]' : 'text-gray-400 group-hover:text-gray-600'
+                          }`} />
+                          {isActive && !sidebarOpen && <span className="absolute -top-1 -right-1 w-1.5 h-1.5 bg-[#065F36] rounded-full" />}
                         </div>
+                        {sidebarOpen && (
+                          <div className="flex-1 min-w-0">
+                            <p className={`text-[12px] font-semibold leading-none ${
+                              isActive ? 'text-[#065F36]' : 'text-gray-600 group-hover:text-gray-800'
+                            }`}>{label}</p>
+                            <p className={`text-[10px] mt-1 truncate ${
+                              isActive ? 'text-[#065F36]/60' : 'text-gray-400'
+                            }`}>{sub}</p>
+                          </div>
+                        )}
                       </button>
                     );
                   })}
@@ -515,10 +559,10 @@ const DomSuperAdminDashboard = () => {
 
         {/* Sign out */}
         <div className="flex-shrink-0 px-2 pb-3 pt-2 border-t border-gray-100">
-          <button onClick={logout}
-            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-all text-left">
+          <button onClick={logout} title={!sidebarOpen ? 'Sign out' : undefined}
+            className={`w-full flex items-center ${sidebarOpen ? 'gap-2.5 px-3' : 'justify-center px-0'} py-2 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-all text-left`}>
             <LogOut className="h-[14px] w-[14px] flex-shrink-0" />
-            <span className="text-[12px] font-semibold">Sign out</span>
+            {sidebarOpen && <span className="text-[12px] font-semibold">Sign out</span>}
           </button>
         </div>
       </aside>
@@ -1194,6 +1238,12 @@ const DomSuperAdminDashboard = () => {
                         <td className="px-3 py-4 text-gray-400 text-xs">{fmtShort(u.lastLogin)}</td>
                         <td className="px-3 pr-6 py-4">
                           <div className="flex items-center justify-end gap-2">
+                            {u.role === 'domagent' && (
+                              <button onClick={() => { setSaTransferAgent(u); setSaTransferTo(''); }}
+                                className="text-xs px-3 py-1.5 bg-amber-50 text-amber-700 hover:bg-amber-100 rounded-lg font-semibold border border-amber-200 transition-colors flex items-center gap-1">
+                                <Send className="h-3 w-3" /> Transfer
+                              </button>
+                            )}
                             <button onClick={() => setEditUser(u)}
                               className="text-xs px-3 py-1.5 bg-[#E8FFF5] text-[#065F36] hover:bg-[#D1FAE5] rounded-lg font-semibold border border-[#D1FAE5] transition-colors">
                               Edit
@@ -1237,6 +1287,93 @@ const DomSuperAdminDashboard = () => {
         {editUser && (
           <UserFormModal title="Edit User" user={editUser} onClose={() => setEditUser(null)}
             onSaved={() => { setEditUser(null); fetchUsers(); }} />
+        )}
+
+        {/* Transfer Leads Modal */}
+        {saTransferAgent && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+              <div className="bg-gradient-to-r from-amber-500 to-orange-500 px-6 py-4 flex items-center justify-between">
+                <div>
+                  <h3 className="text-white font-bold text-base">Transfer Leads</h3>
+                  <p className="text-white/80 text-xs mt-0.5">Move leads from <strong>{saTransferAgent.name}</strong> to another agent</p>
+                </div>
+                <button onClick={() => setSaTransferAgent(null)} className="text-white/80 hover:text-white transition-colors">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <div className="p-6 space-y-5">
+                {/* From agent */}
+                <div>
+                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">From Agent</p>
+                  <div className="flex items-center gap-3 px-4 py-3 bg-red-50 border border-red-200 rounded-xl">
+                    <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-red-400 to-red-500 flex items-center justify-center text-white font-black text-sm">
+                      {saTransferAgent.name?.charAt(0)?.toUpperCase()}
+                    </div>
+                    <div>
+                      <p className="font-bold text-gray-800 text-sm">{saTransferAgent.name}</p>
+                      <p className="text-xs text-gray-500">{saTransferAgent.email}</p>
+                    </div>
+                  </div>
+                </div>
+                {/* To agent */}
+                <div>
+                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Transfer To</p>
+                  <select value={saTransferTo} onChange={e => setSaTransferTo(e.target.value)}
+                    className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-amber-400/40 focus:border-amber-400">
+                    <option value="">— Select target agent —</option>
+                    {users.filter(u => u.role === 'domagent' && u._id !== saTransferAgent._id && u.isActive).map(u => (
+                      <option key={u._id} value={u._id}>{u.name} ({u.email})</option>
+                    ))}
+                  </select>
+                </div>
+                {/* Types */}
+                <div>
+                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">What to Transfer</p>
+                  <div className="space-y-2">
+                    {[
+                      { key: 'website', label: 'Website / Meta Leads',            sub: 'Unworked website leads loaded by this agent',  color: 'teal'   },
+                      { key: 'pool',    label: 'Pool / Imported Leads (Unworked)', sub: 'Imported data leads not yet called',           color: 'violet' },
+                      { key: 'worked',  label: 'Worked Cases (DomLeads)',          sub: 'Already-filled lead forms — reassign ownership', color: 'orange' },
+                    ].map(({ key, label, sub, color }) => (
+                      <label key={key} className={`flex items-start gap-3 px-4 py-3 rounded-xl border cursor-pointer transition-all ${
+                        saTransferTypes[key]
+                          ? color === 'teal'   ? 'bg-teal-50 border-teal-300'
+                          : color === 'violet' ? 'bg-violet-50 border-violet-300'
+                          : 'bg-orange-50 border-orange-300'
+                          : 'bg-gray-50 border-gray-200 opacity-70'
+                      }`}>
+                        <input type="checkbox" className="mt-0.5 accent-amber-500 w-4 h-4 flex-shrink-0"
+                          checked={saTransferTypes[key]}
+                          onChange={e => setSaTransferTypes(prev => ({ ...prev, [key]: e.target.checked }))} />
+                        <div>
+                          <p className="text-sm font-semibold text-gray-700">{label}</p>
+                          <p className="text-xs text-gray-400 mt-0.5">{sub}</p>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                {/* Warning */}
+                <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+                  <AlertCircle className="h-4 w-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                  <p className="text-xs text-amber-700">This action is <strong>immediate and cannot be undone</strong>. The target agent will see these leads in their dashboard.</p>
+                </div>
+              </div>
+              <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-gray-100 bg-gray-50">
+                <button onClick={() => setSaTransferAgent(null)}
+                  className="px-4 py-2 text-sm text-gray-600 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 font-medium transition-colors">
+                  Cancel
+                </button>
+                <button onClick={handleSaTransfer} disabled={!saTransferTo || saTransferring}
+                  className="flex items-center gap-2 px-5 py-2 text-sm font-bold text-white bg-amber-500 hover:bg-amber-600 disabled:bg-gray-300 disabled:cursor-not-allowed rounded-xl shadow-sm transition-colors">
+                  {saTransferring
+                    ? <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Transferring…</>
+                    : <><Send className="h-4 w-4" /> Confirm Transfer</>}
+                </button>
+              </div>
+            </div>
+          </div>
         )}
 
         {/* Universal Delete Confirmation Modal */}

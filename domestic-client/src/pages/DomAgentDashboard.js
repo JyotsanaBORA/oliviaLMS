@@ -2,8 +2,9 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { io } from 'socket.io-client';
 import {
   LogOut, RefreshCw, FileText, CheckCircle,
-  Clock, PlusCircle, Wifi, WifiOff, ChevronRight, Inbox, Database,
-  Coffee, CheckCircle2, XCircle, Phone, AlertCircle, Calendar,
+  Clock, PlusCircle, ChevronRight, Database,
+  CheckCircle2, Phone, AlertCircle, Calendar,
+  Search, Menu, ChevronLeft, X,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import LeadFormModal           from '../components/LeadFormModal';
@@ -27,7 +28,7 @@ const DomAgentDashboard = () => {
   const [myLeads,   setMyLeads]   = useState([]);
   const [loading,   setLoading]   = useState(true);
   const [refreshing,setRefreshing]= useState(false);
-  const [tab, setTab] = useState('my_leads');
+  const [tab, setTab] = useState('assigned');
   const [modalOpen,       setModalOpen]       = useState(false);
   const [selectedWLead,   setSelectedWLead]   = useState(null);
   const [selectedDomLead, setSelectedDomLead] = useState(null);
@@ -44,6 +45,16 @@ const DomAgentDashboard = () => {
   // Agent availability status
   const [agentStatus,        setAgentStatus]        = useState('available');
   const [statusUpdating,     setStatusUpdating]     = useState(false);
+
+  // Imported lead detail
+  const [selectedImportedLead, setSelectedImportedLead] = useState(null);
+  const [importedLeadDomLead,  setImportedLeadDomLead]  = useState(null);
+
+  // UI state
+  const [sidebarOpen,        setSidebarOpen]        = useState(true);
+  const [searchQuery,        setSearchQuery]        = useState('');
+  const [dateFilter,         setDateFilter]         = useState(() => new Date().toISOString().slice(0, 10));
+  const [followupDateFilter, setFollowupDateFilter] = useState(() => new Date().toISOString().slice(0, 10));
 
   useEffect(() => {
     const serverUrl = process.env.REACT_APP_DOM_API_URL || 'http://localhost:5009';
@@ -133,11 +144,10 @@ const DomAgentDashboard = () => {
     setImportedModalOpen(true);
   }, []);
 
-  useEffect(() => { fetchMyLeads(); fetchMyStatus(); }, [fetchMyLeads, fetchMyStatus]);
+  useEffect(() => { fetchMyLeads(); fetchMyStatus(); fetchAssignedLeads(); }, [fetchMyLeads, fetchMyStatus, fetchAssignedLeads]);
 
   useEffect(() => {
-    if (tab === 'assigned_leads') fetchAssignedLeads();
-    if (tab === 'followups')      fetchFollowups();
+    if (tab === 'followups') fetchFollowups();
   }, [tab, fetchAssignedLeads]);
 
   const handleOpenLead = useCallback(async (lead) => {
@@ -165,6 +175,46 @@ const DomAgentDashboard = () => {
     manualCount:  myLeads.filter((l) =>  l.isManual).length,
   }), [myLeads]);
 
+  // Combined views
+  const toWorkLeads  = useMemo(() => [
+    ...myLeads.filter(l => !l.isWorked).map(l => ({ ...l, _src: 'website' })),
+    ...assignedLeads.filter(l => (l.workStatus || 'new') === 'new').map(l => ({ ...l, _src: 'pool' })),
+  ].sort((a,b) => new Date(b.loadedAt || b.createdAt) - new Date(a.loadedAt || a.createdAt)), [myLeads, assignedLeads]);
+
+  const workedLeads = useMemo(() => [
+    ...myLeads.filter(l => l.isWorked).map(l => ({ ...l, _src: 'website' })),
+    ...assignedLeads.filter(l => l.workStatus && l.workStatus !== 'new').map(l => ({ ...l, _src: 'pool' })),
+  ].sort((a,b) => new Date(b.loadedAt || b.createdAt) - new Date(a.loadedAt || a.createdAt)), [myLeads, assignedLeads]);
+
+  const filteredToWork = useMemo(() => {
+    const q = searchQuery.toLowerCase();
+    return toWorkLeads.filter(l => {
+      const d = l.loadedAt || l.assignedAt || l.createdAt;
+      const dateOk = !dateFilter || (d && new Date(d).toISOString().slice(0,10) === dateFilter);
+      const searchOk = !q || (l.name||'').toLowerCase().includes(q) || (l.mobile||'').includes(q) || (l.city||'').toLowerCase().includes(q);
+      return dateOk && searchOk;
+    });
+  }, [toWorkLeads, dateFilter, searchQuery]);
+
+  const filteredWorked = useMemo(() => {
+    const q = searchQuery.toLowerCase();
+    return workedLeads.filter(l => {
+      const d = l.loadedAt || l.assignedAt || l.createdAt;
+      const dateOk = !dateFilter || (d && new Date(d).toISOString().slice(0,10) === dateFilter);
+      const searchOk = !q || (l.name||'').toLowerCase().includes(q) || (l.mobile||'').includes(q);
+      return dateOk && searchOk;
+    });
+  }, [workedLeads, dateFilter, searchQuery]);
+
+  const filteredFollowups = useMemo(() => {
+    const q = searchQuery.toLowerCase();
+    return followups.filter(f => {
+      const dateOk = !followupDateFilter || (f.callbackDate && new Date(f.callbackDate).toISOString().slice(0,10) === followupDateFilter);
+      const searchOk = !q || (f.name||'').toLowerCase().includes(q) || (f.mobile||'').includes(q);
+      return dateOk && searchOk;
+    });
+  }, [followups, followupDateFilter, searchQuery]);
+
   const STATUS_CONFIG = {
     available:   { label: 'Available',   dot: 'bg-emerald-500', activeBg: 'bg-emerald-500 text-white', badge: 'bg-emerald-100 text-emerald-700 border border-emerald-300' },
     break:       { label: 'On Break',    dot: 'bg-amber-400',   activeBg: 'bg-amber-400 text-white',   badge: 'bg-amber-100 text-amber-700 border border-amber-300' },
@@ -174,95 +224,122 @@ const DomAgentDashboard = () => {
     <div className="flex h-screen overflow-hidden bg-gray-50">
 
       {/* AGENT SIDEBAR */}
-      <aside className="w-[210px] flex-shrink-0 flex flex-col h-screen bg-white border-r border-gray-200 shadow-sm">
+      <aside className={`${sidebarOpen ? 'w-[210px]' : 'w-14'} flex-shrink-0 flex flex-col h-screen bg-white border-r border-gray-200 shadow-sm transition-all duration-300 overflow-hidden`}>
+
         {/* Brand strip */}
-        <div className="bg-[#065F36] px-4 py-4 flex-shrink-0">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-white/15 flex items-center justify-center flex-shrink-0">
-              <img src={`${process.env.PUBLIC_URL}/mcb-logo.png`} alt="MCB" className="h-5 w-auto object-contain brightness-0 invert" />
+        <div className="bg-[#065F36] px-3 py-3 flex-shrink-0 flex items-center gap-2 overflow-hidden">
+          {sidebarOpen ? (
+            <div className="flex items-center gap-2 flex-1 min-w-0">
+              <div className="w-7 h-7 rounded-lg bg-white/15 flex items-center justify-center flex-shrink-0">
+                <img src={`${process.env.PUBLIC_URL}/mcb-logo.png`} alt="MCB" className="h-4 w-auto object-contain brightness-0 invert" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-white font-bold text-[12px] leading-none">MyCashBridge</p>
+                <p className="text-white/60 text-[9px] font-medium tracking-wider uppercase mt-0.5">Agent Portal</p>
+              </div>
             </div>
-            <div className="min-w-0">
-              <p className="text-white font-bold text-[13px] leading-none">MyCashBridge</p>
-              <p className="text-white/60 text-[9px] font-medium tracking-wider uppercase mt-1">Agent Portal</p>
+          ) : (
+            <div className="mx-auto w-7 h-7 rounded-lg bg-white/15 flex items-center justify-center flex-shrink-0">
+              <img src={`${process.env.PUBLIC_URL}/mcb-logo.png`} alt="MCB" className="h-4 w-auto object-contain brightness-0 invert" />
             </div>
-          </div>
+          )}
+          {/* Toggle button — white on green, clearly visible */}
+          <button
+            onClick={() => setSidebarOpen(o => !o)}
+            title={sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
+            className="flex-shrink-0 w-7 h-7 rounded-lg bg-white flex items-center justify-center shadow-sm hover:bg-gray-100 active:scale-95 transition-all">
+            {sidebarOpen
+              ? <ChevronLeft className="h-4 w-4 text-[#065F36]" />
+              : <ChevronRight className="h-4 w-4 text-[#065F36]" />}
+          </button>
         </div>
 
         {/* User + status */}
-        <div className="px-3 py-3 border-b border-gray-100 flex-shrink-0">
-          <div className="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-[#f0faf5] border border-[#d1fae5]">
+        <div className="px-2 py-2 border-b border-gray-100 flex-shrink-0">
+          <div className={`flex items-center ${sidebarOpen ? 'gap-2 px-2' : 'justify-center px-1'} py-2 rounded-xl bg-[#f0faf5] border border-[#d1fae5]`}>
             <div className="relative flex-shrink-0">
               <div className="w-7 h-7 rounded-lg bg-[#065F36] flex items-center justify-center font-bold text-white text-xs shadow-sm">
                 {user.name?.charAt(0)?.toUpperCase()}
               </div>
               <span className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border-[1.5px] border-white ${STATUS_CONFIG[agentStatus]?.dot || 'bg-emerald-500'}`} />
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-gray-800 font-semibold text-[11px] leading-none truncate">{user.name}</p>
-              <div className="flex items-center gap-1 mt-1">
-                <span className={`w-1.5 h-1.5 rounded-full ${STATUS_CONFIG[agentStatus]?.dot || 'bg-emerald-500'}`} />
-                <p className="text-[#065F36]/70 text-[9px] font-medium">{STATUS_CONFIG[agentStatus]?.label || 'Available'}</p>
-                {connected && <span className="ml-auto text-emerald-600 text-[8px] font-bold">LIVE</span>}
+            {sidebarOpen && (
+              <div className="flex-1 min-w-0">
+                <p className="text-gray-800 font-semibold text-[11px] leading-none truncate">{user.name}</p>
+                <div className="flex items-center gap-1 mt-1">
+                  <span className={`w-1.5 h-1.5 rounded-full ${STATUS_CONFIG[agentStatus]?.dot || 'bg-emerald-500'}`} />
+                  <p className="text-[#065F36]/70 text-[9px] font-medium">{STATUS_CONFIG[agentStatus]?.label || 'Available'}</p>
+                  {connected && <span className="ml-auto text-emerald-600 text-[8px] font-bold">LIVE</span>}
+                </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
 
         {/* Navigation */}
         <nav className="flex-1 px-2 pt-3 pb-2 overflow-y-auto min-h-0">
-          {/* Mini stats */}
-          <div className="flex items-center gap-1.5 px-2 mb-3 flex-wrap">
-            {[
-              { label: 'Pending', val: pendingCount, color: 'text-orange-500 bg-orange-50' },
-              { label: 'Worked',  val: workedCount,  color: 'text-emerald-600 bg-emerald-50' },
-              { label: 'Pool',    val: assignedLeads.length, color: 'text-violet-600 bg-violet-50' },
-            ].map(s => (
-              <div key={s.label} className={`flex items-center gap-1 px-2 py-1 rounded-lg ${s.color}`}>
-                <span className="text-[11px] font-black">{s.val}</span>
-                <span className="text-[9px] opacity-70">{s.label}</span>
-              </div>
-            ))}
-          </div>
+          {/* Mini stats — only when expanded */}
+          {sidebarOpen && (
+            <div className="flex items-center gap-1 px-1 mb-3 flex-wrap">
+              {[
+                { label: 'To Work',  val: toWorkLeads.length,  color: 'text-orange-500 bg-orange-50' },
+                { label: 'Worked',   val: workedLeads.length,  color: 'text-emerald-600 bg-emerald-50' },
+                { label: 'F/U',      val: followups.length,    color: 'text-amber-600 bg-amber-50' },
+              ].map(s => (
+                <div key={s.label} className={`flex items-center gap-1 px-2 py-1 rounded-lg ${s.color}`}>
+                  <span className="text-[11px] font-black">{s.val}</span>
+                  <span className="text-[9px] opacity-70">{s.label}</span>
+                </div>
+              ))}
+            </div>
+          )}
 
-          <p className="text-gray-400 text-[9px] font-extrabold uppercase tracking-[0.14em] px-2 mb-1.5">LEADS</p>
+          {sidebarOpen && <p className="text-gray-400 text-[9px] font-extrabold uppercase tracking-[0.14em] px-2 mb-1.5">LEADS</p>}
           {[
-            { key: 'my_leads',       Icon: FileText, label: 'My Leads',   sub: 'Assigned by admin'  },
-            { key: 'assigned_leads', Icon: Database, label: 'Assigned',   sub: 'Pool leads'         },
-            { key: 'followups',      Icon: Phone,    label: 'Follow-ups', sub: 'Callbacks & retry',  badge: followups.length || null },
+            { key: 'assigned',  Icon: Database,     label: 'Assigned to Work', sub: 'Leads waiting for you', badge: toWorkLeads.length || null },
+            { key: 'worked',    Icon: CheckCircle,  label: 'Worked Leads',     sub: 'Leads you worked',      badge: null },
+            { key: 'followups', Icon: Phone,        label: 'Follow-ups',        sub: 'Callbacks & retry',    badge: followups.length || null },
           ].map(({ key, Icon, label, sub, badge }) => {
             const isActive = tab === key;
             return (
-              <button key={key} onClick={() => { setTab(key); }}
-                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg transition-all text-left relative group mb-0.5 ${
+              <button key={key} onClick={() => setTab(key)} title={!sidebarOpen ? label : undefined}
+                className={`w-full flex items-center ${sidebarOpen ? 'gap-2.5 px-3' : 'justify-center px-0 py-2.5'} py-2 rounded-lg transition-all text-left relative group mb-0.5 ${
                   isActive ? 'bg-[#e8f5ed] text-[#065F36]' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-800'
                 }`}>
-                {isActive && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-[#065F36] rounded-r-full" />}
-                <Icon className={`h-[14px] w-[14px] flex-shrink-0 ${isActive ? 'text-[#065F36]' : 'text-gray-400 group-hover:text-gray-600'}`} />
-                <div className="flex-1 min-w-0">
-                  <p className={`text-[12px] font-semibold leading-none ${isActive ? 'text-[#065F36]' : 'text-gray-600 group-hover:text-gray-800'}`}>{label}</p>
-                  <p className={`text-[10px] mt-1 ${isActive ? 'text-[#065F36]/60' : 'text-gray-400'}`}>{sub}</p>
+                {isActive && sidebarOpen && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-[#065F36] rounded-r-full" />}
+                <div className="relative flex-shrink-0">
+                  <Icon className={`h-[15px] w-[15px] ${isActive ? 'text-[#065F36]' : 'text-gray-400 group-hover:text-gray-600'}`} />
+                  {badge > 0 && !sidebarOpen && <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full" />}
                 </div>
-                {badge > 0 && (
-                  <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full flex-shrink-0 ${
-                    isActive ? 'bg-[#065F36]/20 text-[#065F36]' : 'bg-red-500 text-white'
-                  }`}>{badge}</span>
+                {sidebarOpen && (
+                  <>
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-[12px] font-semibold leading-none ${isActive ? 'text-[#065F36]' : 'text-gray-600 group-hover:text-gray-800'}`}>{label}</p>
+                      <p className={`text-[10px] mt-1 ${isActive ? 'text-[#065F36]/60' : 'text-gray-400'}`}>{sub}</p>
+                    </div>
+                    {badge > 0 && (
+                      <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full flex-shrink-0 ${
+                        isActive ? 'bg-[#065F36]/20 text-[#065F36]' : 'bg-red-500 text-white'
+                      }`}>{badge}</span>
+                    )}
+                  </>
                 )}
               </button>
             );
           })}
 
           {/* Status toggle */}
-          <p className="text-gray-400 text-[9px] font-extrabold uppercase tracking-[0.14em] px-2 mt-3 mb-1.5">MY STATUS</p>
+          {sidebarOpen && <p className="text-gray-400 text-[9px] font-extrabold uppercase tracking-[0.14em] px-2 mt-3 mb-1.5">MY STATUS</p>}
+          {!sidebarOpen && <div className="border-t border-gray-100 my-2 mx-1" />}
           {Object.entries(STATUS_CONFIG).map(([key, cfg]) => (
             <button key={key} onClick={() => handleStatusChange(key)} disabled={statusUpdating}
-              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg transition-all text-left mb-0.5 ${
-                agentStatus === key
-                  ? 'bg-[#e8f5ed] border border-[#d1fae5]'
-                  : 'text-gray-400 hover:bg-gray-50 hover:text-gray-600'
+              title={!sidebarOpen ? cfg.label : undefined}
+              className={`w-full flex items-center ${sidebarOpen ? 'gap-2.5 px-3' : 'justify-center px-0 py-2'} py-2 rounded-lg transition-all text-left mb-0.5 ${
+                agentStatus === key ? 'bg-[#e8f5ed] border border-[#d1fae5]' : 'text-gray-400 hover:bg-gray-50 hover:text-gray-600'
               }`}>
               <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${cfg.dot}`} />
-              <span className={`text-[11px] font-semibold ${agentStatus === key ? 'text-gray-700' : ''}`}>{cfg.label}</span>
-              {agentStatus === key && <span className="ml-auto text-[9px] text-[#065F36] font-bold">Active</span>}
+              {sidebarOpen && <span className={`text-[11px] font-semibold ${agentStatus === key ? 'text-gray-700' : ''}`}>{cfg.label}</span>}
+              {sidebarOpen && agentStatus === key && <span className="ml-auto text-[9px] text-[#065F36] font-bold">Active</span>}
             </button>
           ))}
         </nav>
@@ -270,9 +347,10 @@ const DomAgentDashboard = () => {
         {/* Logout */}
         <div className="flex-shrink-0 px-2 pb-3 pt-2 border-t border-gray-100">
           <button onClick={() => { logout(); if (socketRef.current) socketRef.current.disconnect(); }}
-            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-all text-left">
+            title={!sidebarOpen ? 'Sign out' : undefined}
+            className={`w-full flex items-center ${sidebarOpen ? 'gap-2.5 px-3' : 'justify-center px-0'} py-2 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-all`}>
             <LogOut className="h-[14px] w-[14px] flex-shrink-0" />
-            <span className="text-[12px] font-semibold">Sign out</span>
+            {sidebarOpen && <span className="text-[12px] font-semibold">Sign out</span>}
           </button>
         </div>
       </aside>
@@ -281,123 +359,231 @@ const DomAgentDashboard = () => {
       <div className="flex-1 overflow-y-auto min-w-0">
       <main className="px-5 py-5 space-y-5">
 
-        {/* My Leads Tab */}
-        {tab === 'my_leads' && (
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100">
+        {/* ── ASSIGNED TO WORK ── */}
+        {tab === 'assigned' && (
+          <div className="space-y-4">
+            {/* Header */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+              <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-orange-100 rounded-xl"><Database className="h-5 w-5 text-orange-600" /></div>
+                  <div>
+                    <h2 className="font-bold text-gray-800 text-base">Assigned to Work</h2>
+                    <p className="text-xs text-gray-400 mt-0.5">Leads waiting for you — call and fill the form</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs bg-orange-100 text-orange-700 border border-orange-200 px-3 py-1.5 rounded-xl font-bold">
+                    {filteredToWork.length} pending
+                  </span>
+                  <button onClick={() => { fetchMyLeads(true); fetchAssignedLeads(); }} disabled={loading || assignedLeadsLoading}
+                    className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-[#065F36] border border-gray-200 rounded-xl px-3 py-2 transition-colors bg-white">
+                    <RefreshCw className={`h-4 w-4 ${(loading || assignedLeadsLoading) ? 'animate-spin' : ''}`} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Filter bar */}
+              <div className="flex items-center gap-3 px-5 py-3 border-b border-gray-100 bg-gray-50/50 flex-wrap">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 pointer-events-none" />
+                  <input type="text" placeholder="Search name, mobile, city…" value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+                    className="pl-9 pr-8 py-2 text-sm border border-gray-200 rounded-xl bg-white w-52 focus:outline-none focus:ring-2 focus:ring-[#065F36]/20 focus:border-[#065F36]" />
+                  {searchQuery && <button onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500"><X className="h-3.5 w-3.5" /></button>}
+                </div>
+                <div className="flex items-center gap-2">
+                  <input type="date" value={dateFilter} onChange={e => setDateFilter(e.target.value)}
+                    className="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-[#065F36]/20 focus:border-[#065F36]" />
+                  {dateFilter && (
+                    <button onClick={() => setDateFilter('')} className="text-xs text-gray-400 hover:text-red-500 px-2.5 py-2 rounded-xl border border-gray-200 hover:border-red-200 bg-white transition-colors whitespace-nowrap">
+                      All dates
+                    </button>
+                  )}
+                </div>
+                {(searchQuery || dateFilter) && (
+                  <span className="text-xs text-gray-400">{filteredToWork.length} of {toWorkLeads.length} shown</span>
+                )}
+              </div>
+
+              {(loading || assignedLeadsLoading) ? (
+                <div className="flex flex-col items-center justify-center py-16 gap-3">
+                  <span className="w-8 h-8 border-2 border-gray-200 border-t-orange-500 rounded-full animate-spin" />
+                  <span className="text-sm text-gray-400">Loading…</span>
+                </div>
+              ) : filteredToWork.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16 gap-3 text-gray-400">
+                  <CheckCircle2 className="h-12 w-12 text-emerald-200" />
+                  <p className="font-semibold text-gray-500">{toWorkLeads.length === 0 ? 'All caught up!' : 'No results'}</p>
+                  <p className="text-sm">{toWorkLeads.length === 0 ? 'No pending leads. Check back later.' : 'Try adjusting the date or search filter.'}</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-gray-50 text-left text-xs font-bold text-gray-500 uppercase tracking-wider border-b border-gray-100">
+                        <th className="pl-6 pr-3 py-3.5">Source</th>
+                        <th className="px-3 py-3.5">Customer</th>
+                        <th className="px-3 py-3.5">Mobile</th>
+                        <th className="px-3 py-3.5">Service / Loan</th>
+                        <th className="px-3 py-3.5">Assigned</th>
+                        <th className="px-3 pr-6 py-3.5 text-right">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {filteredToWork.map((lead) => {
+                        const isWebsite = lead._src === 'website';
+                        const date = lead.loadedAt || lead.assignedAt || lead.createdAt;
+                        const product = isWebsite ? lead.productType : (lead.loanType || lead.productType);
+                        return (
+                          <tr key={lead._id}
+                            className={`cursor-pointer transition-colors group border-l-4 ${isWebsite ? 'border-l-teal-400 hover:bg-teal-50/30' : 'border-l-violet-400 hover:bg-violet-50/30'}`}
+                            onClick={() => isWebsite ? handleOpenLead(lead) : handleOpenImportedLead(lead)}>
+                            <td className="pl-6 pr-3 py-3.5">
+                              {isWebsite
+                                ? <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-teal-500 text-white">🌐 Meta</span>
+                                : <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-violet-100 text-violet-700 border border-violet-200">📊 Imported</span>}
+                            </td>
+                            <td className="px-3 py-3.5">
+                              <div className="flex items-center gap-2">
+                                <span className="w-2 h-2 rounded-full bg-orange-400 animate-pulse flex-shrink-0" />
+                                <div>
+                                  <p className="font-semibold text-gray-800">{lead.name || '—'}</p>
+                                  <p className="text-xs text-gray-400">{lead.city || lead.state || ''}</p>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-3 py-3.5 font-mono text-xs text-gray-600">{lead.mobile || '—'}</td>
+                            <td className="px-3 py-3.5">
+                              {product
+                                ? <span className="bg-[#E8FFF5] text-[#065F36] border border-[#D1FAE5] px-2 py-0.5 rounded-full text-xs font-medium capitalize">{product.replace(/_/g,' ')}</span>
+                                : <span className="text-gray-300 text-xs">—</span>}
+                            </td>
+                            <td className="px-3 py-3.5 text-gray-400 text-xs whitespace-nowrap">
+                              {date ? new Date(date).toLocaleString('en-IN', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' }) : '—'}
+                            </td>
+                            <td className="px-3 pr-6 py-3.5 text-right">
+                              <button onClick={(e) => { e.stopPropagation(); isWebsite ? handleOpenLead(lead) : handleOpenImportedLead(lead); }}
+                                className="inline-flex items-center gap-1 text-xs px-4 py-1.5 rounded-lg bg-orange-500 text-white hover:bg-orange-600 font-semibold shadow-sm transition-all">
+                                Work Now <ChevronRight className="h-3 w-3" />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+            {/* Add manual lead button */}
+            <button onClick={() => { setSelectedWLead(null); setSelectedDomLead(null); setModalOpen(true); }}
+              className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl border-2 border-dashed border-gray-200 text-gray-500 hover:border-[#065F36] hover:text-[#065F36] hover:bg-[#E8FFF5]/50 transition-all font-semibold text-sm">
+              <PlusCircle className="h-4 w-4" /> Add Manual Lead
+            </button>
+          </div>
+        )}
+
+        {/* ── WORKED LEADS ── */}
+        {tab === 'worked' && (
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
               <div className="flex items-center gap-3">
-                <div className="p-2.5 bg-gradient-to-br from-[#065F36] to-[#00874A] rounded-xl shadow-sm"><FileText className="h-5 w-5 text-white" />
-                </div>
+                <div className="p-2.5 bg-emerald-100 rounded-xl"><CheckCircle className="h-5 w-5 text-emerald-600" /></div>
                 <div>
-                  <h2 className="font-bold text-gray-800 text-base">My Leads</h2>
-                  <p className="text-xs text-gray-400 mt-0.5">
-                    <span className="inline-flex items-center gap-1 mr-3">
-                      <span className="w-2 h-2 rounded-full bg-red-400 inline-block animate-pulse" /> Pending (form not filled)
-                    </span>
-                    <span className="inline-flex items-center gap-1">
-                      <span className="w-2 h-2 rounded-full bg-[#065F36] inline-block" /> Worked (form submitted)
-                    </span>
-                  </p>
+                  <h2 className="font-bold text-gray-800 text-base">Worked Leads</h2>
+                  <p className="text-xs text-gray-400 mt-0.5">Leads you have already called and filled the form for</p>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                <button onClick={() => { setSelectedWLead(null); setSelectedDomLead(null); setModalOpen(true); }}
-                  className="flex items-center gap-1.5 text-sm bg-[#065F36] hover:bg-[#054A2E] text-white px-4 py-2 rounded-xl font-semibold shadow-sm transition-all">
-                  <PlusCircle className="h-4 w-4" /> Add Manual Lead
-                </button>
-                <button onClick={() => fetchMyLeads(true)} disabled={refreshing}
-                  className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-[#065F36] border border-gray-200 rounded-xl px-3 py-2 transition-colors bg-white">
-                  <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-                </button>
-              </div>
+              <span className="text-xs bg-emerald-100 text-emerald-700 border border-emerald-200 px-3 py-1.5 rounded-xl font-bold">
+                {filteredWorked.length} worked
+              </span>
             </div>
 
-            {loading ? (
-              <div className="flex flex-col items-center justify-center py-20 text-gray-300">
-                <span className="w-8 h-8 border-3 border-gray-200 border-t-[#065F36] rounded-full animate-spin mb-3" />
-                <span className="text-sm text-gray-400">Loading your leads…</span>
+            {/* Filter bar */}
+            <div className="flex items-center gap-3 px-5 py-3 border-b border-gray-100 bg-gray-50/50 flex-wrap">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 pointer-events-none" />
+                <input type="text" placeholder="Search name or mobile…" value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+                  className="pl-9 pr-8 py-2 text-sm border border-gray-200 rounded-xl bg-white w-52 focus:outline-none focus:ring-2 focus:ring-[#065F36]/20 focus:border-[#065F36]" />
+                {searchQuery && <button onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500"><X className="h-3.5 w-3.5" /></button>}
               </div>
-            ) : myLeads.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-20 text-gray-400">
-                <Inbox className="h-14 w-14 text-gray-200 mb-4" />
-                <p className="font-semibold text-gray-500 text-base">No leads yet</p>
-                <p className="text-sm mt-1 text-gray-400">Your admin will assign website leads to you. Use <strong className="text-[#065F36]">Add Manual Lead</strong> to enter a lead directly.</p>
+              <div className="flex items-center gap-2">
+                <input type="date" value={dateFilter} onChange={e => setDateFilter(e.target.value)}
+                  className="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-[#065F36]/20 focus:border-[#065F36]" />
+                {dateFilter && (
+                  <button onClick={() => setDateFilter('')} className="text-xs text-gray-400 hover:text-red-500 px-2.5 py-2 rounded-xl border border-gray-200 hover:border-red-200 bg-white transition-colors whitespace-nowrap">
+                    All dates
+                  </button>
+                )}
+              </div>
+              {(searchQuery || dateFilter) && (
+                <span className="text-xs text-gray-400">{filteredWorked.length} of {workedLeads.length} shown</span>
+              )}
+            </div>
+
+            {filteredWorked.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 gap-3 text-gray-400">
+                <FileText className="h-12 w-12 text-gray-200" />
+                <p className="font-semibold text-gray-500">{workedLeads.length === 0 ? 'No worked leads yet' : 'No results'}</p>
+                <p className="text-sm">{workedLeads.length === 0 ? 'Go to "Assigned to Work" to start working leads.' : 'Try adjusting the date or search filter.'}</p>
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="bg-gray-50 text-left text-xs font-bold text-gray-500 uppercase tracking-wider border-b border-gray-100">
-                      <th className="pl-6 pr-3 py-3.5 w-8">#</th>
+                      <th className="pl-6 pr-3 py-3.5">Source</th>
                       <th className="px-3 py-3.5">Lead ID</th>
-                      <th className="px-3 py-3.5">Source</th>
                       <th className="px-3 py-3.5">Customer</th>
                       <th className="px-3 py-3.5">Mobile</th>
-                      <th className="px-3 py-3.5">City</th>
-                      <th className="px-3 py-3.5">Service</th>
-                      <th className="px-3 py-3.5">Date</th>
-                      <th className="px-3 py-3.5">Outcome</th>
+                      <th className="px-3 py-3.5">Disposition</th>
                       <th className="px-3 py-3.5">Status</th>
                       <th className="px-3 pr-6 py-3.5 text-right">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
-                    {myLeads.map((lead, idx) => {
-                      const isWorked = lead.isWorked;
-                      const outcomeKey = lead.domLead?.callOutcome || lead.callOutcome || '';
-                      const outcome    = OUTCOME_MAP[outcomeKey];
-                      const date       = lead.loadedAt || lead.createdAt;
+                    {filteredWorked.map((lead) => {
+                      const isWebsite = lead._src === 'website';
+                      const outcomeKey = isWebsite ? (lead.domLead?.callOutcome || '') : (lead.callOutcome || '');
+                      const outcome = OUTCOME_MAP[outcomeKey];
+                      const wsInfo = !isWebsite && lead.workStatus ? { interested:'bg-emerald-100 text-emerald-700', not_interested:'bg-red-100 text-red-700', callback:'bg-amber-100 text-amber-700', not_reachable:'bg-orange-100 text-orange-700', closed:'bg-gray-100 text-gray-500', in_progress:'bg-blue-100 text-blue-700' }[lead.workStatus] : null;
                       return (
                         <tr key={lead._id}
-                          className="hover:bg-[#E8FFF5]/70 transition-colors cursor-pointer group"
-                          onClick={() => handleOpenLead(lead)}>
-                          <td className="pl-6 pr-3 py-3.5 text-gray-300 text-xs font-mono">{idx + 1}</td>
-                          <td className="px-3 py-3.5">
-                            {lead.domLead?.leadRef
-                              ? <span className="font-mono text-xs font-bold bg-[#065F36] text-[#7CFF7C] px-2 py-1 rounded-md tracking-wider border border-[#054A2E]">{lead.domLead.leadRef}</span>
-                              : <span className="text-gray-300 text-xs italic">Not started</span>}
+                          className={`cursor-pointer transition-colors group border-l-4 ${isWebsite ? 'border-l-teal-400 hover:bg-teal-50/30' : 'border-l-violet-400 hover:bg-violet-50/30'}`}
+                          onClick={() => isWebsite ? handleOpenLead(lead) : handleOpenImportedLead(lead)}>
+                          <td className="pl-6 pr-3 py-3.5">
+                            {isWebsite
+                              ? <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-teal-500 text-white">🌐 Meta</span>
+                              : <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-violet-100 text-violet-700 border border-violet-200">📊 Imported</span>}
                           </td>
                           <td className="px-3 py-3.5">
-                            {lead.isManual
-                              ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-gray-100 text-gray-600 border border-gray-200">✍️ Manual</span>
-                              : <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-teal-100 text-teal-700 border border-teal-200">🌐 Website</span>
-                            }
+                            {isWebsite && lead.domLead?.leadRef
+                              ? <span className="font-mono text-xs font-bold bg-gray-900 text-emerald-400 px-1.5 py-0.5 rounded">{lead.domLead.leadRef}</span>
+                              : <span className="text-gray-300 text-xs italic">—</span>}
                           </td>
                           <td className="px-3 py-3.5">
                             <div className="flex items-center gap-2">
-                              <div className={`w-2 h-2 rounded-full flex-shrink-0 ${isWorked ? 'bg-[#065F36]' : 'bg-red-400 animate-pulse'}`} />
-                              <p className="font-semibold text-gray-800 leading-tight">{lead.name || '—'}</p>
+                              <span className="w-2 h-2 rounded-full bg-emerald-400 flex-shrink-0" />
+                              <p className="font-semibold text-gray-800">{lead.name || '—'}</p>
                             </div>
                           </td>
-                          <td className="px-3 py-3.5 text-gray-600 font-mono text-xs tracking-wide">{lead.mobile || '—'}</td>
-                          <td className="px-3 py-3.5 text-gray-500 text-sm">{lead.city || '—'}</td>
-                          <td className="px-3 py-3.5">
-                            {lead.productType
-                              ? <span className="bg-[#E8FFF5] text-[#065F36] border border-[#D1FAE5] px-2 py-0.5 rounded-full text-xs font-medium capitalize">{lead.productType.replace(/_/g,' ')}</span>
-                              : <span className="text-gray-300 text-xs">—</span>}
-                          </td>
-                          <td className="px-3 py-3.5 text-gray-400 text-xs whitespace-nowrap">
-                            {date ? new Date(date).toLocaleString('en-IN', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' }) : '—'}
-                          </td>
+                          <td className="px-3 py-3.5 font-mono text-xs text-gray-600">{lead.mobile || '—'}</td>
                           <td className="px-3 py-3.5">
                             {outcome
                               ? <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${outcome.cls}`}>{outcome.label}</span>
-                              : <span className="text-gray-300 text-xs">—</span>}
+                              : wsInfo
+                                ? <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${wsInfo}`}>{lead.workStatus?.replace(/_/g,' ')}</span>
+                                : <span className="text-gray-300 text-xs">—</span>}
                           </td>
                           <td className="px-3 py-3.5">
-                            <span className={`inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full font-bold border ${
-                              isWorked
-                                ? 'bg-[#E8FFF5] text-[#065F36] border-[#D1FAE5]'
-                                : 'bg-red-50 text-red-600 border-red-200'
-                            }`}>
-                              {isWorked ? <CheckCircle className="h-3 w-3" /> : <Clock className="h-3 w-3" />}
-                              {isWorked ? 'Worked' : 'Pending'}
+                            <span className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full font-bold bg-emerald-100 text-emerald-700 border border-emerald-200">
+                              <CheckCircle className="h-3 w-3" /> Worked
                             </span>
                           </td>
                           <td className="px-3 pr-6 py-3.5 text-right">
-                            <button onClick={(e) => { e.stopPropagation(); handleOpenLead(lead); }}
-                              className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg bg-[#065F36] text-white hover:bg-[#054A2E] font-semibold opacity-0 group-hover:opacity-100 transition-all shadow-sm">
-                              Open <ChevronRight className="h-3 w-3" />
+                            <button onClick={(e) => { e.stopPropagation(); isWebsite ? handleOpenLead(lead) : handleOpenImportedLead(lead); }}
+                              className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg bg-gray-100 text-gray-600 hover:bg-[#E8FFF5] hover:text-[#065F36] font-semibold opacity-0 group-hover:opacity-100 transition-all">
+                              Edit <ChevronRight className="h-3 w-3" />
                             </button>
                           </td>
                         </tr>
@@ -410,144 +596,17 @@ const DomAgentDashboard = () => {
           </div>
         )}
 
-        {/* Assigned Leads Tab */}
-        {tab === 'assigned_leads' && (
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 bg-[#E8FFF5] rounded-xl">
-                  <Database className="h-5 w-5 text-[#065F36]" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h2 className="font-bold text-gray-800 text-base">Assigned Leads</h2>
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-violet-100 text-violet-700 border border-violet-200">
-                      📊 Excel Import
-                    </span>
-                  </div>
-                  <p className="text-xs text-gray-400 mt-0.5">Click any row to open the full work form and record your call outcome</p>
-                </div>
-              </div>
-              <button onClick={fetchAssignedLeads} disabled={assignedLeadsLoading}
-                className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-[#065F36] border border-gray-200 rounded-xl px-3 py-2 transition-colors bg-white">
-                <RefreshCw className={`h-4 w-4 ${assignedLeadsLoading ? 'animate-spin' : ''}`} />
-              </button>
-            </div>
-
-            {assignedLeadsLoading ? (
-              <div className="flex flex-col items-center justify-center py-20 text-gray-300">
-                <span className="w-8 h-8 border-2 border-gray-200 border-t-[#065F36] rounded-full animate-spin mb-3" />
-                <span className="text-sm text-gray-400">Loading assigned leads…</span>
-              </div>
-            ) : assignedLeads.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-20 text-gray-400">
-                <Database className="h-14 w-14 text-gray-200 mb-4" />
-                <p className="font-semibold text-gray-500 text-base">No assigned leads yet</p>
-                <p className="text-sm mt-1 text-gray-400">Your admin will assign leads from the shared pool to you.</p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-gray-50 text-left text-xs font-bold text-gray-500 uppercase tracking-wider border-b border-gray-100">
-                      <th className="pl-6 pr-3 py-3.5 w-8">#</th>
-                      <th className="px-3 py-3.5">Customer</th>
-                      <th className="px-3 py-3.5">Mobile</th>
-                      <th className="px-3 py-3.5">Loan Type</th>
-                      <th className="px-3 py-3.5">Outstanding</th>
-                      <th className="px-3 py-3.5">Overdue</th>
-                      <th className="px-3 py-3.5">CIBIL</th>
-                      <th className="px-3 py-3.5">Status</th>
-                      <th className="px-3 pr-6 py-3.5 text-right">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50">
-                    {assignedLeads.map((lead, idx) => {
-                      const ws = lead.workStatus || 'new';
-                      const WORK_STATUS = {
-                        new:           { label: 'New',           cls: 'bg-orange-100 text-orange-700 border-orange-200' },
-                        in_progress:   { label: 'In Progress',   cls: 'bg-blue-100 text-blue-700 border-blue-200' },
-                        interested:    { label: 'Interested',    cls: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
-                        not_interested:{ label: 'Not Interested',cls: 'bg-red-100 text-red-700 border-red-200' },
-                        closed:        { label: 'Closed',        cls: 'bg-gray-100 text-gray-600 border-gray-200' },
-                      };
-                      const wsInfo   = WORK_STATUS[ws] || WORK_STATUS.new;
-                      const isWorked = !!lead.domLeadId;
-                      const overdue  = parseInt(lead.noOfInstallmentOverdue, 10) || 0;
-                      return (
-                        <tr key={lead._id}
-                          className="hover:bg-violet-50/50 transition-colors cursor-pointer group"
-                          onClick={() => handleOpenImportedLead(lead)}>
-                          <td className="pl-6 pr-3 py-3.5 text-gray-300 text-xs font-mono">{idx + 1}</td>
-                          <td className="px-3 py-3.5">
-                            <div className="flex items-center gap-2">
-                              <div className={`w-2 h-2 rounded-full flex-shrink-0 ${isWorked ? 'bg-violet-500' : 'bg-orange-400 animate-pulse'}`} />
-                              <div>
-                                <p className="font-semibold text-gray-800 leading-tight">{lead.name || '—'}</p>
-                                <p className="text-xs text-gray-400">{lead.state || lead.city || ''}</p>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-3 py-3.5 text-gray-600 font-mono text-xs tracking-wide">{lead.mobile || '—'}</td>
-                          <td className="px-3 py-3.5">
-                            {(lead.loanType || lead.productType)
-                              ? <span className="bg-violet-100 text-violet-700 border border-violet-200 px-2 py-0.5 rounded-full text-xs font-medium capitalize">
-                                  {(lead.loanType || lead.productType).replace(/_/g,' ')}
-                                </span>
-                              : <span className="text-gray-300 text-xs">—</span>}
-                          </td>
-                          <td className="px-3 py-3.5">
-                            {lead.totalOutstandingAmount
-                              ? <span className="text-xs font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-lg">?{lead.totalOutstandingAmount}</span>
-                              : <span className="text-gray-300 text-xs">—</span>}
-                          </td>
-                          <td className="px-3 py-3.5">
-                            {overdue > 0
-                              ? <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${overdue > 3 ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'}`}>
-                                  {overdue} EMI
-                                </span>
-                              : <span className="text-gray-300 text-xs">—</span>}
-                          </td>
-                          <td className="px-3 py-3.5">
-                            {lead.cibilScore
-                              ? <span className={`text-xs font-bold ${
-                                  parseInt(lead.cibilScore) >= 700 ? 'text-emerald-600' :
-                                  parseInt(lead.cibilScore) >= 600 ? 'text-amber-600' : 'text-red-600'
-                                }`}>{lead.cibilScore}</span>
-                              : <span className="text-gray-300 text-xs">—</span>}
-                          </td>
-                          <td className="px-3 py-3.5">
-                            <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold border ${wsInfo.cls}`}>
-                              {wsInfo.label}
-                            </span>
-                          </td>
-                          <td className="px-3 pr-6 py-3.5 text-right">
-                            <button onClick={(e) => { e.stopPropagation(); handleOpenImportedLead(lead); }}
-                              className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg bg-violet-600 text-white hover:bg-violet-700 font-semibold opacity-0 group-hover:opacity-100 transition-all shadow-sm">
-                              View <ChevronRight className="h-3 w-3" />
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        )}
-
-      {/* -- Follow-up Queue -- */}}
+      {/* -- Follow-up Queue -- */}
       {tab === 'followups' && (() => {
         const today     = new Date(); today.setHours(0,0,0,0);
         const tomorrow  = new Date(today); tomorrow.setDate(today.getDate() + 1);
 
         const parseDate = (d) => { if (!d) return null; const p = new Date(d); return isNaN(p) ? null : p; };
 
-        const overdue   = followups.filter(f => { const d = parseDate(f.callbackDate); return d && d < today; });
-        const todayList = followups.filter(f => { const d = parseDate(f.callbackDate); return d && d >= today && d < tomorrow; });
-        const upcoming  = followups.filter(f => { const d = parseDate(f.callbackDate); return d && d >= tomorrow; });
-        const noDate    = followups.filter(f => !parseDate(f.callbackDate));
+        const overdue   = filteredFollowups.filter(f => { const d = parseDate(f.callbackDate); return d && d < today; });
+        const todayList = filteredFollowups.filter(f => { const d = parseDate(f.callbackDate); return d && d >= today && d < tomorrow; });
+        const upcoming  = filteredFollowups.filter(f => { const d = parseDate(f.callbackDate); return d && d >= tomorrow; });
+        const noDate    = filteredFollowups.filter(f => !parseDate(f.callbackDate));
 
         const FollowupCard = ({ f }) => {
           const outcomeColors = {
@@ -644,6 +703,28 @@ const DomAgentDashboard = () => {
                     <RefreshCw className={`h-4 w-4 ${followupsLoading ? 'animate-spin' : ''}`} />
                   </button>
                 </div>
+              </div>
+              {/* Filter bar */}
+              <div className="flex items-center gap-3 px-5 py-3 border-t border-gray-100 bg-gray-50/50 flex-wrap">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 pointer-events-none" />
+                  <input type="text" placeholder="Search name or mobile…" value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+                    className="pl-9 pr-8 py-2 text-sm border border-gray-200 rounded-xl bg-white w-52 focus:outline-none focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400" />
+                  {searchQuery && <button onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500"><X className="h-3.5 w-3.5" /></button>}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Calendar className="h-3.5 w-3.5 text-gray-400 flex-shrink-0" />
+                  <input type="date" value={followupDateFilter} onChange={e => setFollowupDateFilter(e.target.value)}
+                    className="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400" />
+                  {followupDateFilter && (
+                    <button onClick={() => setFollowupDateFilter('')} className="text-xs text-gray-400 hover:text-red-500 px-2.5 py-2 rounded-xl border border-gray-200 hover:border-red-200 bg-white transition-colors whitespace-nowrap">
+                      All dates
+                    </button>
+                  )}
+                </div>
+                {(searchQuery || followupDateFilter) && (
+                  <span className="text-xs text-gray-400">{filteredFollowups.length} of {followups.length} shown</span>
+                )}
               </div>
             </div>
 

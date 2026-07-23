@@ -1,4 +1,7 @@
 'use strict';
+// ── Force IST (Indian Standard Time = UTC+5:30) for all date operations ────
+process.env.TZ = 'Asia/Kolkata';
+
 const path      = require('path');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 

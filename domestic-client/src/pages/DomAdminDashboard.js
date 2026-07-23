@@ -1,10 +1,10 @@
-﻿import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   LogOut, RefreshCw, Users, TrendingUp, BarChart2, Search,
   Eye, X, Hash, Globe, Briefcase, CheckCircle2, Clock,
   AlertCircle, UserCheck, Calendar, ChevronLeft, ChevronRight,
   Inbox, Award, Download, FileDown, ExternalLink, FileText,
-  Image as ImageIcon, File, Database, UserCheck2, Send,
+  Image as ImageIcon, File, Database, UserCheck2, Send, Menu,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import api   from '../utils/axios';
@@ -15,6 +15,13 @@ const fmtDate = (d) =>
 
 const fmtShort = (d) =>
   d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Never';
+
+/** Returns LOCAL date string YYYY-MM-DD — avoids UTC offset issues in IST */
+const localDateStr = (offsetDays = 0) => {
+  const d = new Date();
+  d.setDate(d.getDate() - offsetDays);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+};
 
 // ── Lead Source colour system ── applied consistently everywhere
 const SOURCE_META = {
@@ -64,18 +71,20 @@ const LeadRefBadge = ({ code }) =>
     ? <span className="font-mono text-xs font-bold bg-gray-900 text-emerald-400 px-2 py-0.5 rounded-md tracking-wider whitespace-nowrap border border-gray-700">{code}</span>
     : <span className="text-gray-300 text-xs italic">—</span>;
 
-const TABS = ['overview', 'website_leads', 'dom_leads', 'agents', 'lead_pool'];
+const TABS = ['overview', 'website_leads', 'dom_leads', 'agents', 'lead_pool', 'assigned_leads'];
 const TAB_META = {
   overview:      { label: 'Dashboard',           sub: 'Stats & Pipeline',           Icon: BarChart2, color: 'indigo' },
   website_leads: { label: 'Meta Allocation',      sub: 'Leads from website',         Icon: Globe,     color: 'blue'   },
   dom_leads:     { label: 'Disposition Allocation',    sub: 'Agent submitted leads',      Icon: Briefcase, color: 'purple' },
   agents:        { label: 'Agent Allocation',     sub: 'Rankings & activity',        Icon: Users,     color: 'teal'   },
   lead_pool:     { label: 'Data Pool',            sub: 'Import & assign to agents',  Icon: Database,  color: 'green'  },
+  assigned_leads:{ label: 'Assigned Leads',        sub: 'Leads assigned to agents',   Icon: UserCheck, color: 'amber'  },
 };
 
 const DomAdminDashboard = ({ initialTab } = {}) => {
   const { user, logout } = useAuth();
   const [tab, setTab] = useState(initialTab || 'overview');
+  const [sidebarOpen, setSidebarOpen] = useState(true);
 
   const [stats,    setStats]    = useState(null);
   const [pipeline, setPipeline] = useState([]);
@@ -118,8 +127,24 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
   const [assigning,        setAssigning]        = useState(null);
   const [poolStatusFilter, setPoolStatusFilter] = useState('');
 
+  // Assigned Leads tab
+  const [assignedLeadsData,       setAssignedLeadsData]       = useState([]);
+  const [assignedLeadsTotal,      setAssignedLeadsTotal]      = useState(0);
+  const [assignedLeadsPage,       setAssignedLeadsPage]       = useState(1);
+  const [assignedLeadsLoading,    setAssignedLeadsLoading]    = useState(false);
+  const [assignedSearch,          setAssignedSearch]          = useState('');
+  const [assignedDateFrom,        setAssignedDateFrom]        = useState('');
+  const [assignedDateTo,          setAssignedDateTo]          = useState('');
+  const [assignedSourceType,      setAssignedSourceType]      = useState('all'); // 'all' | 'website' | 'imported'
+
+  // Date filters for Disposition Allocation tab
+  const [domDateFrom,  setDomDateFrom]  = useState('');
+  const [domDateTo,    setDomDateTo]    = useState('');
+
   // Bulk select — website leads
   const [webSelectedIds,  setWebSelectedIds]  = useState(new Set());
+  const [webDateFrom,     setWebDateFrom]     = useState('');
+  const [webDateTo,       setWebDateTo]       = useState('');
   const [webBulkModal,    setWebBulkModal]    = useState(false);
 
   // Bulk select — imported / pool leads
@@ -138,7 +163,13 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
   const [selectedAgent,         setSelectedAgent]         = useState(null);
   const [agentActivity,         setAgentActivity]         = useState({ workedLeads: [], poolLeads: [] });
   const [agentActivityLoading,  setAgentActivityLoading]  = useState(false);
-  const [agentLeadDetail,       setAgentLeadDetail]       = useState(null); // lead clicked in agent panel
+  const [agentLeadDetail,       setAgentLeadDetail]       = useState(null);
+
+  // Transfer leads modal
+  const [transferModal,    setTransferModal]    = useState(false);
+  const [transferToAgent,  setTransferToAgent]  = useState('');
+  const [transferTypes,    setTransferTypes]    = useState({ website: true, pool: true, worked: false });
+  const [transferring,     setTransferring]     = useState(false);
 
   // Refs hold current filter values so callbacks stay stable (no re-creation on every keystroke)
   const searchRef          = useRef('');
@@ -147,10 +178,17 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
   const domSearchRef       = useRef('');
   const domStatusRef       = useRef('');
   const domProductRef      = useRef('');
+  const webDateFromRef     = useRef('');
+  const webDateToRef       = useRef('');
+  const domDateFromRef     = useRef('');
+  const domDateToRef       = useRef('');
 
   const statsLoadedRef = useRef(false);
+  const [statsLastUpdated, setStatsLastUpdated] = useState(null);
+  const [statsRefreshing, setStatsRefreshing] = useState(false);
 
-  const fetchStats = useCallback(async () => {
+  const fetchStats = useCallback(async (silent = false) => {
+    if (!silent) setStatsRefreshing(true);
     try {
       const [s, p] = await Promise.all([
         api.get('/domestic-api/admin/stats'),
@@ -159,7 +197,9 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
       setStats(s.data?.stats);
       setPipeline(p.data?.pipeline || []);
       statsLoadedRef.current = true;
-    } catch { toast.error('Failed to load stats.'); }
+      setStatsLastUpdated(new Date());
+    } catch { if (!silent) toast.error('Failed to load stats.'); }
+    finally { setStatsRefreshing(false); }
   }, []);
 
   // Stable callbacks — read filter values from refs, not from closure state
@@ -170,6 +210,8 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
       if (statusFilterRef.current)       q.set('status',      statusFilterRef.current);
       if (searchRef.current.trim())      q.set('search',      searchRef.current.trim());
       if (productTypeRef.current)        q.set('productType', productTypeRef.current);
+      if (webDateFromRef.current)        q.set('dateFrom',    webDateFromRef.current);
+      if (webDateToRef.current)          q.set('dateTo',      webDateToRef.current);
       const res = await api.get(`/domestic-api/website-leads?${q}`);
       setLeads(res.data?.data || []);
       setLeadsTotal(res.data?.pagination?.total || 0);
@@ -192,6 +234,8 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
       if (domSearchRef.current.trim())   q.set('search',      domSearchRef.current.trim());
       if (domStatusRef.current)          q.set('status',      domStatusRef.current);
       if (domProductRef.current)         q.set('productType', domProductRef.current);
+      if (domDateFromRef.current)        q.set('dateFrom',    domDateFromRef.current);
+      if (domDateToRef.current)          q.set('dateTo',      domDateToRef.current);
       const res = await api.get(`/domestic-api/leads?${q}`);
       setDomLeads(res.data?.data || []);
       setDomLeadsTotal(res.data?.pagination?.total || 0);
@@ -225,6 +269,28 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
     } catch { toast.error('Failed to load agent activity.'); }
     finally { setAgentActivityLoading(false); }
   }, []);
+
+  const handleTransferLeads = useCallback(async () => {
+    if (!transferToAgent) { toast.error('Please select a target agent.'); return; }
+    const types = Object.entries(transferTypes).filter(([,v]) => v).map(([k]) => k);
+    if (types.length === 0) { toast.error('Select at least one lead type to transfer.'); return; }
+    setTransferring(true);
+    try {
+      const res = await api.post('/domestic-api/admin/agents/transfer-leads', {
+        fromAgentId: selectedAgent._id,
+        toAgentId:   transferToAgent,
+        types,
+      });
+      toast.success(res.data.message);
+      setTransferModal(false);
+      setTransferToAgent('');
+      setTransferTypes({ website: true, pool: true, worked: false });
+      handleSelectAgent(selectedAgent); // refresh activity
+      fetchAgents();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Transfer failed.');
+    } finally { setTransferring(false); }
+  }, [selectedAgent, transferToAgent, transferTypes, handleSelectAgent]);
 
   const fetchPoolStats = useCallback(async () => {
     try {
@@ -261,8 +327,12 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
     } finally { setAssigning(null); }
   }, [assignCounts, fetchPoolStats, fetchPoolLeads, poolPage, poolStatusFilter]);
 
-  // Load stats once on mount
-  useEffect(() => { fetchStats(); }, [fetchStats]);
+  // Load stats on mount + auto-refresh every 60 seconds
+  useEffect(() => {
+    fetchStats();
+    const timer = setInterval(() => fetchStats(true), 60000); // silent refresh every 60s
+    return () => clearInterval(timer);
+  }, [fetchStats]);
 
   // Escape cancels drag
   useEffect(() => {
@@ -271,12 +341,55 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
+  const fetchAssignedLeadsData = useCallback(async (page = 1, search = '', dateFrom = '', dateTo = '', sourceType = 'all') => {
+    setAssignedLeadsLoading(true);
+    try {
+      const promises = [];
+
+      // Website leads (assigned = status 'loaded' or 'completed')
+      if (sourceType === 'all' || sourceType === 'website') {
+        const wq = new URLSearchParams({ page, limit: 50, status: 'loaded' });
+        if (search.trim()) wq.set('search', search.trim());
+        if (dateFrom) wq.set('dateFrom', dateFrom);
+        if (dateTo)   wq.set('dateTo', dateTo);
+        promises.push(api.get(`/domestic-api/website-leads?${wq}`).then(r =>
+          (r.data?.data || []).map(l => ({ ...l, _sourceType: 'website' }))
+        ));
+      } else {
+        promises.push(Promise.resolve([]));
+      }
+
+      // Imported leads (assigned = status 'assigned')
+      if (sourceType === 'all' || sourceType === 'imported') {
+        const iq = new URLSearchParams({ page, limit: 50, status: 'assigned' });
+        if (search.trim()) iq.set('search', search.trim());
+        if (dateFrom) iq.set('dateFrom', dateFrom);
+        if (dateTo)   iq.set('dateTo', dateTo);
+        promises.push(api.get(`/domestic-api/import-leads?${iq}`).then(r =>
+          (r.data?.data || []).map(l => ({ ...l, _sourceType: 'imported' }))
+        ));
+      } else {
+        promises.push(Promise.resolve([]));
+      }
+
+      const [websiteLeads, importedLeads] = await Promise.all(promises);
+      const combined = [...websiteLeads, ...importedLeads]
+        .sort((a, b) => new Date(b.assignedAt || b.loadedAt || b.createdAt) - new Date(a.assignedAt || a.loadedAt || a.createdAt));
+
+      setAssignedLeadsData(combined);
+      setAssignedLeadsTotal(combined.length);
+      setAssignedLeadsPage(1);
+    } catch { toast.error('Failed to load assigned leads.'); }
+    finally { setAssignedLeadsLoading(false); }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Load tab data only on tab switch — not on filter changes
   useEffect(() => {
     if (tab === 'website_leads') { fetchLeads(1); fetchProductTypes(); fetchAgents(); }
     if (tab === 'dom_leads')     fetchDomLeads(1);
     if (tab === 'agents')        fetchAgents();
     if (tab === 'lead_pool')     { fetchPoolStats(); fetchPoolLeads(1); fetchAgents(); }
+    if (tab === 'assigned_leads') fetchAssignedLeadsData(1);
   }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleViewLead = useCallback(async (lead) => {
@@ -419,7 +532,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
       const url  = URL.createObjectURL(blob);
       const a    = document.createElement('a');
       a.href     = url;
-      a.download = `domestic-leads-${new Date().toISOString().slice(0,10)}.xlsx`;
+      a.download = `domestic-leads-${localDateStr()}.xlsx`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -444,7 +557,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
       const url  = URL.createObjectURL(blob);
       const a    = document.createElement('a');
       a.href     = url;
-      a.download = `domestic-leads-${new Date().toISOString().slice(0,10)}.zip`;
+      a.download = `domestic-leads-${localDateStr()}.zip`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -462,75 +575,92 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
     <div className="flex h-screen overflow-hidden bg-gray-50">
 
       {/* ════ ADMIN SIDEBAR ════ */}
-      <aside className="w-[210px] flex-shrink-0 flex flex-col h-screen bg-white border-r border-gray-200 shadow-sm">
+      <aside className={`${sidebarOpen ? 'w-[210px]' : 'w-14'} flex-shrink-0 flex flex-col h-screen bg-white border-r border-gray-200 shadow-sm transition-all duration-300 overflow-hidden`}>
         {/* Brand strip */}
-        <div className="bg-[#065F36] px-4 py-4 flex-shrink-0">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-white/15 flex items-center justify-center flex-shrink-0">
-              <img src={`${process.env.PUBLIC_URL}/mcb-logo.png`} alt="MCB" className="h-5 w-auto object-contain brightness-0 invert" />
+        <div className="bg-[#065F36] px-3 py-3 flex-shrink-0 flex items-center gap-2">
+          {sidebarOpen ? (
+            <div className="flex items-center gap-2 flex-1 min-w-0">
+              <div className="w-7 h-7 rounded-lg bg-white/15 flex items-center justify-center flex-shrink-0">
+                <img src={`${process.env.PUBLIC_URL}/mcb-logo.png`} alt="MCB" className="h-4 w-auto object-contain brightness-0 invert" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-white font-bold text-[12px] leading-none">MyCashBridge</p>
+                <p className="text-white/60 text-[9px] font-medium tracking-wider uppercase mt-0.5">Admin Portal</p>
+              </div>
             </div>
-            <div className="min-w-0">
-              <p className="text-white font-bold text-[13px] leading-none">MyCashBridge</p>
-              <p className="text-white/60 text-[9px] font-medium tracking-wider uppercase mt-1">Admin Portal</p>
+          ) : (
+            <div className="mx-auto w-7 h-7 rounded-lg bg-white/15 flex items-center justify-center flex-shrink-0">
+              <img src={`${process.env.PUBLIC_URL}/mcb-logo.png`} alt="MCB" className="h-4 w-auto object-contain brightness-0 invert" />
             </div>
-          </div>
+          )}
+          <button onClick={() => setSidebarOpen(o => !o)} title={sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
+            className="flex-shrink-0 w-7 h-7 rounded-lg bg-white flex items-center justify-center shadow-sm hover:bg-gray-100 active:scale-95 transition-all">
+            {sidebarOpen ? <ChevronLeft className="h-4 w-4 text-[#065F36]" /> : <ChevronRight className="h-4 w-4 text-[#065F36]" />}
+          </button>
         </div>
 
         {/* User pill */}
-        <div className="px-3 py-3 border-b border-gray-100 flex-shrink-0">
-          <div className="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-[#f0faf5] border border-[#d1fae5]">
+        <div className="px-2 py-2 border-b border-gray-100 flex-shrink-0">
+          <div className={`flex items-center ${sidebarOpen ? 'gap-2 px-2' : 'justify-center px-1'} py-2 rounded-xl bg-[#f0faf5] border border-[#d1fae5]`}>
             <div className="relative flex-shrink-0">
               <div className="w-7 h-7 rounded-lg bg-[#065F36] flex items-center justify-center font-bold text-white text-xs shadow-sm">
                 {user.name?.charAt(0)?.toUpperCase()}
               </div>
               <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-400 border-[1.5px] border-white" />
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-gray-800 font-semibold text-[11px] leading-none truncate">{user.name}</p>
-              <p className="text-[#065F36]/70 text-[9px] font-medium mt-1">{user.role === 'dom_admin' ? 'Admin' : 'Super Admin'}</p>
-            </div>
+            {sidebarOpen && (
+              <div className="flex-1 min-w-0">
+                <p className="text-gray-800 font-semibold text-[11px] leading-none truncate">{user.name}</p>
+                <p className="text-[#065F36]/70 text-[9px] font-medium mt-1">{user.role === 'dom_admin' ? 'Admin' : 'Super Admin'}</p>
+              </div>
+            )}
           </div>
         </div>
 
         {/* Navigation */}
         <nav className="flex-1 px-2 pt-3 pb-2 overflow-y-auto min-h-0">
-          <p className="text-gray-400 text-[9px] font-extrabold uppercase tracking-[0.14em] px-2 mb-1.5">OVERVIEW</p>
+          {sidebarOpen && <p className="text-gray-400 text-[9px] font-extrabold uppercase tracking-[0.14em] px-2 mb-1.5">OVERVIEW</p>}
           {[{ key: 'overview', Icon: BarChart2, label: 'Dashboard', sub: 'Stats & pipeline' }].map(({ key, Icon, label, sub }) => {
             const isActive = tab === key;
             return (
-              <button key={key} onClick={() => setTab(key)}
-                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg transition-all text-left relative group mb-0.5 ${
+              <button key={key} onClick={() => setTab(key)} title={!sidebarOpen ? label : undefined}
+                className={`w-full flex items-center ${sidebarOpen ? 'gap-2.5 px-3' : 'justify-center px-0 py-2.5'} py-2 rounded-lg transition-all text-left relative group mb-0.5 ${
                   isActive ? 'bg-[#e8f5ed] text-[#065F36]' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-800'
                 }`}>
-                {isActive && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-[#065F36] rounded-r-full" />}
+                {isActive && sidebarOpen && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-[#065F36] rounded-r-full" />}
                 <Icon className={`h-[14px] w-[14px] flex-shrink-0 ${isActive ? 'text-[#065F36]' : 'text-gray-400 group-hover:text-gray-600'}`} />
-                <div className="flex-1 min-w-0">
-                  <p className={`text-[12px] font-semibold leading-none ${isActive ? 'text-[#065F36]' : 'text-gray-600 group-hover:text-gray-800'}`}>{label}</p>
-                  <p className={`text-[10px] mt-1 ${isActive ? 'text-[#065F36]/60' : 'text-gray-400'}`}>{sub}</p>
-                </div>
+                {sidebarOpen && (
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-[12px] font-semibold leading-none ${isActive ? 'text-[#065F36]' : 'text-gray-600 group-hover:text-gray-800'}`}>{label}</p>
+                    <p className={`text-[10px] mt-1 ${isActive ? 'text-[#065F36]/60' : 'text-gray-400'}`}>{sub}</p>
+                  </div>
+                )}
               </button>
             );
           })}
 
-          <p className="text-gray-400 text-[9px] font-extrabold uppercase tracking-[0.14em] px-2 mt-3 mb-1.5">ALLOCATIONS</p>
+          {sidebarOpen && <p className="text-gray-400 text-[9px] font-extrabold uppercase tracking-[0.14em] px-2 mt-3 mb-1.5">ALLOCATIONS</p>}
           {[
-            { key: 'website_leads', Icon: Globe,     label: 'Meta Allocation',  sub: 'Website + meta leads'   },
+            { key: 'website_leads', Icon: Globe,     label: 'Meta Allocation',        sub: 'Website + meta leads'   },
             { key: 'dom_leads',     Icon: Briefcase, label: 'Disposition Allocation', sub: 'Agent submitted leads'  },
-            { key: 'agents',        Icon: Users,     label: 'Agent Allocation',  sub: 'Performance & tracking' },
-            { key: 'lead_pool',     Icon: Database,  label: 'Data Pool',         sub: 'Import & assign leads'  },
+            { key: 'agents',        Icon: Users,     label: 'Agent Allocation',        sub: 'Performance & tracking' },
+            { key: 'lead_pool',     Icon: Database,  label: 'Data Pool',               sub: 'Import & assign leads'  },
+            { key: 'assigned_leads',Icon: UserCheck, label: 'Assigned Leads',          sub: 'Leads assigned to agents'},
           ].map(({ key, Icon, label, sub }) => {
             const isActive = tab === key;
             return (
-              <button key={key} onClick={() => setTab(key)}
-                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg transition-all text-left relative group mb-0.5 ${
+              <button key={key} onClick={() => setTab(key)} title={!sidebarOpen ? label : undefined}
+                className={`w-full flex items-center ${sidebarOpen ? 'gap-2.5 px-3' : 'justify-center px-0 py-2.5'} py-2 rounded-lg transition-all text-left relative group mb-0.5 ${
                   isActive ? 'bg-[#e8f5ed] text-[#065F36]' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-800'
                 }`}>
-                {isActive && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-[#065F36] rounded-r-full" />}
+                {isActive && sidebarOpen && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-[#065F36] rounded-r-full" />}
                 <Icon className={`h-[14px] w-[14px] flex-shrink-0 ${isActive ? 'text-[#065F36]' : 'text-gray-400 group-hover:text-gray-600'}`} />
-                <div className="flex-1 min-w-0">
-                  <p className={`text-[12px] font-semibold leading-none ${isActive ? 'text-[#065F36]' : 'text-gray-600 group-hover:text-gray-800'}`}>{label}</p>
-                  <p className={`text-[10px] mt-1 ${isActive ? 'text-[#065F36]/60' : 'text-gray-400'}`}>{sub}</p>
-                </div>
+                {sidebarOpen && (
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-[12px] font-semibold leading-none ${isActive ? 'text-[#065F36]' : 'text-gray-600 group-hover:text-gray-800'}`}>{label}</p>
+                    <p className={`text-[10px] mt-1 ${isActive ? 'text-[#065F36]/60' : 'text-gray-400'}`}>{sub}</p>
+                  </div>
+                )}
               </button>
             );
           })}
@@ -538,10 +668,10 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
 
         {/* Sign out */}
         <div className="flex-shrink-0 px-2 pb-3 pt-2 border-t border-gray-100">
-          <button onClick={logout}
-            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-all text-left">
+          <button onClick={logout} title={!sidebarOpen ? 'Sign out' : undefined}
+            className={`w-full flex items-center ${sidebarOpen ? 'gap-2.5 px-3' : 'justify-center px-0'} py-2 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-all text-left`}>
             <LogOut className="h-[14px] w-[14px] flex-shrink-0" />
-            <span className="text-[12px] font-semibold">Sign out</span>
+            {sidebarOpen && <span className="text-[12px] font-semibold">Sign out</span>}
           </button>
         </div>
       </aside>
@@ -553,6 +683,74 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
         {/* OVERVIEW */}
         {tab === 'overview' && stats && (
           <>
+            {/* Today's Activity Banner */}
+            <div className="bg-gradient-to-r from-[#065F36] to-[#00874A] rounded-2xl p-5 text-white shadow-lg">
+              <div className="flex items-center justify-between flex-wrap gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-white/15 rounded-xl"><Calendar className="h-5 w-5" /></div>
+                  <div>
+                    <p className="font-black text-lg">Today's Activity</p>
+                    <p className="text-white/70 text-xs">{new Date().toLocaleDateString('en-IN', { weekday:'long', day:'2-digit', month:'long', year:'numeric' })}</p>
+                    {statsLastUpdated && (
+                      <p className="text-white/50 text-[10px] mt-0.5">Updated: {statsLastUpdated.toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit', second:'2-digit' })}</p>
+                    )}
+                  </div>
+                  <button onClick={() => fetchStats()} disabled={statsRefreshing}
+                    className="p-2 bg-white/15 hover:bg-white/25 rounded-xl transition-colors ml-1" title="Refresh stats now">
+                    <RefreshCw className={`h-4 w-4 ${statsRefreshing ? 'animate-spin' : ''}`} />
+                  </button>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  {[
+                    { label: 'New Leads Today', val: stats.websiteLeads.today, color: 'bg-white/20' },
+                    { label: 'Unclaimed', val: stats.websiteLeads.new, color: 'bg-amber-500/30' },
+                    { label: 'Active Agents', val: stats.agents.active, color: 'bg-emerald-500/30' },
+                  ].map(s => (
+                    <div key={s.label} className={`${s.color} rounded-xl px-4 py-2.5 text-center min-w-[80px]`}>
+                      <p className="text-2xl font-black">{s.val}</p>
+                      <p className="text-white/70 text-xs font-medium">{s.label}</p>
+                    </div>
+                  ))}
+                  <button onClick={() => setTab('website_leads')}
+                    className="flex items-center gap-1.5 bg-white text-[#065F36] text-xs font-bold px-4 py-2.5 rounded-xl hover:bg-[#E8FFF5] transition-colors shadow-sm">
+                    View Leads →
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Assigned Leads Summary */}
+            {stats.assigned && (
+              <div className="grid grid-cols-3 gap-4">
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex items-center gap-4">
+                  <div className="p-3 bg-teal-100 rounded-xl flex-shrink-0"><Globe className="h-5 w-5 text-teal-600" /></div>
+                  <div>
+                    <p className="text-2xl font-black text-gray-800">{stats.assigned.websiteLeads}</p>
+                    <p className="text-xs text-gray-500 font-medium">Website Leads Assigned</p>
+                    <p className="text-xs text-teal-600 font-semibold mt-0.5">Currently with agents</p>
+                  </div>
+                </div>
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex items-center gap-4">
+                  <div className="p-3 bg-violet-100 rounded-xl flex-shrink-0"><Database className="h-5 w-5 text-violet-600" /></div>
+                  <div>
+                    <p className="text-2xl font-black text-gray-800">{stats.assigned.importedLeads}</p>
+                    <p className="text-xs text-gray-500 font-medium">Imported Leads Assigned</p>
+                    <p className="text-xs text-violet-600 font-semibold mt-0.5">Currently with agents</p>
+                  </div>
+                </div>
+                <div
+                  onClick={() => setTab('assigned_leads')}
+                  className="bg-gradient-to-br from-amber-400 to-orange-500 rounded-2xl p-5 flex items-center gap-4 cursor-pointer hover:shadow-md transition-all shadow-sm">
+                  <div className="p-3 bg-white/20 rounded-xl flex-shrink-0"><UserCheck className="h-5 w-5 text-white" /></div>
+                  <div>
+                    <p className="text-2xl font-black text-white">{stats.assigned.total}</p>
+                    <p className="text-xs text-white/80 font-medium">Total Leads Assigned</p>
+                    <p className="text-xs text-white/60 font-semibold mt-0.5">Click to view all →</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               <KpiCard icon={<Globe className="h-5 w-5" />}      label="Total Website Leads"  value={stats.websiteLeads.total}     color="blue"   />
               <KpiCard icon={<AlertCircle className="h-5 w-5"/>} label="New (Unclaimed)"       value={stats.websiteLeads.new}       color="orange" />
@@ -612,11 +810,31 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
         {/* WEBSITE LEADS */}
         {tab === 'website_leads' && (
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-3">
-              <div className="p-2 bg-blue-100 rounded-xl"><Globe className="h-5 w-5 text-blue-600" /></div>
-              <div>
-                <h2 className="font-bold text-gray-800">Website Leads</h2>
-                <p className="text-xs text-gray-400">Leads that arrived from the MyCashbridge website</p>
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between flex-wrap gap-3">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-teal-100 rounded-xl"><Globe className="h-5 w-5 text-teal-600" /></div>
+                <div>
+                  <h2 className="font-bold text-gray-800">Meta Allocation</h2>
+                  <p className="text-xs text-gray-400">Website + Meta leads — assign unassigned leads to agents</p>
+                </div>
+              </div>
+              {/* Sub-tab toggle */}
+              <div className="flex items-center bg-gray-100 rounded-xl p-1 gap-0.5">
+                {[
+                  { val: '',          label: 'All Leads',   dot: 'bg-gray-400'    },
+                  { val: 'new',       label: 'Unassigned',  dot: 'bg-amber-400'   },
+                  { val: 'loaded',    label: 'Assigned',    dot: 'bg-teal-500'    },
+                  { val: 'completed', label: 'Completed',   dot: 'bg-emerald-500' },
+                ].map(s => (
+                  <button key={s.val}
+                    onClick={() => { setStatusFilter(s.val); statusFilterRef.current = s.val; fetchLeads(1); }}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                      statusFilter === s.val ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500 hover:text-gray-700'
+                    }`}>
+                    <span className={`w-2 h-2 rounded-full ${s.dot}`} />
+                    {s.label}
+                  </button>
+                ))}
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-3 px-6 py-3 bg-gray-50 border-b border-gray-100">
@@ -667,6 +885,39 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                 className="flex items-center gap-2 text-sm bg-[#065F36] text-white px-4 py-2 rounded-xl hover:bg-[#054A2E] font-semibold">
                 <Search className="h-4 w-4" /> Search
               </button>
+            </div>
+            {/* Date filter row */}
+            <div className="px-5 pb-3 flex items-center gap-2 flex-wrap border-b border-gray-100">
+              <Calendar className="h-3.5 w-3.5 text-gray-400 flex-shrink-0" />
+              <span className="text-xs font-semibold text-gray-500">Date:</span>
+              {[
+                { l: 'Today',      f: localDateStr(), t: localDateStr() },
+                { l: 'This Week',  f: localDateStr(6), t: localDateStr() },
+                { l: 'This Month', f: new Date().getFullYear()+'-'+String(new Date().getMonth()+1).padStart(2,'0')+'-01', t: localDateStr() },
+              ].map(p => (
+                <button key={p.l}
+                  onClick={() => { setWebDateFrom(p.f); setWebDateTo(p.t); webDateFromRef.current = p.f; webDateToRef.current = p.t; fetchLeads(1); }}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${webDateFrom === p.f && webDateTo === p.t ? 'bg-teal-600 text-white border-teal-600' : 'bg-gray-50 text-gray-600 border-gray-200 hover:border-teal-400'}`}>
+                  {p.l}
+                </button>
+              ))}
+              <input type="date" value={webDateFrom}
+                onChange={e => { setWebDateFrom(e.target.value); webDateFromRef.current = e.target.value; }}
+                className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-teal-500" />
+              <span className="text-gray-400 text-xs">to</span>
+              <input type="date" value={webDateTo}
+                onChange={e => { setWebDateTo(e.target.value); webDateToRef.current = e.target.value; }}
+                className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-teal-500" />
+              <button onClick={() => fetchLeads(1)}
+                className="px-3 py-1.5 rounded-lg text-xs font-bold bg-teal-600 text-white hover:bg-teal-700 transition-colors">
+                Apply
+              </button>
+              {(webDateFrom || webDateTo) && (
+                <button onClick={() => { setWebDateFrom(''); setWebDateTo(''); webDateFromRef.current = ''; webDateToRef.current = ''; fetchLeads(1); }}
+                  className="px-3 py-1.5 rounded-lg text-xs text-gray-500 border border-gray-200 hover:bg-gray-50 transition-colors">
+                  Clear
+                </button>
+              )}
             </div>
 
             {leadsLoading ? <Spinner /> : leads.length === 0 ? <Empty label="No website leads found." /> : (
@@ -849,6 +1100,39 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                     <Download className="h-4 w-4" /> Export with Docs
                   </button>
                 </>
+              )}
+            </div>
+            {/* Date filter row */}
+            <div className="px-5 pb-3 flex items-center gap-2 flex-wrap border-b border-gray-100">
+              <Calendar className="h-3.5 w-3.5 text-gray-400 flex-shrink-0" />
+              <span className="text-xs font-semibold text-gray-500">Date:</span>
+              {[
+                { l: 'Today',      f: localDateStr(),                                                                                                to: localDateStr() },
+                { l: 'This Week',  f: localDateStr(6),                                                                           to: localDateStr() },
+                { l: 'This Month', f: new Date().getFullYear()+'-'+String(new Date().getMonth()+1).padStart(2,'0')+'-01',                                                  to: localDateStr() },
+              ].map(p => (
+                <button key={p.l}
+                  onClick={() => { setDomDateFrom(p.f); setDomDateTo(p.to); domDateFromRef.current = p.f; domDateToRef.current = p.to; fetchDomLeads(1); }}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${domDateFrom === p.f && domDateTo === p.to ? 'bg-[#065F36] text-white border-[#065F36]' : 'bg-gray-50 text-gray-600 border-gray-200 hover:border-[#065F36]/40'}`}>
+                  {p.l}
+                </button>
+              ))}
+              <input type="date" value={domDateFrom}
+                onChange={e => { setDomDateFrom(e.target.value); domDateFromRef.current = e.target.value; }}
+                className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-[#065F36]" />
+              <span className="text-gray-400 text-xs">to</span>
+              <input type="date" value={domDateTo}
+                onChange={e => { setDomDateTo(e.target.value); domDateToRef.current = e.target.value; }}
+                className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-[#065F36]" />
+              <button onClick={() => fetchDomLeads(1)}
+                className="px-3 py-1.5 rounded-lg text-xs font-bold bg-[#065F36] text-white hover:bg-[#054A2E] transition-colors">
+                Apply
+              </button>
+              {(domDateFrom || domDateTo) && (
+                <button onClick={() => { setDomDateFrom(''); setDomDateTo(''); domDateFromRef.current = ''; domDateToRef.current = ''; fetchDomLeads(1); }}
+                  className="px-3 py-1.5 rounded-lg text-xs text-gray-500 border border-gray-200 hover:bg-gray-50 transition-colors">
+                  Clear
+                </button>
               )}
             </div>
 
@@ -1189,10 +1473,17 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                         </div>
                       </div>
                     </div>
-                    <button onClick={() => { setSelectedAgent(null); setAgentActivity({ workedLeads: [], poolLeads: [] }); }}
-                      className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100 transition-colors">
-                      <X className="h-5 w-5" />
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => { setTransferModal(true); setTransferToAgent(''); }}
+                        className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold shadow-sm transition-colors">
+                        <Send className="h-3.5 w-3.5" /> Transfer Leads
+                      </button>
+                      <button onClick={() => { setSelectedAgent(null); setAgentActivity({ workedLeads: [], poolLeads: [] }); }}
+                        className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100 transition-colors">
+                        <X className="h-5 w-5" />
+                      </button>
+                    </div>
                   </div>
 
                   {/* Quick stats */}
@@ -1302,6 +1593,106 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                     </div>
                   </>
                 )}
+              </div>
+            )}
+
+            {/* ── Transfer Leads Modal ── */}
+            {transferModal && selectedAgent && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+                <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+                  {/* Header */}
+                  <div className="bg-gradient-to-r from-amber-500 to-orange-500 px-6 py-4 flex items-center justify-between">
+                    <div>
+                      <h3 className="text-white font-bold text-base">Transfer Leads</h3>
+                      <p className="text-white/80 text-xs mt-0.5">Move leads from <strong>{selectedAgent.name}</strong> to another agent</p>
+                    </div>
+                    <button onClick={() => setTransferModal(false)} className="text-white/80 hover:text-white transition-colors">
+                      <X className="h-5 w-5" />
+                    </button>
+                  </div>
+
+                  <div className="p-6 space-y-5">
+                    {/* From agent (read-only) */}
+                    <div>
+                      <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">From Agent</p>
+                      <div className="flex items-center gap-3 px-4 py-3 bg-red-50 border border-red-200 rounded-xl">
+                        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-red-400 to-red-500 flex items-center justify-center text-white font-black text-sm">
+                          {selectedAgent.name?.charAt(0)?.toUpperCase()}
+                        </div>
+                        <div>
+                          <p className="font-bold text-gray-800 text-sm">{selectedAgent.name}</p>
+                          <p className="text-xs text-gray-500">{selectedAgent.email}</p>
+                        </div>
+                        <div className="ml-auto text-right">
+                          <p className="text-xs font-bold text-red-600">{(agentActivity.poolLeads.length || 0) + (agentActivity.workedLeads.length || 0)} leads</p>
+                          <p className="text-[10px] text-gray-400">visible</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* To agent (dropdown) */}
+                    <div>
+                      <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Transfer To</p>
+                      <select
+                        value={transferToAgent}
+                        onChange={e => setTransferToAgent(e.target.value)}
+                        className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-amber-400/40 focus:border-amber-400">
+                        <option value="">— Select target agent —</option>
+                        {agents.filter(a => a._id !== selectedAgent._id && a.isActive).map(a => (
+                          <option key={a._id} value={a._id}>{a.name} ({a.email})</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Lead types to transfer */}
+                    <div>
+                      <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">What to Transfer</p>
+                      <div className="space-y-2">
+                        {[
+                          { key: 'website', label: 'Website / Meta Leads', sub: 'Unworked website leads loaded by this agent', color: 'teal' },
+                          { key: 'pool',    label: 'Pool / Imported Leads (Unworked)', sub: 'Imported data leads not yet called', color: 'violet' },
+                          { key: 'worked',  label: 'Worked Cases (DomLeads)', sub: 'Already-filled lead forms — reassign ownership', color: 'orange' },
+                        ].map(({ key, label, sub, color }) => (
+                          <label key={key} className={`flex items-start gap-3 px-4 py-3 rounded-xl border cursor-pointer transition-all ${
+                            transferTypes[key]
+                              ? color === 'teal'   ? 'bg-teal-50 border-teal-300'
+                              : color === 'violet' ? 'bg-violet-50 border-violet-300'
+                              : 'bg-orange-50 border-orange-300'
+                              : 'bg-gray-50 border-gray-200 opacity-70'
+                          }`}>
+                            <input type="checkbox" className="mt-0.5 accent-amber-500 w-4 h-4 flex-shrink-0"
+                              checked={transferTypes[key]}
+                              onChange={e => setTransferTypes(prev => ({ ...prev, [key]: e.target.checked }))} />
+                            <div>
+                              <p className="text-sm font-semibold text-gray-700">{label}</p>
+                              <p className="text-xs text-gray-400 mt-0.5">{sub}</p>
+                            </div>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Warning */}
+                    <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+                      <AlertCircle className="h-4 w-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                      <p className="text-xs text-amber-700">This action is <strong>immediate and cannot be undone</strong>. The target agent will see these leads in their dashboard.</p>
+                    </div>
+                  </div>
+
+                  {/* Footer */}
+                  <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-gray-100 bg-gray-50">
+                    <button onClick={() => setTransferModal(false)}
+                      className="px-4 py-2 text-sm text-gray-600 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 font-medium transition-colors">
+                      Cancel
+                    </button>
+                    <button onClick={handleTransferLeads} disabled={!transferToAgent || transferring}
+                      className="flex items-center gap-2 px-5 py-2 text-sm font-bold text-white bg-amber-500 hover:bg-amber-600 disabled:bg-gray-300 disabled:cursor-not-allowed rounded-xl shadow-sm transition-colors">
+                      {transferring
+                        ? <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Transferring…</>
+                        : <><Send className="h-4 w-4" /> Confirm Transfer</>}
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -1498,19 +1889,46 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
               <div className="relative overflow-hidden bg-gradient-to-br from-[#065F36] to-[#00874A] rounded-2xl p-5 text-white shadow-lg shadow-green-200">
                 <p className="text-sm font-semibold text-white/70">Total in Pool</p>
                 <p className="text-4xl font-black mt-1">{poolStats?.stats?.total ?? '—'}</p>
+                <p className="text-white/60 text-xs mt-1">All imported leads</p>
                 <div className="absolute -right-4 -bottom-4 w-20 h-20 rounded-full bg-white/10" />
               </div>
               <div className="relative overflow-hidden bg-gradient-to-br from-amber-400 to-orange-500 rounded-2xl p-5 text-white shadow-lg shadow-amber-200">
                 <p className="text-sm font-semibold text-white/70">Available to Assign</p>
                 <p className="text-4xl font-black mt-1">{poolStats?.stats?.available ?? '—'}</p>
+                <p className="text-white/60 text-xs mt-1">Not yet assigned to any agent</p>
                 <div className="absolute -right-4 -bottom-4 w-20 h-20 rounded-full bg-white/10" />
               </div>
               <div className="relative overflow-hidden bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl p-5 text-white shadow-lg shadow-emerald-200">
                 <p className="text-sm font-semibold text-white/70">Assigned to Agents</p>
                 <p className="text-4xl font-black mt-1">{poolStats?.stats?.assigned ?? '—'}</p>
+                <p className="text-white/60 text-xs mt-1">Total across ALL agents (cumulative)</p>
                 <div className="absolute -right-4 -bottom-4 w-20 h-20 rounded-full bg-white/10" />
               </div>
             </div>
+
+            {/* Per-Agent Breakdown */}
+            {poolStats?.agentBreakdown?.length > 0 && (
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                <div className="px-5 py-3 border-b border-gray-100 flex items-center gap-2">
+                  <Database className="h-4 w-4 text-[#065F36]" />
+                  <p className="font-bold text-gray-800 text-sm">Current Assignment per Agent</p>
+                  <span className="ml-auto text-xs text-gray-400">These are TOTAL (all-time) leads assigned, not just today's</span>
+                </div>
+                <div className="flex flex-wrap gap-3 p-4">
+                  {[...poolStats.agentBreakdown].sort((a,b) => b.count - a.count).map(b => (
+                    <div key={b.agent?._id || b.agent} className="flex items-center gap-2.5 bg-[#f0faf5] border border-[#d1fae5] rounded-xl px-4 py-2.5">
+                      <div className="w-7 h-7 rounded-lg bg-[#065F36] flex items-center justify-center text-white font-black text-xs flex-shrink-0">
+                        {b.agent?.name?.charAt(0)?.toUpperCase() || '?'}
+                      </div>
+                      <div>
+                        <p className="font-bold text-gray-800 text-sm leading-tight">{b.agent?.name || 'Unknown'}</p>
+                        <p className="text-xs text-[#065F36] font-bold">{b.count} leads assigned total</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Assign to Agents */}
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
@@ -1534,7 +1952,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                         <th className="px-3 py-3.5 text-center">Conv.</th>
                         <th className="px-3 py-3.5 text-center">Loaded</th>
                         <th className="px-3 py-3.5 text-center">Done</th>
-                        <th className="px-3 py-3.5 text-center">Pool</th>
+                        <th className="px-3 py-3.5 text-center">Pool (Total)</th>
                         <th className="px-3 py-3.5 text-center">Assign #</th>
                         <th className="px-3 pr-6 py-3.5 text-right">Action</th>
                       </tr>
@@ -1585,9 +2003,12 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                             <td className="px-3 py-4 text-center"><span className="font-bold text-blue-700">{a.leadsLoaded}</span></td>
                             <td className="px-3 py-4 text-center"><span className="font-bold text-emerald-700">{a.leadsCompleted}</span></td>
                             <td className="px-3 py-4 text-center">
-                              <span className="inline-flex items-center gap-1 font-bold text-[#065F36]">
-                                <Database className="h-3.5 w-3.5" />{agentPoolCount}
-                              </span>
+                              <div className="flex flex-col items-center gap-0.5">
+                                <span className="inline-flex items-center gap-1 font-black text-[#065F36] text-sm">
+                                  <Database className="h-3.5 w-3.5" />{agentPoolCount}
+                                </span>
+                                <span className="text-[10px] text-gray-400 font-medium">total</span>
+                              </div>
                             </td>
                             <td className="px-3 py-4 text-center">
                               <input
@@ -1618,23 +2039,35 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
 
             {/* Shared Leads Table */}
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-              <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+              <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between flex-wrap gap-3">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 bg-[#E8FFF5] rounded-xl"><Database className="h-5 w-5 text-[#065F36]" /></div>
+                  <div className="p-2 bg-violet-100 rounded-xl"><Database className="h-5 w-5 text-violet-600" /></div>
                   <div>
-                    <h2 className="font-bold text-gray-800">Shared Lead Pool</h2>
-                    <p className="text-xs text-gray-400">Leads shared by Super Admin — assign them to agents above</p>
+                    <h2 className="font-bold text-gray-800">Import Allocation Pool</h2>
+                    <p className="text-xs text-gray-400">Imported Excel leads — track unassigned vs assigned</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <select
-                    value={poolStatusFilter}
-                    onChange={(e) => { setPoolStatusFilter(e.target.value); fetchPoolLeads(1, e.target.value); }}
-                    className="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white text-gray-700">
-                    <option value="">All</option>
-                    <option value="shared">Available</option>
-                    <option value="assigned">Assigned</option>
-                  </select>
+                  {/* Sub-tab toggle */}
+                  <div className="flex items-center bg-gray-100 rounded-xl p-1 gap-0.5">
+                    {[
+                      { val: '',         label: 'All',         dot: 'bg-gray-400',   count: poolStats?.stats?.total     },
+                      { val: 'shared',   label: 'Unassigned',  dot: 'bg-amber-400',  count: poolStats?.stats?.available },
+                      { val: 'assigned', label: 'Assigned',    dot: 'bg-violet-500', count: poolStats?.stats?.assigned  },
+                    ].map(s => (
+                      <button key={s.val}
+                        onClick={() => { setPoolStatusFilter(s.val); fetchPoolLeads(1, s.val); }}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                          poolStatusFilter === s.val ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500 hover:text-gray-700'
+                        }`}>
+                        <span className={`w-2 h-2 rounded-full ${s.dot}`} />
+                        {s.label}
+                        {s.count !== undefined && (
+                          <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${poolStatusFilter === s.val ? 'bg-violet-100 text-violet-700' : 'bg-gray-200 text-gray-500'}`}>{s.count}</span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
                   <button onClick={() => fetchPoolLeads(poolPage, poolStatusFilter)}
                     className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-[#065F36] border border-gray-200 rounded-xl px-3 py-2">
                     <RefreshCw className="h-4 w-4" />
@@ -1786,6 +2219,166 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                 onNext={() => fetchPoolLeads(poolPage + 1, poolStatusFilter)}
               />
             </div>
+          </div>
+        )}
+
+        {/* ASSIGNED LEADS */}
+        {tab === 'assigned_leads' && (
+          <div className="space-y-4">
+            {/* Header + filters */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+              <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between flex-wrap gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-amber-100 rounded-xl"><UserCheck className="h-5 w-5 text-amber-600" /></div>
+                  <div>
+                    <h2 className="font-bold text-gray-800">Assigned Leads Tracker</h2>
+                    <p className="text-xs text-gray-400">All leads currently assigned to agents — website + imported</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {/* Source type toggle */}
+                  <div className="flex items-center bg-gray-100 rounded-xl p-1 gap-0.5">
+                    {[
+                      { val: 'all',      label: 'All',            dot: 'bg-gray-400'    },
+                      { val: 'website',  label: '🌐 Meta Leads',  dot: 'bg-teal-500'    },
+                      { val: 'imported', label: '📊 Imported',    dot: 'bg-violet-500'  },
+                    ].map(s => (
+                      <button key={s.val}
+                        onClick={() => { setAssignedSourceType(s.val); fetchAssignedLeadsData(1, assignedSearch, assignedDateFrom, assignedDateTo, s.val); }}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                          assignedSourceType === s.val ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500 hover:text-gray-700'
+                        }`}>
+                        <span className={`w-2 h-2 rounded-full ${s.dot}`} />
+                        {s.label}
+                      </button>
+                    ))}
+                  </div>
+                  <span className="text-xs bg-amber-100 text-amber-700 border border-amber-200 px-3 py-1.5 rounded-xl font-bold">
+                    {assignedLeadsTotal} assigned
+                  </span>
+                  <button onClick={() => fetchAssignedLeadsData(1, assignedSearch, assignedDateFrom, assignedDateTo, assignedSourceType)} disabled={assignedLeadsLoading}
+                    className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-[#065F36] border border-gray-200 rounded-xl px-3 py-2 transition-all">
+                    <RefreshCw className={`h-4 w-4 ${assignedLeadsLoading ? 'animate-spin' : ''}`} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Search + Date filter */}
+              <div className="px-5 py-3 bg-gray-50 border-b border-gray-100 flex items-center gap-2 flex-wrap">
+                <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3 py-2 flex-1 min-w-[200px] max-w-xs">
+                  <Search className="h-3.5 w-3.5 text-gray-400 flex-shrink-0" />
+                  <input type="text" placeholder="Search name or mobile…" value={assignedSearch}
+                    onChange={e => setAssignedSearch(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && fetchAssignedLeadsData(1, assignedSearch, assignedDateFrom, assignedDateTo, assignedSourceType)}
+                    className="flex-1 text-sm outline-none bg-transparent min-w-0" />
+                </div>
+                <Calendar className="h-3.5 w-3.5 text-gray-400 flex-shrink-0" />
+                {[
+                  { l: 'Today',      from: localDateStr(), to: localDateStr() },
+                  { l: 'This Week',  from: localDateStr(6), to: localDateStr() },
+                  { l: 'This Month', from: new Date().getFullYear()+'-'+String(new Date().getMonth()+1).padStart(2,'0')+'-01', to: localDateStr() },
+                ].map(p => (
+                  <button key={p.l}
+                    onClick={() => { setAssignedDateFrom(p.from); setAssignedDateTo(p.to); fetchAssignedLeadsData(1, assignedSearch, p.from, p.to, assignedSourceType); }}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${assignedDateFrom === p.from && assignedDateTo === p.to ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-gray-600 border-gray-200 hover:border-amber-400'}`}>
+                    {p.l}
+                  </button>
+                ))}
+                <input type="date" value={assignedDateFrom} onChange={e => setAssignedDateFrom(e.target.value)}
+                  className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-amber-400" />
+                <span className="text-gray-400 text-xs">to</span>
+                <input type="date" value={assignedDateTo} onChange={e => setAssignedDateTo(e.target.value)}
+                  className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-amber-400" />
+                <button onClick={() => fetchAssignedLeadsData(1, assignedSearch, assignedDateFrom, assignedDateTo, assignedSourceType)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-500 text-white hover:bg-amber-600 transition-colors">
+                  Search
+                </button>
+                {(assignedSearch || assignedDateFrom || assignedDateTo) && (
+                  <button onClick={() => { setAssignedSearch(''); setAssignedDateFrom(''); setAssignedDateTo(''); fetchAssignedLeadsData(1); }}
+                    className="px-3 py-1.5 rounded-lg text-xs text-gray-500 border border-gray-200 hover:bg-gray-100 transition-colors">
+                    Clear
+                  </button>
+                )}
+              </div>
+
+              {/* Table */}
+              {assignedLeadsLoading ? <Spinner /> : assignedLeadsData.length === 0 ? (
+                <Empty label={`No ${assignedSourceType === 'website' ? 'meta/website' : assignedSourceType === 'imported' ? 'imported' : ''} assigned leads found.`} />
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-gray-50 text-xs font-bold text-gray-500 uppercase tracking-wider border-b border-gray-100">
+                        <th className="pl-6 pr-3 py-3.5 text-left">Source</th>
+                        <th className="px-3 py-3.5 text-left">Customer</th>
+                        <th className="px-3 py-3.5 text-left">Mobile</th>
+                        <th className="px-3 py-3.5 text-left">Product / Loan</th>
+                        <th className="px-3 py-3.5 text-left">Assigned To</th>
+                        <th className="px-3 py-3.5 text-left">Assigned On</th>
+                        <th className="px-3 pr-6 py-3.5 text-left">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {assignedLeadsData.map((l) => {
+                        const isWebsite = l._sourceType === 'website';
+                        const agentName = isWebsite ? l.loadedBy?.name : l.assignedTo?.name;
+                        const agentEmail = isWebsite ? l.loadedBy?.email : l.assignedTo?.email;
+                        const assignedOn = isWebsite ? (l.loadedAt || l.createdAt) : (l.assignedAt || l.createdAt);
+                        const product = isWebsite ? l.productType : (l.loanType || l.productType);
+                        const statusLabel = isWebsite
+                          ? (l.status === 'loaded' ? 'With Agent' : l.status === 'completed' ? 'Completed' : l.status)
+                          : (l.callOutcome?.replace(/_/g,' ') || l.workStatus?.replace(/_/g,' ') || 'Not Called');
+                        const statusCls = isWebsite
+                          ? (l.status === 'completed' ? 'bg-emerald-100 text-emerald-700' : 'bg-teal-100 text-teal-700')
+                          : ({ interested:'bg-emerald-100 text-emerald-700', not_interested:'bg-red-100 text-red-700', callback:'bg-amber-100 text-amber-700', not_reachable:'bg-orange-100 text-orange-700' }[l.callOutcome] || 'bg-gray-100 text-gray-500');
+                        return (
+                          <tr key={l._id} className={`transition-colors border-l-4 ${isWebsite ? 'hover:bg-teal-50/30 border-l-teal-400' : 'hover:bg-violet-50/30 border-l-violet-400'}`}>
+                            <td className="pl-6 pr-3 py-3.5">
+                              {isWebsite
+                                ? <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-teal-500 text-white">🌐 Meta</span>
+                                : <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-violet-100 text-violet-700 border border-violet-200">📊 Imported</span>}
+                            </td>
+                            <td className="px-3 py-3.5">
+                              <p className="font-semibold text-gray-800">{l.name || '—'}</p>
+                              <p className="text-xs text-gray-400">{l.city || l.state || ''}</p>
+                            </td>
+                            <td className="px-3 py-3.5 font-mono text-xs text-gray-600">{l.mobile || '—'}</td>
+                            <td className="px-3 py-3.5">
+                              {product
+                                ? <span className={`px-2 py-0.5 rounded-full text-xs font-medium capitalize border ${isWebsite ? 'bg-teal-50 text-teal-700 border-teal-200' : 'bg-violet-100 text-violet-700 border-violet-200'}`}>{product.replace(/_/g,' ')}</span>
+                                : <span className="text-gray-300 text-xs">—</span>}
+                            </td>
+                            <td className="px-3 py-3.5">
+                              {agentName ? (
+                                <div className="flex items-center gap-2">
+                                  <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-white text-xs font-bold flex-shrink-0 ${isWebsite ? 'bg-teal-600' : 'bg-[#065F36]'}`}>
+                                    {agentName?.charAt(0)?.toUpperCase()}
+                                  </div>
+                                  <div>
+                                    <p className="text-sm font-semibold text-gray-800">{agentName}</p>
+                                    {agentEmail && <p className="text-xs text-gray-400">{agentEmail}</p>}
+                                  </div>
+                                </div>
+                              ) : <span className="text-amber-500 text-xs font-medium">Unassigned</span>}
+                            </td>
+                            <td className="px-3 py-3.5 text-gray-400 text-xs whitespace-nowrap">
+                              {assignedOn ? new Date(assignedOn).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' }) : '—'}
+                            </td>
+                            <td className="px-3 pr-6 py-3.5">
+                              <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${statusCls}`}>
+                                {statusLabel}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+            <Pagination total={assignedLeadsTotal} page={1} perPage={assignedLeadsData.length} count={assignedLeadsData.length}
+              onPrev={() => {}} onNext={() => {}} />
           </div>
         )}
       </main>

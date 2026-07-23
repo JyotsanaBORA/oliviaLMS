@@ -1,5 +1,8 @@
 FROM node:18-alpine AS build
 
+# Set timezone to IST for correct date handling during build
+ENV TZ=Asia/Kolkata
+
 WORKDIR /app
 
 COPY package*.json ./

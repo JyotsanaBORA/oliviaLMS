@@ -320,6 +320,31 @@ router.get('/', protect, async (req, res) => {
       filter.status     = 'assigned';
     }
 
+    // Date range filter — parse as LOCAL date
+    if (req.query.dateFrom || req.query.dateTo) {
+      filter.createdAt = {};
+      if (req.query.dateFrom) {
+        const [y, m, d] = req.query.dateFrom.split('-').map(Number);
+        filter.createdAt.$gte = new Date(y, m - 1, d, 0, 0, 0, 0);
+      }
+      if (req.query.dateTo) {
+        const [y, m, d] = req.query.dateTo.split('-').map(Number);
+        filter.createdAt.$lte = new Date(y, m - 1, d, 23, 59, 59, 999);
+      }
+    }
+
+    // Search filter
+    if (req.query.search) {
+      const s = req.query.search.trim();
+      if (s) {
+        filter.$or = [
+          { name:   { $regex: s, $options: 'i' } },
+          { mobile: { $regex: s, $options: 'i' } },
+          { loanType: { $regex: s, $options: 'i' } },
+        ];
+      }
+    }
+
     const [data, total] = await Promise.all([
       DomImportedLead.find(filter)
         .populate('assignedTo', 'name email')

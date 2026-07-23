@@ -1,25 +1,43 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save, User, Briefcase, CreditCard, FileText, MessageSquare, ChevronDown, ChevronUp, Eye, Phone, MapPin, BarChart2 } from 'lucide-react';
+import { X, Save, User, Briefcase, CreditCard, FileText, MessageSquare, ChevronDown, ChevronUp, Eye, Phone, MapPin, BarChart2, Users } from 'lucide-react';
 import api from '../utils/axios';
 import toast from 'react-hot-toast';
 import DocumentUpload from './DocumentUpload';
 
 const TABS = [
-  { key: 'personal',   label: 'Personal',    icon: User },
-  { key: 'employment', label: 'Employment',  icon: Briefcase },
-  { key: 'loan',       label: 'Loan',        icon: CreditCard },
-  { key: 'credit',     label: 'Credit',      icon: FileText },
-  { key: 'documents',  label: 'Documents',   icon: FileText },
-  { key: 'disposition',label: 'Disposition', icon: MessageSquare },
+  { key: 'personal',    label: 'Personal',    icon: User },
+  { key: 'employment',  label: 'Employment',  icon: Briefcase },
+  { key: 'loan',        label: 'Loan',        icon: CreditCard },
+  { key: 'credit',      label: 'Credit',      icon: FileText },
+  { key: 'references',  label: 'References',  icon: Users },
+  { key: 'documents',   label: 'Documents',   icon: FileText },
+  { key: 'disposition', label: 'Disposition', icon: MessageSquare },
 ];
 
 const EMPTY_FORM = {
+  // Core personal
   name: '', dob: '', pan: '', aadhaar: '',
-  mobile: '', alternateMobile: '', email: '', address: '', city: '', state: '', pincode: '',
+  fatherName: '', motherName: '', maritalStatus: '', spouseName: '',
+  educationDetails: '', segment: '', location: '', tcName: '',
+  // Contact
+  mobile: '', alternateMobile: '', email: '',
+  // Current address
+  address: '', city: '', state: '', pincode: '',
+  currentAddressType: '', yearsAtCurrentAddress: '',
+  // Permanent address
+  permanentAddress: '', paContactNumber: '',
+  // Employment
   employmentType: '', companyName: '', monthlySalary: '',
+  officeAddress: '', officeLandline: '', officialEmail: '',
+  yearsAtCurrentJob: '', totalJobExp: '',
+  // Loan / credit
   productType: '', loanAmountRequired: '',
   existingBank: '', salaryAccountBank: '',
   cibilScoreRange: '', existingLoans: '', existingEMI: '',
+  // References
+  ref1Name: '', ref1Contact: '', ref1Address: '',
+  ref2Name: '', ref2Contact: '', ref2Address: '',
+  // Disposition
   callOutcome: '', callbackDate: '', notes: '',
 };
 
@@ -70,6 +88,14 @@ const LeadFormModal = ({ websiteLead, importedLead, existingDomLead, onClose, on
         dob:                existingDomLead.dob               || '',
         pan:                existingDomLead.pan               || src.pan          || '',
         aadhaar:            existingDomLead.aadhaar           || '',
+        fatherName:         existingDomLead.fatherName        || '',
+        motherName:         existingDomLead.motherName        || '',
+        maritalStatus:      existingDomLead.maritalStatus     || '',
+        spouseName:         existingDomLead.spouseName        || '',
+        educationDetails:   existingDomLead.educationDetails  || '',
+        segment:            existingDomLead.segment           || '',
+        location:           existingDomLead.location          || src.city         || '',
+        tcName:             existingDomLead.tcName            || '',
         mobile:             existingDomLead.mobile            || src.mobile       || '',
         alternateMobile:    existingDomLead.alternateMobile   || '',
         email:              existingDomLead.email             || src.email        || '',
@@ -77,9 +103,18 @@ const LeadFormModal = ({ websiteLead, importedLead, existingDomLead, onClose, on
         city:               existingDomLead.city              || src.city         || '',
         state:              existingDomLead.state             || src.state        || '',
         pincode:            existingDomLead.pincode           || '',
+        currentAddressType:    existingDomLead.currentAddressType    || '',
+        yearsAtCurrentAddress: existingDomLead.yearsAtCurrentAddress != null ? String(existingDomLead.yearsAtCurrentAddress) : '',
+        permanentAddress:   existingDomLead.permanentAddress  || '',
+        paContactNumber:    existingDomLead.paContactNumber   || '',
         employmentType:     existingDomLead.employmentType    || src.employment   || '',
         companyName:        existingDomLead.companyName       || '',
         monthlySalary:      existingDomLead.monthlySalary     || src.monthlyIncome || '',
+        officeAddress:      existingDomLead.officeAddress     || '',
+        officeLandline:     existingDomLead.officeLandline    || '',
+        officialEmail:      existingDomLead.officialEmail     || '',
+        yearsAtCurrentJob:  existingDomLead.yearsAtCurrentJob != null ? String(existingDomLead.yearsAtCurrentJob) : '',
+        totalJobExp:        existingDomLead.totalJobExp       != null ? String(existingDomLead.totalJobExp)       : '',
         productType:        existingDomLead.productType       || src.productType  || '',
         loanAmountRequired: existingDomLead.loanAmountRequired || src.loanAmount  || '',
         existingBank:       existingDomLead.existingBank      || '',
@@ -87,6 +122,12 @@ const LeadFormModal = ({ websiteLead, importedLead, existingDomLead, onClose, on
         cibilScoreRange:    existingDomLead.cibilScoreRange   || '',
         existingLoans:      (existingDomLead.existingLoans || []).join(', '),
         existingEMI:        existingDomLead.existingEMI       || '',
+        ref1Name:           existingDomLead.ref1Name          || '',
+        ref1Contact:        existingDomLead.ref1Contact       || '',
+        ref1Address:        existingDomLead.ref1Address       || '',
+        ref2Name:           existingDomLead.ref2Name          || '',
+        ref2Contact:        existingDomLead.ref2Contact       || '',
+        ref2Address:        existingDomLead.ref2Address       || '',
         callOutcome:        existingDomLead.callOutcome       || '',
         callbackDate:       existingDomLead.callbackDate      || '',
         notes:              existingDomLead.notes             || importedLead?.remarks || '',
@@ -133,9 +174,12 @@ const LeadFormModal = ({ websiteLead, importedLead, existingDomLead, onClose, on
         existingLoans: form.existingLoans
           ? form.existingLoans.split(',').map((s) => s.trim()).filter(Boolean)
           : [],
-        monthlySalary:      form.monthlySalary      ? Number(form.monthlySalary)      : undefined,
-        loanAmountRequired: form.loanAmountRequired ? Number(form.loanAmountRequired) : undefined,
-        existingEMI:        form.existingEMI        ? Number(form.existingEMI)        : undefined,
+        monthlySalary:         form.monthlySalary         ? Number(form.monthlySalary)         : undefined,
+        loanAmountRequired:    form.loanAmountRequired    ? Number(form.loanAmountRequired)    : undefined,
+        existingEMI:           form.existingEMI           ? Number(form.existingEMI)           : undefined,
+        yearsAtCurrentAddress: form.yearsAtCurrentAddress ? Number(form.yearsAtCurrentAddress) : undefined,
+        yearsAtCurrentJob:     form.yearsAtCurrentJob     ? Number(form.yearsAtCurrentJob)     : undefined,
+        totalJobExp:           form.totalJobExp           ? Number(form.totalJobExp)           : undefined,
       };
 
       if (isEdit) {
@@ -194,11 +238,19 @@ const LeadFormModal = ({ websiteLead, importedLead, existingDomLead, onClose, on
                 {isEdit
                   ? 'Edit Lead'
                   : importedLead
-                    ? 'Work on Pool Lead'
+                    ? '📊 Work on Imported Lead'
                     : websiteLead
-                      ? 'Work on Lead'
+                      ? '🌐 Work on Meta Lead'
                       : 'New Manual Lead'}
               </h2>
+              {/* Source badge */}
+              {!isEdit && (websiteLead || importedLead) && (
+                <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${
+                  importedLead ? 'bg-violet-500/30 text-white border-violet-300/40' : 'bg-teal-500/30 text-white border-teal-300/40'
+                }`}>
+                  {importedLead ? '📊 Imported Data' : '🌐 Meta / Website'}
+                </span>
+              )}
               {leadRef && (
                 <span className="font-mono text-xs font-bold bg-white/20 text-green-300 border border-green-400/40 px-2 py-0.5 rounded tracking-widest">
                   {leadRef}
@@ -358,75 +410,194 @@ const LeadFormModal = ({ websiteLead, importedLead, existingDomLead, onClose, on
           <div className="p-6">
             {/* ── PERSONAL ──────────────────────────────────────────────── */}
             {activeTab === 'personal' && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Field label="Full Name" required>
-                  <Input value={form.name} onChange={set('name')} placeholder="e.g. Rohan Sharma" />
-                </Field>
-                <Field label="Date of Birth">
-                  <Input type="date" value={form.dob} onChange={set('dob')} />
-                </Field>
-                <Field label="PAN Number">
-                  <Input value={form.pan} onChange={set('pan')} placeholder="ABCDE1234F" maxLength={10}
-                    style={{ textTransform: 'uppercase' }} />
-                </Field>
-                <Field label="Aadhaar (last 4 digits)">
-                  <Input value={form.aadhaar} onChange={set('aadhaar')} placeholder="XXXX" maxLength={12} />
-                </Field>
-                <Field label="Mobile" required>
-                  <Input value={form.mobile} onChange={set('mobile')} placeholder="+91 9XXXXXXXXX" />
-                </Field>
-                <Field label="Alternate Mobile">
-                  <Input value={form.alternateMobile} onChange={set('alternateMobile')} placeholder="+91 9XXXXXXXXX" />
-                </Field>
-                <Field label="Email">
-                  <Input type="email" value={form.email} onChange={set('email')} placeholder="rohan@example.com" />
-                </Field>
-                <Field label="City">
-                  <Input value={form.city} onChange={set('city')} placeholder="e.g. Mumbai" />
-                </Field>
-                <Field label="State">
-                  <Input value={form.state} onChange={set('state')} placeholder="e.g. Maharashtra" />
-                </Field>
-                <Field label="Pincode">
-                  <Input value={form.pincode} onChange={set('pincode')} placeholder="400001" maxLength={6} />
-                </Field>
-                <div className="sm:col-span-2">
-                  <Field label="Address">
-                    <textarea
-                      value={form.address}
-                      onChange={set('address')}
-                      rows={2}
-                      placeholder="Flat/House, Street, Area"
-                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-                    />
-                  </Field>
+              <div className="space-y-6">
+
+                {/* Segment / Location / TC */}
+                <div>
+                  <p className="text-[11px] font-extrabold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-1.5"><MapPin className="h-3 w-3" /> Segment &amp; Source</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <Field label="Segment (Pl / Od)">
+                      <Input value={form.segment} onChange={set('segment')} placeholder="e.g. PL" />
+                    </Field>
+                    <Field label="Location">
+                      <Input value={form.location} onChange={set('location')} placeholder="e.g. Mumbai" />
+                    </Field>
+                    <Field label="TC Name">
+                      <Input value={form.tcName} onChange={set('tcName')} placeholder="TC Agent name" />
+                    </Field>
+                  </div>
                 </div>
+
+                <div className="border-t border-gray-100" />
+
+                {/* Core personal */}
+                <div>
+                  <p className="text-[11px] font-extrabold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-1.5"><User className="h-3 w-3" /> Personal Details</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <Field label="Applicant Name" required>
+                      <Input value={form.name} onChange={set('name')} placeholder="e.g. Rohan Sharma" />
+                    </Field>
+                    <Field label="Father's Name">
+                      <Input value={form.fatherName} onChange={set('fatherName')} placeholder="e.g. Ramesh Sharma" />
+                    </Field>
+                    <Field label="Mother's Name">
+                      <Input value={form.motherName} onChange={set('motherName')} placeholder="e.g. Sunita Sharma" />
+                    </Field>
+                    <Field label="Date of Birth">
+                      <Input type="date" value={form.dob} onChange={set('dob')} />
+                    </Field>
+                    <Field label="PAN Number">
+                      <Input value={form.pan} onChange={set('pan')} placeholder="ABCDE1234F" maxLength={10} style={{ textTransform: 'uppercase' }} />
+                    </Field>
+                    <Field label="Aadhaar Number">
+                      <Input value={form.aadhaar} onChange={set('aadhaar')} placeholder="XXXX XXXX XXXX" maxLength={12} />
+                    </Field>
+                    <Field label="Education Details">
+                      <Input value={form.educationDetails} onChange={set('educationDetails')} placeholder="e.g. Graduate, MBA" />
+                    </Field>
+                    <Field label="Marital Status">
+                      <Select value={form.maritalStatus} onChange={set('maritalStatus')}>
+                        <option value="">Select</option>
+                        <option value="single">Single</option>
+                        <option value="married">Married</option>
+                        <option value="divorced">Divorced</option>
+                        <option value="widowed">Widowed</option>
+                      </Select>
+                    </Field>
+                    {form.maritalStatus === 'married' && (
+                      <Field label="Spouse Name">
+                        <Input value={form.spouseName} onChange={set('spouseName')} placeholder="Spouse full name" />
+                      </Field>
+                    )}
+                  </div>
+                </div>
+
+                <div className="border-t border-gray-100" />
+
+                {/* Contact */}
+                <div>
+                  <p className="text-[11px] font-extrabold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-1.5"><Phone className="h-3 w-3" /> Contact</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <Field label="Customer Mobile Number" required>
+                      <Input value={form.mobile} onChange={set('mobile')} placeholder="+91 9XXXXXXXXX" />
+                    </Field>
+                    <Field label="Alternate Mobile">
+                      <Input value={form.alternateMobile} onChange={set('alternateMobile')} placeholder="+91 9XXXXXXXXX" />
+                    </Field>
+                    <Field label="Personal Email ID">
+                      <Input type="email" value={form.email} onChange={set('email')} placeholder="rohan@gmail.com" />
+                    </Field>
+                  </div>
+                </div>
+
+                <div className="border-t border-gray-100" />
+
+                {/* Current Residential Address */}
+                <div>
+                  <p className="text-[11px] font-extrabold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-1.5"><MapPin className="h-3 w-3" /> Current Residential Address</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="sm:col-span-2">
+                      <Field label="Current Address">
+                        <textarea value={form.address} onChange={set('address')} rows={2}
+                          placeholder="Flat/House, Street, Area"
+                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
+                      </Field>
+                    </div>
+                    <Field label="City">
+                      <Input value={form.city} onChange={set('city')} placeholder="e.g. Mumbai" />
+                    </Field>
+                    <Field label="State">
+                      <Input value={form.state} onChange={set('state')} placeholder="e.g. Maharashtra" />
+                    </Field>
+                    <Field label="Pincode">
+                      <Input value={form.pincode} onChange={set('pincode')} placeholder="400001" maxLength={6} />
+                    </Field>
+                    <Field label="Rented / Owned">
+                      <Select value={form.currentAddressType} onChange={set('currentAddressType')}>
+                        <option value="">Select</option>
+                        <option value="rented">Rented</option>
+                        <option value="owned">Owned</option>
+                      </Select>
+                    </Field>
+                    <Field label="No. of Years at Above Residence">
+                      <Input type="number" min={0} value={form.yearsAtCurrentAddress} onChange={set('yearsAtCurrentAddress')} placeholder="e.g. 3" />
+                    </Field>
+                  </div>
+                </div>
+
+                <div className="border-t border-gray-100" />
+
+                {/* Permanent Address */}
+                <div>
+                  <p className="text-[11px] font-extrabold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-1.5"><MapPin className="h-3 w-3" /> Permanent Address</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="sm:col-span-2">
+                      <Field label="Permanent Address">
+                        <textarea value={form.permanentAddress} onChange={set('permanentAddress')} rows={2}
+                          placeholder="If different from current address"
+                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
+                      </Field>
+                    </div>
+                    <Field label="PA Contact Number">
+                      <Input value={form.paContactNumber} onChange={set('paContactNumber')} placeholder="Contact at permanent address" />
+                    </Field>
+                  </div>
+                </div>
+
               </div>
             )}
 
             {/* ── EMPLOYMENT ────────────────────────────────────────────── */}
             {activeTab === 'employment' && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Field label="Employment Type">
-                  <Select value={form.employmentType} onChange={set('employmentType')}>
-                    <option value="">Select</option>
-                    <option value="salaried">Salaried</option>
-                    <option value="self_employed">Self-Employed</option>
-                    <option value="business">Business Owner</option>
-                  </Select>
-                </Field>
-                <Field label="Company / Business Name">
-                  <Input value={form.companyName} onChange={set('companyName')} placeholder="e.g. Infosys Ltd." />
-                </Field>
-                <Field label="Monthly Salary / Income (₹)">
-                  <Input
-                    type="number"
-                    value={form.monthlySalary}
-                    onChange={set('monthlySalary')}
-                    placeholder="e.g. 50000"
-                    min={0}
-                  />
-                </Field>
+              <div className="space-y-6">
+
+                <div>
+                  <p className="text-[11px] font-extrabold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-1.5"><Briefcase className="h-3 w-3" /> Employment Details</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <Field label="Employment Type">
+                      <Select value={form.employmentType} onChange={set('employmentType')}>
+                        <option value="">Select</option>
+                        <option value="salaried">Salaried</option>
+                        <option value="self_employed">Self-Employed</option>
+                        <option value="business">Business Owner</option>
+                      </Select>
+                    </Field>
+                    <Field label="Present Employer / Company Name">
+                      <Input value={form.companyName} onChange={set('companyName')} placeholder="e.g. Infosys Ltd." />
+                    </Field>
+                    <Field label="Monthly Salary / Income (₹)">
+                      <Input type="number" value={form.monthlySalary} onChange={set('monthlySalary')} placeholder="e.g. 50000" min={0} />
+                    </Field>
+                    <Field label="No. of Years at Current Job">
+                      <Input type="number" value={form.yearsAtCurrentJob} onChange={set('yearsAtCurrentJob')} placeholder="e.g. 2" min={0} />
+                    </Field>
+                    <Field label="Total Job Experience (years)">
+                      <Input type="number" value={form.totalJobExp} onChange={set('totalJobExp')} placeholder="e.g. 5" min={0} />
+                    </Field>
+                  </div>
+                </div>
+
+                <div className="border-t border-gray-100" />
+
+                <div>
+                  <p className="text-[11px] font-extrabold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-1.5"><MapPin className="h-3 w-3" /> Office Contact</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="sm:col-span-2">
+                      <Field label="Office Address">
+                        <textarea value={form.officeAddress} onChange={set('officeAddress')} rows={2}
+                          placeholder="Office / company address"
+                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
+                      </Field>
+                    </div>
+                    <Field label="Office Landline Number">
+                      <Input value={form.officeLandline} onChange={set('officeLandline')} placeholder="e.g. 022-12345678" />
+                    </Field>
+                    <Field label="Official Mail ID">
+                      <Input type="email" value={form.officialEmail} onChange={set('officialEmail')} placeholder="rohan@company.com" />
+                    </Field>
+                  </div>
+                </div>
+
               </div>
             )}
 
@@ -515,6 +686,57 @@ const LeadFormModal = ({ websiteLead, importedLead, existingDomLead, onClose, on
                     />
                   </Field>
                 </div>
+              </div>
+            )}
+
+            {/* ── REFERENCES ────────────────────────────────────────────── */}
+            {activeTab === 'references' && (
+              <div className="space-y-6">
+
+                {/* Reference 1 */}
+                <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-4">
+                  <p className="text-[11px] font-extrabold text-blue-600 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                    <Users className="h-3.5 w-3.5" /> Reference 1 — Relative (must)
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <Field label="Name">
+                      <Input value={form.ref1Name} onChange={set('ref1Name')} placeholder="Relative full name" />
+                    </Field>
+                    <Field label="Contact No.">
+                      <Input value={form.ref1Contact} onChange={set('ref1Contact')} placeholder="+91 9XXXXXXXXX" />
+                    </Field>
+                    <div className="sm:col-span-2">
+                      <Field label="Address">
+                        <textarea value={form.ref1Address} onChange={set('ref1Address')} rows={2}
+                          placeholder="Relative's address"
+                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
+                      </Field>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Reference 2 */}
+                <div className="bg-purple-50/50 border border-purple-100 rounded-xl p-4">
+                  <p className="text-[11px] font-extrabold text-purple-600 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                    <Users className="h-3.5 w-3.5" /> Reference 2 — Friend
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <Field label="Name">
+                      <Input value={form.ref2Name} onChange={set('ref2Name')} placeholder="Friend's full name" />
+                    </Field>
+                    <Field label="Contact No.">
+                      <Input value={form.ref2Contact} onChange={set('ref2Contact')} placeholder="+91 9XXXXXXXXX" />
+                    </Field>
+                    <div className="sm:col-span-2">
+                      <Field label="Address">
+                        <textarea value={form.ref2Address} onChange={set('ref2Address')} rows={2}
+                          placeholder="Friend's address"
+                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
+                      </Field>
+                    </div>
+                  </div>
+                </div>
+
               </div>
             )}
 

@@ -256,6 +256,21 @@ router.get('/', protect, async (req, res) => {
 
     if (req.query.isManual === 'true') filter.isManual = true;
 
+    // Date range filter — parse as LOCAL date (handles India/IST timezone correctly)
+    if (req.query.dateFrom || req.query.dateTo) {
+      filter.createdAt = {};
+      if (req.query.dateFrom) {
+        const [y, m, d] = req.query.dateFrom.split('-').map(Number);
+        const start = new Date(y, m - 1, d, 0, 0, 0, 0);
+        filter.createdAt.$gte = start;
+      }
+      if (req.query.dateTo) {
+        const [y, m, d] = req.query.dateTo.split('-').map(Number);
+        const end = new Date(y, m - 1, d, 23, 59, 59, 999);
+        filter.createdAt.$lte = end;
+      }
+    }
+
     if (status && ['pending', 'completed', 'rejected'].includes(status)) {
       filter.status = status;
     }
@@ -786,12 +801,29 @@ function normalizeProduct(val) {
 
 function sanitizeLeadFields(body) {
   const allowed = [
+    // Core personal
     'name', 'dob', 'pan', 'aadhaar',
-    'mobile', 'alternateMobile', 'email', 'address', 'city', 'state', 'pincode',
+    'fatherName', 'motherName', 'maritalStatus', 'spouseName',
+    'educationDetails', 'segment', 'location', 'tcName',
+    // Contact
+    'mobile', 'alternateMobile', 'email',
+    // Current address
+    'address', 'city', 'state', 'pincode',
+    'currentAddressType', 'yearsAtCurrentAddress',
+    // Permanent address
+    'permanentAddress', 'paContactNumber',
+    // Employment
     'employmentType', 'companyName', 'monthlySalary',
+    'officeAddress', 'officeLandline', 'officialEmail',
+    'yearsAtCurrentJob', 'totalJobExp',
+    // Loan / credit
     'productType', 'loanAmountRequired',
     'existingBank', 'salaryAccountBank',
     'cibilScoreRange', 'existingLoans', 'existingEMI',
+    // References
+    'ref1Name', 'ref1Contact', 'ref1Address',
+    'ref2Name', 'ref2Contact', 'ref2Address',
+    // Disposition
     'callOutcome', 'callbackDate', 'notes',
     'status',
   ];

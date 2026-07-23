@@ -79,9 +79,17 @@ const domLeadSchema = new mongoose.Schema(
 
     // ── Personal details ───────────────────────────────────────────────────
     name:     { type: String, trim: true, maxlength: 100 },
-    dob:      { type: String, trim: true, maxlength: 20 },  // store as string for flexibility
+    dob:      { type: String, trim: true, maxlength: 20 },
     pan:      { type: String, trim: true, uppercase: true, maxlength: 10 },
-    aadhaar:  { type: String, trim: true, maxlength: 20 },  // last 4 digits or masked
+    aadhaar:  { type: String, trim: true, maxlength: 20 },
+    fatherName:      { type: String, trim: true, maxlength: 100 },
+    motherName:      { type: String, trim: true, maxlength: 100 },
+    maritalStatus:   { type: String, enum: ['single', 'married', 'divorced', 'widowed', ''], default: '' },
+    spouseName:      { type: String, trim: true, maxlength: 100 },
+    educationDetails:{ type: String, trim: true, maxlength: 150 },
+    segment:         { type: String, trim: true, maxlength: 50 },
+    location:        { type: String, trim: true, maxlength: 100 },
+    tcName:          { type: String, trim: true, maxlength: 100 },
 
     // ── Contact details ────────────────────────────────────────────────────
     mobile:           { type: String, trim: true, maxlength: 20 },
@@ -91,15 +99,31 @@ const domLeadSchema = new mongoose.Schema(
     city:             { type: String, trim: true, maxlength: 100 },
     state:            { type: String, trim: true, maxlength: 60 },
     pincode:          { type: String, trim: true, maxlength: 10 },
+    currentAddressType:     { type: String, enum: ['rented', 'owned', ''], default: '' },
+    yearsAtCurrentAddress:  { type: Number, min: 0 },
+    permanentAddress:       { type: String, trim: true, maxlength: 300 },
+    paContactNumber:        { type: String, trim: true, maxlength: 20 },
 
-    // ── Employment details ─────────────────────────────────────────────────
     employmentType: {
       type: String,
       enum: ['salaried', 'self_employed', 'business', ''],
       default: '',
     },
-    companyName:   { type: String, trim: true, maxlength: 150 },
-    monthlySalary: { type: Number, min: 0 },
+    companyName:      { type: String, trim: true, maxlength: 150 },
+    monthlySalary:    { type: Number, min: 0 },
+    officeAddress:    { type: String, trim: true, maxlength: 300 },
+    officeLandline:   { type: String, trim: true, maxlength: 20 },
+    officialEmail:    { type: String, trim: true, lowercase: true, maxlength: 100 },
+    yearsAtCurrentJob:{ type: Number, min: 0 },
+    totalJobExp:      { type: Number, min: 0 },
+
+    // ── References ─────────────────────────────────────────────────────────
+    ref1Name:    { type: String, trim: true, maxlength: 100 },
+    ref1Contact: { type: String, trim: true, maxlength: 20 },
+    ref1Address: { type: String, trim: true, maxlength: 300 },
+    ref2Name:    { type: String, trim: true, maxlength: 100 },
+    ref2Contact: { type: String, trim: true, maxlength: 20 },
+    ref2Address: { type: String, trim: true, maxlength: 300 },
 
     // ── Unique trackable reference ID (e.g. PL-260611-A3F7) ───────────────
     // Prefix encodes the service, suffix is date+random — never changes once set.
