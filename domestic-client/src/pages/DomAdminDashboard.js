@@ -23,6 +23,18 @@ const localDateStr = (offsetDays = 0) => {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 };
 
+/** Compute document completeness from a DomLead's documents array */
+const CORE_DOCS     = ['aadhaar_front', 'aadhaar_back', 'pan_card'];
+const FINANCIAL_DOCS= ['salary_slip_1', 'bank_statement', 'itr', 'form_16', 'business_proof'];
+const getDocStatus = (docs = []) => {
+  if (!docs || docs.length === 0) return { status: 'none',    count: 0, label: 'No Docs',   cls: 'bg-gray-100 text-gray-400 border-gray-200' };
+  const types = docs.map(d => d.docType);
+  const coreCount = CORE_DOCS.filter(t => types.includes(t)).length;
+  const hasFinancial = FINANCIAL_DOCS.some(t => types.includes(t));
+  if (coreCount >= 2 && hasFinancial) return { status: 'full',    count: docs.length, label: `Full (${docs.length})`,    cls: 'bg-emerald-100 text-emerald-700 border-emerald-200' };
+  return                                    { status: 'partial', count: docs.length, label: `Partial (${docs.length})`, cls: 'bg-amber-100  text-amber-700  border-amber-200'  };
+};
+
 // ── Lead Source colour system ── applied consistently everywhere
 const SOURCE_META = {
   website:  { label: 'Website',  emoji: '🌐', badge: 'bg-teal-100 text-teal-700 border border-teal-300',     dot: 'bg-teal-500',   borderL: 'border-l-4 border-l-teal-500',   rowHover: 'hover:bg-teal-50/40'   },
@@ -135,11 +147,13 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
   const [assignedSearch,          setAssignedSearch]          = useState('');
   const [assignedDateFrom,        setAssignedDateFrom]        = useState('');
   const [assignedDateTo,          setAssignedDateTo]          = useState('');
-  const [assignedSourceType,      setAssignedSourceType]      = useState('all'); // 'all' | 'website' | 'imported'
+  const [assignedSourceType,      setAssignedSourceType]      = useState('all');
+  const [assignedDocFilter,       setAssignedDocFilter]       = useState('all'); // 'all'|'none'|'partial'|'full'
 
   // Date filters for Disposition Allocation tab
   const [domDateFrom,  setDomDateFrom]  = useState('');
   const [domDateTo,    setDomDateTo]    = useState('');
+  const [domDocFilter, setDomDocFilter] = useState('all'); // 'all'|'none'|'partial'|'full'
 
   // Bulk select — website leads
   const [webSelectedIds,  setWebSelectedIds]  = useState(new Set());
@@ -182,6 +196,8 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
   const webDateToRef       = useRef('');
   const domDateFromRef     = useRef('');
   const domDateToRef       = useRef('');
+  const domDocFilterRef    = useRef('all');
+  const assignedDocFilterRef = useRef('all');
 
   const statsLoadedRef = useRef(false);
   const [statsLastUpdated, setStatsLastUpdated] = useState(null);
@@ -206,7 +222,10 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
   const fetchLeads = useCallback(async (page = 1) => {
     setLeadsLoading(true);
     try {
-      const q = new URLSearchParams({ page, limit: 30 });
+      // When any filter is active, fetch all results so pagination doesn't hide matches
+      const anyFilter = searchRef.current.trim() || statusFilterRef.current || productTypeRef.current || webDateFromRef.current || webDateToRef.current;
+      const limit = anyFilter ? 500 : 30;
+      const q = new URLSearchParams({ page, limit });
       if (statusFilterRef.current)       q.set('status',      statusFilterRef.current);
       if (searchRef.current.trim())      q.set('search',      searchRef.current.trim());
       if (productTypeRef.current)        q.set('productType', productTypeRef.current);
@@ -230,7 +249,10 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
   const fetchDomLeads = useCallback(async (page = 1) => {
     setDomLeadsLoading(true);
     try {
-      const q = new URLSearchParams({ page, limit: 30 });
+      // When any filter is active, fetch all results so pagination doesn't hide matches
+      const anyFilter = domSearchRef.current.trim() || domStatusRef.current || domProductRef.current || domDateFromRef.current || domDateToRef.current || domDocFilterRef.current !== 'all';
+      const limit = anyFilter ? 500 : 30;
+      const q = new URLSearchParams({ page, limit });
       if (domSearchRef.current.trim())   q.set('search',      domSearchRef.current.trim());
       if (domStatusRef.current)          q.set('status',      domStatusRef.current);
       if (domProductRef.current)         q.set('productType', domProductRef.current);
@@ -345,10 +367,13 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
     setAssignedLeadsLoading(true);
     try {
       const promises = [];
+      // When any filter is active, fetch all results — no pagination needed
+      const anyFilter = search.trim() || dateFrom || dateTo || sourceType !== 'all' || assignedDocFilterRef.current !== 'all';
+      const limit = anyFilter ? 500 : 50;
 
       // Website leads (assigned = status 'loaded' or 'completed')
       if (sourceType === 'all' || sourceType === 'website') {
-        const wq = new URLSearchParams({ page, limit: 50, status: 'loaded' });
+        const wq = new URLSearchParams({ page, limit, status: 'loaded' });
         if (search.trim()) wq.set('search', search.trim());
         if (dateFrom) wq.set('dateFrom', dateFrom);
         if (dateTo)   wq.set('dateTo', dateTo);
@@ -361,7 +386,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
 
       // Imported leads (assigned = status 'assigned')
       if (sourceType === 'all' || sourceType === 'imported') {
-        const iq = new URLSearchParams({ page, limit: 50, status: 'assigned' });
+        const iq = new URLSearchParams({ page, limit, status: 'assigned' });
         if (search.trim()) iq.set('search', search.trim());
         if (dateFrom) iq.set('dateFrom', dateFrom);
         if (dateTo)   iq.set('dateTo', dateTo);
@@ -1020,8 +1045,22 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
               </div>
               </>
             )}
-            <Pagination total={leadsTotal} page={leadsPage} perPage={30} count={leads.length}
-              onPrev={() => fetchLeads(leadsPage - 1)} onNext={() => fetchLeads(leadsPage + 1)} />
+            {(search || statusFilter || productTypeFilter || webDateFrom || webDateTo) ? (
+              <div className="px-6 py-3 text-xs text-gray-500 bg-gray-50 border-t border-gray-100 flex items-center justify-between">
+                <span>Showing all <strong>{leads.length}</strong> matching leads</span>
+                <button className="text-teal-600 font-semibold hover:underline" onClick={() => {
+                  setSearch(''); searchRef.current = '';
+                  setStatusFilter(''); statusFilterRef.current = '';
+                  setProductTypeFilter(''); productTypeRef.current = '';
+                  setWebDateFrom(''); webDateFromRef.current = '';
+                  setWebDateTo(''); webDateToRef.current = '';
+                  fetchLeads(1);
+                }}>Clear all filters</button>
+              </div>
+            ) : (
+              <Pagination total={leadsTotal} page={leadsPage} perPage={30} count={leads.length}
+                onPrev={() => fetchLeads(leadsPage - 1)} onNext={() => fetchLeads(leadsPage + 1)} />
+            )}
           </div>
         )}
 
@@ -1089,6 +1128,14 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                 className="flex items-center gap-2 text-sm bg-[#065F36] text-white px-4 py-2 rounded-xl hover:bg-[#054A2E] font-semibold">
                 <Search className="h-4 w-4" /> Search
               </button>
+              {/* Doc status filter */}
+              <select value={domDocFilter} onChange={e => { setDomDocFilter(e.target.value); domDocFilterRef.current = e.target.value; fetchDomLeads(1); }}
+                className="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#065F36]/20 focus:border-[#065F36]">
+                <option value="all">📁 All Docs</option>
+                <option value="none">📄 No Docs</option>
+                <option value="partial">📎 Partial Docs</option>
+                <option value="full">✅ Full Docs</option>
+              </select>
               {user.role === 'dom_superadmin' && (
                 <>
                   <button onClick={handleExportExcel}
@@ -1161,13 +1208,18 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                       <th className="px-3 py-3.5 text-left">Source</th>
                       <th className="px-3 py-3.5 text-left">Handled By</th>
                       <th className="px-3 py-3.5 text-left">Call Outcome</th>
+                      <th className="px-3 py-3.5 text-left">Docs</th>
                       <th className="px-3 py-3.5 text-left">Status</th>
                       <th className="px-3 py-3.5 text-left">Created</th>
                       <th className="px-3 pr-6 py-3.5 text-right">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
-                    {domLeads.map((dl) => {
+                    {domLeads.filter(dl => {
+                      if (domDocFilter === 'all') return true;
+                      const ds = getDocStatus(dl.documents);
+                      return ds.status === domDocFilter;
+                    }).map((dl) => {
                       const outcome = OUTCOME_META[dl.callOutcome];
                       const statusNote =
                         dl.status === 'pending' && dl.callOutcome === 'interested'    ? 'Docs Pending' :
@@ -1195,6 +1247,13 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                             {outcome
                               ? <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${outcome.cls}`}>{outcome.label}</span>
                               : <span className="text-gray-300 text-xs">Not called</span>}
+                          </td>
+                          <td className="px-3 py-3.5 text-center">
+                            {(() => { const ds = getDocStatus(dl.documents); return (
+                              <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-semibold border ${ds.cls}`}>
+                                {ds.status === 'full' ? '✅' : ds.status === 'partial' ? '📎' : '📄'} {ds.label}
+                              </span>
+                            ); })()}
                           </td>
                           <td className="px-3 py-3.5">
                             <div className="flex flex-col gap-0.5">
@@ -1235,8 +1294,23 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
               </div>
               </>
             )}
-            <Pagination total={domLeadsTotal} page={domLeadsPage} perPage={30} count={domLeads.length}
-              onPrev={() => fetchDomLeads(domLeadsPage - 1)} onNext={() => fetchDomLeads(domLeadsPage + 1)} />
+            {domDocFilter === 'all' && !domSearch && !domStatusFilter && !domProductFilter && !domDateFrom && !domDateTo ? (
+              <Pagination total={domLeadsTotal} page={domLeadsPage} perPage={30} count={domLeads.length}
+                onPrev={() => fetchDomLeads(domLeadsPage - 1)} onNext={() => fetchDomLeads(domLeadsPage + 1)} />
+            ) : (
+              <div className="px-6 py-3 text-xs text-gray-500 bg-gray-50 border-t border-gray-100 flex items-center justify-between">
+                <span>Showing all <strong>{domLeads.filter(dl => domDocFilter === 'all' || getDocStatus(dl.documents).status === domDocFilter).length}</strong> matching leads</span>
+                <button className="text-[#065F36] font-semibold hover:underline" onClick={() => {
+                  setDomSearch(''); domSearchRef.current = '';
+                  setDomStatusFilter(''); domStatusRef.current = '';
+                  setDomProductFilter(''); domProductRef.current = '';
+                  setDomDateFrom(''); domDateFromRef.current = '';
+                  setDomDateTo(''); domDateToRef.current = '';
+                  setDomDocFilter('all'); domDocFilterRef.current = 'all';
+                  fetchDomLeads(1);
+                }}>Clear all filters</button>
+              </div>
+            )}
           </div>
         )}
 
@@ -2301,10 +2375,18 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                   className="px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-500 text-white hover:bg-amber-600 transition-colors">
                   Search
                 </button>
-                {(assignedSearch || assignedDateFrom || assignedDateTo) && (
-                  <button onClick={() => { setAssignedSearch(''); setAssignedDateFrom(''); setAssignedDateTo(''); fetchAssignedLeadsData(1); }}
+                {/* Doc status filter */}
+                <select value={assignedDocFilter} onChange={e => { setAssignedDocFilter(e.target.value); assignedDocFilterRef.current = e.target.value; fetchAssignedLeadsData(1, assignedSearch, assignedDateFrom, assignedDateTo, assignedSourceType); }}
+                  className="text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400">
+                  <option value="all">📁 All Docs</option>
+                  <option value="none">📄 No Docs</option>
+                  <option value="partial">📎 Partial</option>
+                  <option value="full">✅ Full Docs</option>
+                </select>
+                {(assignedSearch || assignedDateFrom || assignedDateTo || assignedDocFilter !== 'all') && (
+                  <button onClick={() => { setAssignedSearch(''); setAssignedDateFrom(''); setAssignedDateTo(''); setAssignedDocFilter('all'); assignedDocFilterRef.current = 'all'; fetchAssignedLeadsData(1); }}
                     className="px-3 py-1.5 rounded-lg text-xs text-gray-500 border border-gray-200 hover:bg-gray-100 transition-colors">
-                    Clear
+                    Clear all
                   </button>
                 )}
               </div>
@@ -2323,11 +2405,17 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                         <th className="px-3 py-3.5 text-left">Product / Loan</th>
                         <th className="px-3 py-3.5 text-left">Assigned To</th>
                         <th className="px-3 py-3.5 text-left">Assigned On</th>
+                        <th className="px-3 py-3.5 text-left">Docs</th>
                         <th className="px-3 pr-6 py-3.5 text-left">Status</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
-                      {assignedLeadsData.map((l) => {
+                      {assignedLeadsData.filter(l => {
+                        if (assignedDocFilter === 'all') return true;
+                        const isWebsite = l._sourceType === 'website';
+                        const docList = isWebsite ? (l.domLead?.documents || l.domLeadId?.documents || []) : (l.domLeadId?.documents || []);
+                        return getDocStatus(docList).status === assignedDocFilter;
+                      }).map((l) => {
                         const isWebsite = l._sourceType === 'website';
                         const agentName = isWebsite ? l.loadedBy?.name : l.assignedTo?.name;
                         const agentEmail = isWebsite ? l.loadedBy?.email : l.assignedTo?.email;
@@ -2339,6 +2427,9 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                         const statusCls = isWebsite
                           ? (l.status === 'completed' ? 'bg-emerald-100 text-emerald-700' : 'bg-teal-100 text-teal-700')
                           : ({ interested:'bg-emerald-100 text-emerald-700', not_interested:'bg-red-100 text-red-700', callback:'bg-amber-100 text-amber-700', not_reachable:'bg-orange-100 text-orange-700' }[l.callOutcome] || 'bg-gray-100 text-gray-500');
+                        // Doc status: for website leads use domLead docs, for imported use domLeadId docs
+                        const docList = isWebsite ? (l.domLead?.documents || l.domLeadId?.documents || []) : (l.domLeadId?.documents || []);
+                        const docStat = getDocStatus(docList);
                         return (
                           <tr key={l._id} className={`transition-colors border-l-4 ${isWebsite ? 'hover:bg-teal-50/30 border-l-teal-400' : 'hover:bg-violet-50/30 border-l-violet-400'}`}>
                             <td className="pl-6 pr-3 py-3.5">
@@ -2372,6 +2463,17 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                             <td className="px-3 py-3.5 text-gray-400 text-xs whitespace-nowrap">
                               {assignedOn ? new Date(assignedOn).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' }) : '—'}
                             </td>
+                            <td className="px-3 py-3.5">
+                              <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-semibold border ${docStat.cls}`}>
+                                {docStat.status === 'full' ? '✅' : docStat.status === 'partial' ? '📎' : '📄'} {docStat.label}
+                              </span>
+                              {(l.callOutcome === 'interested' || l.workStatus === 'interested') && docStat.status === 'full' && (
+                                <div className="mt-0.5 text-[10px] font-bold text-emerald-600">🔥 Ready</div>
+                              )}
+                              {(l.callOutcome === 'interested' || l.workStatus === 'interested') && docStat.status === 'partial' && (
+                                <div className="mt-0.5 text-[10px] font-bold text-amber-600">⚠️ Docs needed</div>
+                              )}
+                            </td>
                             <td className="px-3 pr-6 py-3.5">
                               <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${statusCls}`}>
                                 {statusLabel}
@@ -2385,8 +2487,27 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                 </div>
               )}
             </div>
-            <Pagination total={assignedLeadsTotal} page={1} perPage={assignedLeadsData.length} count={assignedLeadsData.length}
-              onPrev={() => {}} onNext={() => {}} />
+            {(assignedSearch || assignedDateFrom || assignedDateTo || assignedDocFilter !== 'all' || assignedSourceType !== 'all') ? (
+              <div className="px-6 py-3 text-xs text-gray-500 bg-gray-50 border-t border-gray-100 flex items-center justify-between">
+                <span>Showing all <strong>{assignedLeadsData.filter(l => {
+                  if (assignedDocFilter === 'all') return true;
+                  const isW = l._sourceType === 'website';
+                  const dList = isW ? (l.domLead?.documents || l.domLeadId?.documents || []) : (l.domLeadId?.documents || []);
+                  return getDocStatus(dList).status === assignedDocFilter;
+                }).length}</strong> matching leads</span>
+                <button className="text-amber-600 font-semibold hover:underline" onClick={() => {
+                  setAssignedSearch('');
+                  setAssignedDateFrom('');
+                  setAssignedDateTo('');
+                  setAssignedDocFilter('all'); assignedDocFilterRef.current = 'all';
+                  setAssignedSourceType('all');
+                  fetchAssignedLeadsData(1);
+                }}>Clear all filters</button>
+              </div>
+            ) : (
+              <Pagination total={assignedLeadsTotal} page={1} perPage={50} count={assignedLeadsData.length}
+                onPrev={() => {}} onNext={() => {}} />
+            )}
           </div>
         )}
       </main>

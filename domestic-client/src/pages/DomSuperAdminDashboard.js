@@ -103,6 +103,7 @@ const DomSuperAdminDashboard = () => {
   const [reportTo,      setReportTo]      = useState('');
   const [reportData,    setReportData]    = useState(null);
   const [reportLoading, setReportLoading] = useState(false);
+  const [reportLastUpdated, setReportLastUpdated] = useState(null);
   const [trendView,     setTrendView]     = useState('daily'); // 'daily' | 'hourly'
   const [trackerLoading,      setTrackerLoading]      = useState(false);
   const [selectedTrackAgent,  setSelectedTrackAgent]  = useState(null);
@@ -304,6 +305,7 @@ const DomSuperAdminDashboard = () => {
       }
       const res = await api.get(`/domestic-api/admin/reports?from=${from}&to=${to}`);
       setReportData(res.data);
+      setReportLastUpdated(new Date());
     } catch { toast.error('Failed to load report.'); }
     finally { setReportLoading(false); }
   }, []);
@@ -389,6 +391,14 @@ const DomSuperAdminDashboard = () => {
     if (superTab === 'manual_leads') { fetchManualLeads(); }
     if (superTab === 'agent_performance') { /* uses DomAdminDashboard internally */ }
   }, [superTab, fetchUsers, fetchApiKey, fetchBatches, fetchAdmins, fetchWebLeads, fetchWebProductTypes, fetchWebAgents, fetchWebServiceStats, fetchTrackerAgents, fetchReport, fetchManualLeads]);
+
+  // Auto-refresh reports when the tab is active
+  useEffect(() => {
+    if (superTab !== 'reports') return;
+    const interval = reportRange === 'today' ? 30000 : 120000;
+    const timer = setInterval(() => fetchReport(reportRange, reportFrom, reportTo), interval);
+    return () => clearInterval(timer);
+  }, [superTab, reportRange, reportFrom, reportTo, fetchReport]);
 
   const handleToggleActive = async (u) => {
     try {
@@ -602,11 +612,13 @@ const DomSuperAdminDashboard = () => {
 
     const OUTCOME_LABEL = {
       interested: 'Interested', not_interested: 'Not Interested', callback: 'Callback',
-      not_reachable: 'Not Reachable', wrong_number: 'Wrong Number', none: 'No Outcome', '': 'No Outcome',
+      not_reachable: 'Not Reachable', not_answering: 'Not Answering',
+      wrong_number: 'Wrong Number', other: 'Other', none: 'No Outcome', '': 'No Outcome',
     };
     const OUTCOME_COLOR = {
       interested: 'bg-emerald-500', not_interested: 'bg-red-400', callback: 'bg-amber-400',
-      not_reachable: 'bg-orange-400', wrong_number: 'bg-gray-400', none: 'bg-gray-300', '': 'bg-gray-300',
+      not_reachable: 'bg-orange-400', not_answering: 'bg-slate-400',
+      wrong_number: 'bg-gray-400', other: 'bg-purple-400', none: 'bg-gray-300', '': 'bg-gray-300',
     };
 
     const maxOutcome = brk?.outcome?.length ? Math.max(...brk.outcome.map(o => o.count), 1) : 1;
@@ -685,6 +697,16 @@ const DomSuperAdminDashboard = () => {
                 className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-[#065F36] border border-gray-200 rounded-xl px-3 py-2 transition-all">
                 <RefreshCw className={`h-4 w-4 ${reportLoading ? 'animate-spin' : ''}`} />
               </button>
+              {/* Live indicator */}
+              {reportLastUpdated && (
+                <div className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border ${
+                  reportRange === 'today' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-gray-50 text-gray-500 border-gray-200'
+                }`}>
+                  <span className={`w-2 h-2 rounded-full ${reportRange === 'today' ? 'bg-emerald-500 animate-pulse' : 'bg-gray-400'}`} />
+                  {reportRange === 'today' ? '🔴 LIVE · ' : ''}
+                  Updated {Math.round((new Date() - reportLastUpdated) / 60000) < 1 ? 'just now' : `${Math.round((new Date() - reportLastUpdated) / 60000)}m ago`}
+                </div>
+              )}
             </div>
           </div>
         </header>
@@ -712,7 +734,10 @@ const DomSuperAdminDashboard = () => {
                   <input type="date" value={reportFrom} onChange={e => setReportFrom(e.target.value)}
                     className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-[#065F36]" />
                   <span className="text-gray-400 text-sm">to</span>
-                  <input type="date" value={reportTo} onChange={e => setReportTo(e.target.value)}
+                  <input type="date" value={reportTo} onChange={e => {
+                    setReportTo(e.target.value);
+                    if (reportFrom && e.target.value) fetchReport('custom', reportFrom, e.target.value);
+                  }}
                     className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-[#065F36]" />
                   <button onClick={() => fetchReport('custom', reportFrom, reportTo)}
                     disabled={!reportFrom || !reportTo}
@@ -785,6 +810,44 @@ const DomSuperAdminDashboard = () => {
                 ))}
               </div>
 
+              {/* ── Quick Insights ── */}
+              {(() => {
+                const insights = [];
+                if (s?.workedLeads?.total > 0) {
+                  if (s.conversionRate >= 60) insights.push({ icon: '🚀', color: 'bg-emerald-50 border-emerald-200 text-emerald-800', text: `Excellent! ${s.conversionRate}% conversion rate — well above average.` });
+                  else if (s.conversionRate >= 30) insights.push({ icon: '👍', color: 'bg-blue-50 border-blue-200 text-blue-800', text: `Good conversion rate of ${s.conversionRate}%. Keep pushing to hit 50%+.` });
+                  else insights.push({ icon: '⚠️', color: 'bg-amber-50 border-amber-200 text-amber-800', text: `Low conversion rate (${s.conversionRate}%). Review agent scripts and follow-ups.` });
+                }
+                if (s?.workedLeads?.callback > 0) insights.push({ icon: '📞', color: 'bg-amber-50 border-amber-200 text-amber-800', text: `${s.workedLeads.callback} callback${s.workedLeads.callback > 1 ? 's' : ''} pending — ensure agents follow up today.` });
+                if (s?.workedLeads?.notAnswering > 0) insights.push({ icon: '🔕', color: 'bg-slate-50 border-slate-200 text-slate-700', text: `${s.workedLeads.notAnswering} leads not answering — retry during peak hours.` });
+                if (hourlyTrend.length) {
+                  const workHours = hourlyTrend.filter(h => h.hour >= 9 && h.hour < 18);
+                  const peak = workHours.length ? workHours.reduce((a, b) => b.total > a.total ? b : a, workHours[0]) : null;
+                  if (peak && peak.total > 0) insights.push({ icon: '⏰', color: 'bg-violet-50 border-violet-200 text-violet-800', text: `Peak productivity within working hours: ${fmtHour(peak.hour)} (${peak.total} cases). Schedule important calls then.` });
+                  const offHoursTotal = hourlyTrend.filter(h => (h.hour < 9 || h.hour >= 18) && h.total > 0).reduce((s, h) => s + h.total, 0);
+                  if (offHoursTotal > 0) insights.push({ icon: '🌙', color: 'bg-orange-50 border-orange-200 text-orange-800', text: `${offHoursTotal} cases recorded outside 9am–6pm IST working hours.` });
+                }
+                if (s?.websiteLeads?.new > 0) insights.push({ icon: '🌐', color: 'bg-teal-50 border-teal-200 text-teal-800', text: `${s.websiteLeads.new} unclaimed website lead${s.websiteLeads.new > 1 ? 's' : ''} waiting — assign to agents now.` });
+                if (insights.length === 0) return null;
+                return (
+                  <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+                    <div className="flex items-center gap-2 mb-4">
+                      <span className="text-lg">💡</span>
+                      <h2 className="font-bold text-gray-800">Smart Insights</h2>
+                      <span className="text-xs text-gray-400 ml-1">— Auto-generated from your data</span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {insights.map((ins, i) => (
+                        <div key={i} className={`flex items-start gap-3 px-4 py-3 rounded-xl border ${ins.color}`}>
+                          <span className="text-xl flex-shrink-0 mt-0.5">{ins.icon}</span>
+                          <p className="text-sm font-medium leading-snug">{ins.text}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+
               {/* ── Trend Chart ── */}
               <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
                 <div className="flex items-center justify-between mb-5">
@@ -796,8 +859,9 @@ const DomSuperAdminDashboard = () => {
                   </div>
                   <div className="flex items-center gap-3">
                     <div className="flex items-center gap-3 text-xs text-gray-500 mr-2">
-                      <div className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm bg-[#065F36]" /> Total</div>
+                      <div className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm bg-[#065F36]" /> Worked Cases</div>
                       <div className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm bg-emerald-400" /> Completed</div>
+                      <div className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm bg-teal-300 border border-teal-400" /> Meta Leads</div>
                       {trendView === 'hourly' && <div className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm bg-amber-400" /> Interested</div>}
                     </div>
                     {/* Toggle */}
@@ -822,69 +886,121 @@ const DomSuperAdminDashboard = () => {
                     </div>
                   ) : (
                     <div className="overflow-x-auto">
-                      <div className="flex items-end gap-1.5 pb-6 pt-2" style={{ minWidth: trend.length > 20 ? `${trend.length * 32}px` : '100%', height: '180px' }}>
-                        {trend.map((d, i) => {
-                          const barH = Math.max((d.total / maxTrend) * 140, 4);
-                          const compH = d.total > 0 ? Math.round((d.completed / d.total) * barH) : 0;
-                          const label = new Date(d.date + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
-                          return (
-                            <div key={i} className="flex flex-col items-center gap-1 flex-1 group min-w-[28px]">
-                              <span className="text-xs font-bold text-[#065F36] opacity-0 group-hover:opacity-100 transition-opacity mb-0.5">{d.total}</span>
-                              <div className="w-full flex flex-col justify-end rounded-t-md overflow-hidden cursor-pointer" style={{ height: `${barH}px`, background: '#E8FFF5' }}>
-                                <div style={{ height: `${compH}px`, background: '#10B981' }} />
-                                <div style={{ flex: 1, background: '#065F36' }} />
-                              </div>
-                              <span className="text-gray-400 whitespace-nowrap" style={{ fontSize: '9px', transform: 'rotate(-35deg)', transformOrigin: 'top left', marginLeft: '8px', marginTop: '2px' }}>{label}</span>
-                            </div>
+                      <div className="flex items-end gap-1.5 pb-6 pt-2" style={{ minWidth: trend.length > 20 ? `${trend.length * 32}px` : '100%', height: '200px' }}>
+                        {(() => {
+                          const webTrend = reportData?.trend?.websiteLeads || [];
+                          const maxCombined = Math.max(
+                            trend.length ? Math.max(...trend.map(d => d.total), 1) : 1,
+                            1
                           );
-                        })}
+                          return trend.map((d, i) => {
+                            const webDay = webTrend.find(w => w.date === d.date);
+                            const barH = Math.max((d.total / maxCombined) * 140, 4);
+                            const compH = d.total > 0 ? Math.round((d.completed / d.total) * barH) : 0;
+                            const label = new Date(d.date + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+                            return (
+                              <div key={i} className="flex flex-col items-center gap-1 flex-1 group min-w-[28px]">
+                                <div className="flex items-center gap-0.5 mb-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <span className="text-[10px] font-bold text-[#065F36]">{d.total}</span>
+                                  {webDay?.count > 0 && <span className="text-[9px] text-teal-600 font-bold">+{webDay.count}</span>}
+                                </div>
+                                <div className="w-full flex flex-col justify-end rounded-t-md overflow-hidden cursor-pointer" style={{ height: `${barH}px`, background: '#E8FFF5' }}>
+                                  <div style={{ height: `${compH}px`, background: '#10B981' }} />
+                                  <div style={{ flex: 1, background: '#065F36' }} />
+                                </div>
+                                {webDay?.count > 0 && (
+                                  <div className="w-full h-1.5 rounded-full bg-teal-300 opacity-70" title={`${webDay.count} website leads`} />
+                                )}
+                                <span className="text-gray-400 whitespace-nowrap" style={{ fontSize: '9px', transform: 'rotate(-35deg)', transformOrigin: 'top left', marginLeft: '8px', marginTop: '2px' }}>{label}</span>
+                              </div>
+                            );
+                          });
+                        })()}
                       </div>
                     </div>
                   )
                 ) : (
-                  /* Hourly chart — all 24 hours */
+                  /* Hourly chart — all 24 hours with working-hours (9am–6pm) highlight */
                   <div>
-                    <div className="flex items-end gap-1 pb-6 pt-2" style={{ height: '180px' }}>
+                    {/* Working hours legend */}
+                    <div className="flex items-center gap-3 mb-3 px-1">
+                      <div className="flex items-center gap-1.5 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-xl font-semibold">
+                        <span className="w-2.5 h-2.5 rounded-sm bg-emerald-200 border border-emerald-400" />
+                        Working hours: 9 AM – 6 PM IST
+                      </div>
+                      <div className="flex items-center gap-1.5 text-xs text-gray-500 bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-xl font-semibold">
+                        <span className="w-2.5 h-2.5 rounded-sm bg-gray-200" />
+                        Off hours
+                      </div>
+                    </div>
+                    <div className="relative flex items-end gap-1 pb-6 pt-2" style={{ height: '200px' }}>
+                      {/* Working hours background band */}
+                      <div className="absolute inset-y-0 pointer-events-none rounded-lg"
+                        style={{
+                          left: `calc(${(9/24)*100}% + ${9*2}px)`,
+                          width: `calc(${(9/24)*100}% - ${9*2}px)`,
+                          background: 'rgba(16,185,129,0.06)',
+                          border: '1px dashed rgba(16,185,129,0.3)',
+                          top: '4px',
+                          bottom: '22px',
+                        }} />
                       {hourlyTrend.map((d) => {
-                        const barH  = Math.max((d.total / maxHourly) * 140, d.total > 0 ? 4 : 0);
+                        const isWorkHour = d.hour >= 9 && d.hour < 18;
+                        const barH  = Math.max((d.total / maxHourly) * 150, d.total > 0 ? 4 : 0);
                         const compH = d.total > 0 ? Math.round((d.completed / d.total) * barH) : 0;
                         const intH  = d.total > 0 ? Math.round((d.interested / d.total) * barH) : 0;
-                        const peak  = d.total === maxHourly && maxHourly > 0;
+                        const isPeak = d.total === maxHourly && maxHourly > 0;
                         return (
-                          <div key={d.hour} className="flex flex-col items-center gap-1 flex-1 group min-w-0">
-                            <span className="text-xs font-bold text-[#065F36] opacity-0 group-hover:opacity-100 transition-opacity mb-0.5">{d.total || ''}</span>
-                            <div className={`w-full flex flex-col justify-end rounded-t-md overflow-hidden cursor-pointer transition-all ${peak ? 'ring-2 ring-amber-400 ring-offset-1' : ''}`}
-                              style={{ height: `${barH}px`, minHeight: d.total > 0 ? '4px' : '2px', background: d.total > 0 ? '#E8FFF5' : '#F3F4F6' }}>
+                          <div key={d.hour} className="relative flex flex-col items-center gap-1 flex-1 group min-w-0 z-10">
+                            <span className="text-xs font-bold text-[#065F36] opacity-0 group-hover:opacity-100 transition-opacity mb-0.5 absolute -top-5 whitespace-nowrap">{d.total || ''}</span>
+                            <div className={`w-full flex flex-col justify-end rounded-t-md overflow-hidden cursor-pointer transition-all ${isPeak ? 'ring-2 ring-amber-400 ring-offset-1' : ''}`}
+                              style={{
+                                height: `${barH}px`,
+                                minHeight: d.total > 0 ? '4px' : '2px',
+                                background: isWorkHour ? (d.total > 0 ? '#D1FAE5' : '#ECFDF5') : (d.total > 0 ? '#E8FFF5' : '#F9FAFB'),
+                              }}>
                               <div style={{ height: `${intH}px`,  background: '#F59E0B' }} />
                               <div style={{ height: `${compH}px`, background: '#10B981' }} />
-                              <div style={{ flex: 1, background: d.total > 0 ? '#065F36' : '#E5E7EB' }} />
+                              <div style={{ flex: 1, background: isWorkHour ? (d.total > 0 ? '#059669' : '#D1FAE5') : (d.total > 0 ? '#065F36' : '#E5E7EB') }} />
                             </div>
-                            <span className="text-gray-400 font-medium" style={{ fontSize: '8px' }}>{fmtHour(d.hour)}</span>
+                            <span className={`font-medium ${isWorkHour ? 'text-emerald-600' : 'text-gray-400'}`} style={{ fontSize: '8px' }}>{fmtHour(d.hour)}</span>
                           </div>
                         );
                       })}
                     </div>
-                    {/* Peak hour highlight */}
+                    {/* Peak hour highlight — only within working hours */}
                     {maxHourly > 0 && (() => {
-                      const peak = hourlyTrend.reduce((a, b) => b.total > a.total ? b : a, { hour: 0, total: 0 });
-                      const slow = hourlyTrend.filter(h => h.total > 0).reduce((a, b) => b.total < a.total ? b : a, { hour: 0, total: Infinity });
+                      const workHours = hourlyTrend.filter(h => h.hour >= 9 && h.hour < 18);
+                      const peak = workHours.length
+                        ? workHours.reduce((a, b) => b.total > a.total ? b : a, workHours[0])
+                        : hourlyTrend.reduce((a, b) => b.total > a.total ? b : a, { hour: 0, total: 0 });
+                      const offPeak = hourlyTrend.filter(h => (h.hour < 9 || h.hour >= 18) && h.total > 0);
+                      const offPeakTotal = offPeak.reduce((s, h) => s + h.total, 0);
+                      const workTotal = workHours.reduce((s, h) => s + h.total, 0);
                       return (
-                        <div className="flex items-center gap-4 mt-2 pt-3 border-t border-gray-100">
-                          <div className="flex items-center gap-2 text-sm">
-                            <span className="w-2.5 h-2.5 rounded-full bg-amber-400 ring-2 ring-amber-200" />
-                            <span className="text-gray-600 font-semibold">Peak hour:</span>
-                            <span className="font-black text-amber-600">{fmtHour(peak.hour)} ({peak.total} cases)</span>
-                          </div>
-                          {slow.total !== Infinity && (
+                        <div className="space-y-2 mt-2 pt-3 border-t border-gray-100">
+                          <div className="flex items-center gap-4 flex-wrap">
                             <div className="flex items-center gap-2 text-sm">
-                              <span className="w-2.5 h-2.5 rounded-full bg-gray-300" />
-                              <span className="text-gray-600 font-semibold">Slowest:</span>
-                              <span className="font-bold text-gray-500">{fmtHour(slow.hour)} ({slow.total} cases)</span>
+                              <span className="w-2.5 h-2.5 rounded-full bg-amber-400 ring-2 ring-amber-200 flex-shrink-0" />
+                              <span className="text-gray-600 font-semibold">Peak (work hrs):</span>
+                              <span className="font-black text-amber-600">{fmtHour(peak.hour)} — {peak.total} cases</span>
+                            </div>
+                            {offPeakTotal > 0 && (
+                              <div className="flex items-center gap-2 text-sm">
+                                <span className="w-2.5 h-2.5 rounded-full bg-orange-300 flex-shrink-0" />
+                                <span className="text-gray-500 font-semibold">Off-hours activity:</span>
+                                <span className="font-bold text-orange-600">{offPeakTotal} cases (outside 9am–6pm)</span>
+                              </div>
+                            )}
+                            <div className="ml-auto text-xs bg-emerald-50 border border-emerald-200 text-emerald-700 px-3 py-1.5 rounded-xl font-semibold">
+                              ✅ Work hrs: {workTotal} · Off hrs: {offPeakTotal}
+                            </div>
+                          </div>
+                          {peak.total > 0 && (
+                            <div className="text-xs text-gray-500 bg-amber-50 border border-amber-100 text-amber-700 px-4 py-2.5 rounded-xl font-medium">
+                              💡 Best calling window within working hours: <strong>{fmtHour(peak.hour)} – {fmtHour(Math.min(peak.hour + 2, 18))}</strong> IST — schedule high-priority calls then.
                             </div>
                           )}
-                          <div className="ml-auto text-xs text-gray-400 bg-amber-50 border border-amber-100 text-amber-700 px-3 py-1.5 rounded-xl font-semibold">
-                            💡 Best calling window: {fmtHour(peak.hour)} – {fmtHour((peak.hour + 2) % 24)}
-                          </div>
                         </div>
                       );
                     })()}

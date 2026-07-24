@@ -276,7 +276,7 @@ router.get('/reports', authorize('dom_superadmin'), async (req, res) => {
       // Website leads
       webTotal, webNew, webLoaded, webCompleted, webRejected,
       // Worked leads
-      wkTotal, wkCompleted, wkPending, wkRejected, wkInterested, wkCallback,
+      wkTotal, wkCompleted, wkPending, wkRejected, wkInterested, wkCallback, wkNotAnswering, wkNotReachable, wkWrongNumber,
       // Breakdowns
       outcomeAgg, productAgg, sourceAgg,
       // Agent leaderboard
@@ -302,6 +302,9 @@ router.get('/reports', authorize('dom_superadmin'), async (req, res) => {
       DomLead.countDocuments({ ...df, status: 'rejected' }),
       DomLead.countDocuments({ ...df, callOutcome: 'interested' }),
       DomLead.countDocuments({ ...df, callOutcome: 'callback' }),
+      DomLead.countDocuments({ ...df, callOutcome: 'not_answering' }),
+      DomLead.countDocuments({ ...df, callOutcome: 'not_reachable' }),
+      DomLead.countDocuments({ ...df, callOutcome: 'wrong_number' }),
 
       DomLead.aggregate([
         { $match: df },
@@ -344,16 +347,19 @@ router.get('/reports', authorize('dom_superadmin'), async (req, res) => {
         { $limit: 15 },
         { $lookup: { from: 'domusers', localField: '_id', foreignField: '_id', as: 'agent' } },
         { $unwind: { path: '$agent', preserveNullAndEmptyArrays: true } },
-        { $project: { total: 1, completed: 1, interested: 1, 'agent.name': 1, 'agent.agentStatus': 1 } },
+        // Only include actual agents (domagent role) — exclude admins & super admins
+        { $match: { 'agent.role': 'domagent' } },
+        { $project: { total: 1, completed: 1, interested: 1, 'agent.name': 1, 'agent.agentStatus': 1, 'agent.role': 1 } },
       ]),
 
+      // Daily trend — grouped by IST date
       DomLead.aggregate([
         { $match: df },
         { $group: {
           _id: {
-            y: { $year: '$createdAt' },
-            m: { $month: '$createdAt' },
-            d: { $dayOfMonth: '$createdAt' },
+            y: { $year:       { date: '$createdAt', timezone: 'Asia/Kolkata' } },
+            m: { $month:      { date: '$createdAt', timezone: 'Asia/Kolkata' } },
+            d: { $dayOfMonth: { date: '$createdAt', timezone: 'Asia/Kolkata' } },
           },
           total:     { $sum: 1 },
           completed: { $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] } },
@@ -365,20 +371,20 @@ router.get('/reports', authorize('dom_superadmin'), async (req, res) => {
         { $match: df },
         { $group: {
           _id: {
-            y: { $year: '$createdAt' },
-            m: { $month: '$createdAt' },
-            d: { $dayOfMonth: '$createdAt' },
+            y: { $year:       { date: '$createdAt', timezone: 'Asia/Kolkata' } },
+            m: { $month:      { date: '$createdAt', timezone: 'Asia/Kolkata' } },
+            d: { $dayOfMonth: { date: '$createdAt', timezone: 'Asia/Kolkata' } },
           },
           count: { $sum: 1 },
         }},
         { $sort: { '_id.y': 1, '_id.m': 1, '_id.d': 1 } },
       ]),
 
-      // Hourly breakdown (DomLeads by hour 0-23)
+      // Hourly breakdown — using IST timezone so hours match actual working hours
       DomLead.aggregate([
         { $match: df },
         { $group: {
-          _id: { $hour: '$createdAt' },
+          _id: { $hour: { date: '$createdAt', timezone: 'Asia/Kolkata' } },
           total:     { $sum: 1 },
           completed: { $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] } },
           interested:{ $sum: { $cond: [{ $eq: ['$callOutcome', 'interested'] }, 1, 0] } },
@@ -394,7 +400,9 @@ router.get('/reports', authorize('dom_superadmin'), async (req, res) => {
       range: { from: fromDate, to: toDate },
       summary: {
         websiteLeads: { total: webTotal, new: webNew, loaded: webLoaded, completed: webCompleted, rejected: webRejected },
-        workedLeads:  { total: wkTotal, completed: wkCompleted, pending: wkPending, rejected: wkRejected, interested: wkInterested, callback: wkCallback },
+        workedLeads:  { total: wkTotal, completed: wkCompleted, pending: wkPending, rejected: wkRejected,
+                        interested: wkInterested, callback: wkCallback, notAnswering: wkNotAnswering,
+                        notReachable: wkNotReachable, wrongNumber: wkWrongNumber },
         poolLeads:    { total: poolTotal },
         conversionRate: wkTotal > 0 ? +((wkCompleted / wkTotal) * 100).toFixed(1) : 0,
         interestRate:   wkTotal > 0 ? +((wkInterested / wkTotal) * 100).toFixed(1) : 0,

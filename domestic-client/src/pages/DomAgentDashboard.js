@@ -22,6 +22,17 @@ const OUTCOME_MAP = {
   other:          { label: 'Other',          cls: 'bg-purple-100 text-purple-700' },
 };
 
+const CORE_DOCS_A     = ['aadhaar_front', 'aadhaar_back', 'pan_card'];
+const FINANCIAL_DOCS_A= ['salary_slip_1', 'bank_statement', 'itr', 'form_16', 'business_proof'];
+const getDocStatusA = (docs = []) => {
+  if (!docs || docs.length === 0) return { status: 'none',    count: 0, label: 'No Docs',   cls: 'bg-gray-100 text-gray-400 border-gray-200',   emoji: '📄' };
+  const types = docs.map(d => d.docType);
+  const coreCount = CORE_DOCS_A.filter(t => types.includes(t)).length;
+  const hasFinancial = FINANCIAL_DOCS_A.some(t => types.includes(t));
+  if (coreCount >= 2 && hasFinancial) return { status: 'full',    count: docs.length, label: `Full (${docs.length})`,    cls: 'bg-emerald-100 text-emerald-700 border-emerald-200', emoji: '✅' };
+  return                                      { status: 'partial', count: docs.length, label: `Partial (${docs.length})`, cls: 'bg-amber-100  text-amber-700  border-amber-200',   emoji: '📎' };
+};
+
 const DomAgentDashboard = () => {
   const { user, logout } = useAuth();
 
@@ -57,6 +68,7 @@ const DomAgentDashboard = () => {
   const [searchQuery,        setSearchQuery]        = useState('');
   const [dateFilter,         setDateFilter]         = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; });
   const [followupDateFilter, setFollowupDateFilter] = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; });
+  const [docFilter,          setDocFilter]          = useState('all'); // 'all'|'none'|'partial'|'full'
 
   useEffect(() => {
     const serverUrl = process.env.REACT_APP_DOM_API_URL || 'http://localhost:5009';
@@ -204,9 +216,12 @@ const DomAgentDashboard = () => {
       const d = l.loadedAt || l.assignedAt || l.createdAt;
       const dateOk = !dateFilter || (d && (() => { const dt = new Date(d); return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}` === dateFilter; })());
       const searchOk = !q || (l.name||'').toLowerCase().includes(q) || (l.mobile||'').includes(q);
-      return dateOk && searchOk;
+      const docList = l._src === 'website' ? (l.domLead?.documents || []) : (l.domLeadId?.documents || []);
+      const ds = getDocStatusA(docList);
+      const docOk = docFilter === 'all' || ds.status === docFilter;
+      return dateOk && searchOk && docOk;
     });
-  }, [workedLeads, dateFilter, searchQuery]);
+  }, [workedLeads, dateFilter, searchQuery, docFilter]);
 
   const filteredFollowups = useMemo(() => {
     const q = searchQuery.toLowerCase();
@@ -518,7 +533,14 @@ const DomAgentDashboard = () => {
                   </button>
                 )}
               </div>
-              {(searchQuery || dateFilter) && (
+              <select value={docFilter} onChange={e => setDocFilter(e.target.value)}
+                className="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-[#065F36]/20 focus:border-[#065F36]">
+                <option value="all">📁 All Docs</option>
+                <option value="none">📄 No Docs</option>
+                <option value="partial">📎 Partial Docs</option>
+                <option value="full">✅ Full Docs</option>
+              </select>
+              {(searchQuery || dateFilter || docFilter !== 'all') && (
                 <span className="text-xs text-gray-400">{filteredWorked.length} of {workedLeads.length} shown</span>
               )}
             </div>
@@ -527,7 +549,7 @@ const DomAgentDashboard = () => {
               <div className="flex flex-col items-center justify-center py-16 gap-3 text-gray-400">
                 <FileText className="h-12 w-12 text-gray-200" />
                 <p className="font-semibold text-gray-500">{workedLeads.length === 0 ? 'No worked leads yet' : 'No results'}</p>
-                <p className="text-sm">{workedLeads.length === 0 ? 'Go to "Assigned to Work" to start working leads.' : 'Try adjusting the date or search filter.'}</p>
+                <p className="text-sm">{workedLeads.length === 0 ? 'Go to "Assigned to Work" to start working leads.' : 'Try adjusting the date, search, or doc filter.'}</p>
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -539,6 +561,7 @@ const DomAgentDashboard = () => {
                       <th className="px-3 py-3.5">Customer</th>
                       <th className="px-3 py-3.5">Mobile</th>
                       <th className="px-3 py-3.5">Disposition</th>
+                      <th className="px-3 py-3.5">Docs</th>
                       <th className="px-3 py-3.5">Status</th>
                       <th className="px-3 pr-6 py-3.5 text-right">Action</th>
                     </tr>
@@ -549,6 +572,8 @@ const DomAgentDashboard = () => {
                       const outcomeKey = isWebsite ? (lead.domLead?.callOutcome || '') : (lead.callOutcome || '');
                       const outcome = OUTCOME_MAP[outcomeKey];
                       const wsInfo = !isWebsite && lead.workStatus ? { interested:'bg-emerald-100 text-emerald-700', not_interested:'bg-red-100 text-red-700', callback:'bg-amber-100 text-amber-700', not_reachable:'bg-orange-100 text-orange-700', closed:'bg-gray-100 text-gray-500', in_progress:'bg-blue-100 text-blue-700' }[lead.workStatus] : null;
+                      const docList = isWebsite ? (lead.domLead?.documents || []) : (lead.domLeadId?.documents || []);
+                      const docSt = getDocStatusA(docList);
                       return (
                         <tr key={lead._id}
                           className={`cursor-pointer transition-colors group border-l-4 ${isWebsite ? 'border-l-teal-400 hover:bg-teal-50/30' : 'border-l-violet-400 hover:bg-violet-50/30'}`}
@@ -576,6 +601,11 @@ const DomAgentDashboard = () => {
                               : wsInfo
                                 ? <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${wsInfo}`}>{lead.workStatus?.replace(/_/g,' ')}</span>
                                 : <span className="text-gray-300 text-xs">—</span>}
+                          </td>
+                          <td className="px-3 py-3.5">
+                            <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-semibold border ${docSt.cls}`}>
+                              {docSt.emoji} {docSt.label}
+                            </span>
                           </td>
                           <td className="px-3 py-3.5">
                             <span className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full font-bold bg-emerald-100 text-emerald-700 border border-emerald-200">
