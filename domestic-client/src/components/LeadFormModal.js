@@ -29,7 +29,7 @@ const EMPTY_FORM = {
   // Employment
   employmentType: '', companyName: '', monthlySalary: '',
   officeAddress: '', officeLandline: '', officialEmail: '',
-  yearsAtCurrentJob: '', totalJobExp: '',
+  yearsAtCurrentJob: '', totalJobExp: '', customEmploymentType: '',
   // Loan / credit
   productType: '', loanAmountRequired: '',
   existingBank: '', salaryAccountBank: '',
@@ -38,7 +38,7 @@ const EMPTY_FORM = {
   ref1Name: '', ref1Contact: '', ref1Address: '',
   ref2Name: '', ref2Contact: '', ref2Address: '',
   // Disposition
-  callOutcome: '', callbackDate: '', notes: '',
+  callOutcome: '', callbackDate: '', notes: '', customCallOutcome: '',
 };
 
 const Field = ({ label, children, required }) => (
@@ -115,6 +115,7 @@ const LeadFormModal = ({ websiteLead, importedLead, existingDomLead, onClose, on
         officialEmail:      existingDomLead.officialEmail     || '',
         yearsAtCurrentJob:  existingDomLead.yearsAtCurrentJob != null ? String(existingDomLead.yearsAtCurrentJob) : '',
         totalJobExp:        existingDomLead.totalJobExp       != null ? String(existingDomLead.totalJobExp)       : '',
+        customEmploymentType: existingDomLead.customEmploymentType || '',
         productType:        existingDomLead.productType       || src.productType  || '',
         loanAmountRequired: existingDomLead.loanAmountRequired || src.loanAmount  || '',
         existingBank:       existingDomLead.existingBank      || '',
@@ -131,6 +132,7 @@ const LeadFormModal = ({ websiteLead, importedLead, existingDomLead, onClose, on
         callOutcome:        existingDomLead.callOutcome       || '',
         callbackDate:       existingDomLead.callbackDate      || '',
         notes:              existingDomLead.notes             || importedLead?.remarks || '',
+        customCallOutcome:  existingDomLead.customCallOutcome || '',
       });
     } else if (importedLead) {
       setForm((prev) => ({
@@ -560,8 +562,15 @@ const LeadFormModal = ({ websiteLead, importedLead, existingDomLead, onClose, on
                         <option value="salaried">Salaried</option>
                         <option value="self_employed">Self-Employed</option>
                         <option value="business">Business Owner</option>
+                        <option value="unemployed">Unemployed</option>
+                        <option value="other">Other (specify)</option>
                       </Select>
                     </Field>
+                    {form.employmentType === 'other' && (
+                      <Field label="Specify Employment">
+                        <Input value={form.customEmploymentType} onChange={set('customEmploymentType')} placeholder="e.g. Freelancer, Retired, Student…" />
+                      </Field>
+                    )}
                     <Field label="Present Employer / Company Name">
                       <Input value={form.companyName} onChange={set('companyName')} placeholder="e.g. Infosys Ltd." />
                     </Field>
@@ -764,13 +773,20 @@ const LeadFormModal = ({ websiteLead, importedLead, existingDomLead, onClose, on
                 <Field label="Call Outcome">
                   <Select value={form.callOutcome} onChange={set('callOutcome')}>
                     <option value="">Select</option>
-                    <option value="interested">Interested</option>
-                    <option value="not_interested">Not Interested</option>
-                    <option value="callback">Callback Requested</option>
-                    <option value="not_reachable">Not Reachable</option>
-                    <option value="wrong_number">Wrong Number</option>
+                    <option value="interested">✅ Interested</option>
+                    <option value="not_interested">❌ Not Interested</option>
+                    <option value="callback">📞 Callback Requested</option>
+                    <option value="not_reachable">📵 Not Reachable</option>
+                    <option value="not_answering">🔕 Not Answering</option>
+                    <option value="wrong_number">❓ Wrong Number</option>
+                    <option value="other">✏️ Other (specify)</option>
                   </Select>
                 </Field>
+                {form.callOutcome === 'other' && (
+                  <Field label="Specify Disposition">
+                    <Input value={form.customCallOutcome} onChange={set('customCallOutcome')} placeholder="e.g. Busy, Switched off, Language barrier…" />
+                  </Field>
+                )}
                 <Field label="Callback Date (if applicable)">
                   <Input type="date" value={form.callbackDate} onChange={set('callbackDate')} />
                 </Field>

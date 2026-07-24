@@ -20,6 +20,8 @@ const OUTCOME_TO_WORK_STATUS = {
   wrong_number:   'closed',
   callback:       'in_progress',
   not_reachable:  'in_progress',
+  not_answering:  'in_progress',
+  other:          'in_progress',
 };
 
 // ── POST /domestic-api/leads ───────────────────────────────────────────────
@@ -216,7 +218,7 @@ router.get('/followups', protect, authorize('domagent', 'dom_admin', 'dom_supera
   try {
     const agentId = req.user.role === 'domagent' ? req.user._id : (req.query.agentId || null);
     const filter  = {
-      callOutcome: { $in: ['callback', 'not_reachable', 'wrong_number'] },
+      callOutcome: { $in: ['callback', 'not_reachable', 'wrong_number', 'not_answering'] },
       status:      { $nin: ['completed'] },
     };
     if (agentId) filter.assignedTo = agentId;
@@ -735,6 +737,8 @@ const EMPLOYMENT_MAP = {
   selfemployed:     'self_employed',
   business:         'business',
   'business owner': 'business',
+  unemployed:       'unemployed',
+  other:            'other',
 };
 
 const PRODUCT_MAP = {
@@ -815,7 +819,7 @@ function sanitizeLeadFields(body) {
     // Employment
     'employmentType', 'companyName', 'monthlySalary',
     'officeAddress', 'officeLandline', 'officialEmail',
-    'yearsAtCurrentJob', 'totalJobExp',
+    'yearsAtCurrentJob', 'totalJobExp', 'customEmploymentType',
     // Loan / credit
     'productType', 'loanAmountRequired',
     'existingBank', 'salaryAccountBank',
@@ -824,7 +828,7 @@ function sanitizeLeadFields(body) {
     'ref1Name', 'ref1Contact', 'ref1Address',
     'ref2Name', 'ref2Contact', 'ref2Address',
     // Disposition
-    'callOutcome', 'callbackDate', 'notes',
+    'callOutcome', 'callbackDate', 'notes', 'customCallOutcome',
     'status',
   ];
   const clean = {};

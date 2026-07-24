@@ -268,10 +268,14 @@ router.get('/pool-stats', protect, authorize('dom_admin', 'dom_superadmin'), asy
   try {
     const { role, _id: userId } = req.user;
     const baseFilter = role === 'dom_admin' ? { sharedWith: userId } : {};
+    // For SA, both 'imported' and 'shared' with no assignedTo = available to assign
+    const availableFilter = role === 'dom_admin'
+      ? { ...baseFilter, status: 'shared', assignedTo: null }
+      : { status: { $in: ['imported', 'shared'] }, assignedTo: null };
 
     const [total, available, assigned, agentBreakdown] = await Promise.all([
       DomImportedLead.countDocuments({ ...baseFilter }),
-      DomImportedLead.countDocuments({ ...baseFilter, status: 'shared', assignedTo: null }),
+      DomImportedLead.countDocuments(availableFilter),
       DomImportedLead.countDocuments({ ...baseFilter, status: 'assigned' }),
       DomImportedLead.aggregate([
         { $match: { ...baseFilter, status: 'assigned', assignedTo: { $ne: null } } },
@@ -307,7 +311,15 @@ router.get('/', protect, async (req, res) => {
 
     if (role === 'dom_superadmin') {
       if (req.query.batchId) filter.importBatchId = req.query.batchId;
-      if (req.query.status)  filter.status = req.query.status;
+      if (req.query.status) {
+        // 'shared' tab in UI means "unassigned" — for SA include both imported+shared unassigned
+        if (req.query.status === 'shared') {
+          filter.status    = { $in: ['imported', 'shared'] };
+          filter.assignedTo = null;
+        } else {
+          filter.status = req.query.status;
+        }
+      }
     } else if (role === 'dom_admin') {
       filter.sharedWith = userId;
       if (req.query.status && ['shared', 'assigned'].includes(req.query.status)) {
@@ -443,20 +455,21 @@ router.post('/assign', protect, authorize('dom_admin', 'dom_superadmin'), async 
     let updateFilter;
 
     if (leadIds && Array.isArray(leadIds) && leadIds.length > 0) {
-      updateFilter = {
-        _id:    { $in: leadIds },
-        status: 'shared',
-        assignedTo: null,
-      };
-      if (role === 'dom_admin') updateFilter.sharedWith = userId;
+      if (role === 'dom_admin') {
+        updateFilter = { _id: { $in: leadIds }, status: 'shared', assignedTo: null, sharedWith: userId };
+      } else {
+        // SA can assign imported or shared leads directly
+        updateFilter = { _id: { $in: leadIds }, status: { $in: ['imported', 'shared'] }, assignedTo: null };
+      }
     } else {
       const num = parseInt(count, 10);
       if (!num || num < 1 || num > 500) {
         return res.status(400).json({ success: false, message: 'count must be between 1 and 500.' });
       }
 
-      const poolFilter = { status: 'shared', assignedTo: null };
-      if (role === 'dom_admin') poolFilter.sharedWith = userId;
+      const poolFilter = role === 'dom_admin'
+        ? { status: 'shared', assignedTo: null, sharedWith: userId }
+        : { status: { $in: ['imported', 'shared'] }, assignedTo: null };
 
       const toAssign = await DomImportedLead.find(poolFilter)
         .sort({ createdAt: 1 }) // FIFO — oldest first
@@ -482,6 +495,13 @@ router.post('/assign', protect, authorize('dom_admin', 'dom_superadmin'), async 
         status:     'assigned',
       },
     });
+
+    if (result.modifiedCount === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'No eligible leads found to assign. Leads may already be assigned or not in the pool.',
+      });
+    }
 
     return res.status(200).json({
       success: true,

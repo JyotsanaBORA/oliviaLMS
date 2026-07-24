@@ -17,7 +17,9 @@ const OUTCOME_MAP = {
   not_interested: { label: 'Not Interested', cls: 'bg-red-100 text-red-700' },
   callback:       { label: 'Callback',       cls: 'bg-amber-100 text-amber-700' },
   not_reachable:  { label: 'Not Reachable',  cls: 'bg-orange-100 text-orange-700' },
+  not_answering:  { label: 'Not Answering',  cls: 'bg-slate-100 text-slate-700' },
   wrong_number:   { label: 'Wrong Number',   cls: 'bg-gray-100 text-gray-600' },
+  other:          { label: 'Other',          cls: 'bg-purple-100 text-purple-700' },
 };
 
 const DomAgentDashboard = () => {
@@ -53,8 +55,8 @@ const DomAgentDashboard = () => {
   // UI state
   const [sidebarOpen,        setSidebarOpen]        = useState(true);
   const [searchQuery,        setSearchQuery]        = useState('');
-  const [dateFilter,         setDateFilter]         = useState(() => new Date().toISOString().slice(0, 10));
-  const [followupDateFilter, setFollowupDateFilter] = useState(() => new Date().toISOString().slice(0, 10));
+  const [dateFilter,         setDateFilter]         = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; });
+  const [followupDateFilter, setFollowupDateFilter] = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; });
 
   useEffect(() => {
     const serverUrl = process.env.REACT_APP_DOM_API_URL || 'http://localhost:5009';
@@ -190,7 +192,7 @@ const DomAgentDashboard = () => {
     const q = searchQuery.toLowerCase();
     return toWorkLeads.filter(l => {
       const d = l.loadedAt || l.assignedAt || l.createdAt;
-      const dateOk = !dateFilter || (d && new Date(d).toISOString().slice(0,10) === dateFilter);
+      const dateOk = !dateFilter || (d && (() => { const dt = new Date(d); return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}` === dateFilter; })());
       const searchOk = !q || (l.name||'').toLowerCase().includes(q) || (l.mobile||'').includes(q) || (l.city||'').toLowerCase().includes(q);
       return dateOk && searchOk;
     });
@@ -200,7 +202,7 @@ const DomAgentDashboard = () => {
     const q = searchQuery.toLowerCase();
     return workedLeads.filter(l => {
       const d = l.loadedAt || l.assignedAt || l.createdAt;
-      const dateOk = !dateFilter || (d && new Date(d).toISOString().slice(0,10) === dateFilter);
+      const dateOk = !dateFilter || (d && (() => { const dt = new Date(d); return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}` === dateFilter; })());
       const searchOk = !q || (l.name||'').toLowerCase().includes(q) || (l.mobile||'').includes(q);
       return dateOk && searchOk;
     });
@@ -209,7 +211,7 @@ const DomAgentDashboard = () => {
   const filteredFollowups = useMemo(() => {
     const q = searchQuery.toLowerCase();
     return followups.filter(f => {
-      const dateOk = !followupDateFilter || (f.callbackDate && new Date(f.callbackDate).toISOString().slice(0,10) === followupDateFilter);
+      const dateOk = !followupDateFilter || (f.callbackDate && (() => { const dt = new Date(f.callbackDate); return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}` === followupDateFilter; })());
       const searchOk = !q || (f.name||'').toLowerCase().includes(q) || (f.mobile||'').includes(q);
       return dateOk && searchOk;
     });

@@ -106,11 +106,12 @@ const domLeadSchema = new mongoose.Schema(
 
     employmentType: {
       type: String,
-      enum: ['salaried', 'self_employed', 'business', ''],
+      enum: ['salaried', 'self_employed', 'business', 'unemployed', 'other', ''],
       default: '',
     },
     companyName:      { type: String, trim: true, maxlength: 150 },
     monthlySalary:    { type: Number, min: 0 },
+    customEmploymentType: { type: String, trim: true, maxlength: 100 },
     officeAddress:    { type: String, trim: true, maxlength: 300 },
     officeLandline:   { type: String, trim: true, maxlength: 20 },
     officialEmail:    { type: String, trim: true, lowercase: true, maxlength: 100 },
@@ -173,11 +174,12 @@ const domLeadSchema = new mongoose.Schema(
     // ── Call disposition ───────────────────────────────────────────────────
     callOutcome: {
       type: String,
-      enum: ['interested', 'not_interested', 'callback', 'not_reachable', 'wrong_number', ''],
+      enum: ['interested', 'not_interested', 'callback', 'not_reachable', 'wrong_number', 'not_answering', 'other', ''],
       default: '',
     },
-    callbackDate: { type: String, trim: true, maxlength: 30 },
-    notes:        { type: String, trim: true, maxlength: 3000 },
+    callbackDate:        { type: String, trim: true, maxlength: 30 },
+    notes:               { type: String, trim: true, maxlength: 3000 },
+    customCallOutcome:   { type: String, trim: true, maxlength: 100 },
 
     // ── Documents ──────────────────────────────────────────────────────────
     documents: [documentSchema],

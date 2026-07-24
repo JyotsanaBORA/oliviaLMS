@@ -845,7 +845,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                   placeholder="Search by name, mobile, city…"
                   className="flex-1 text-sm bg-transparent outline-none text-gray-700 placeholder-gray-400" />
               </div>
-              <select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); statusFilterRef.current = e.target.value; }}
+              <select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); statusFilterRef.current = e.target.value; fetchLeads(1); }}
                 className="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white text-gray-700">
                 <option value="">All Statuses</option>
                 <option value="new">New (Unclaimed)</option>
@@ -854,7 +854,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                 <option value="rejected">Rejected</option>
               </select>
               <select value={productTypeFilter}
-                onChange={(e) => { setProductTypeFilter(e.target.value); productTypeRef.current = e.target.value; }}
+                onChange={(e) => { setProductTypeFilter(e.target.value); productTypeRef.current = e.target.value; fetchLeads(1); }}
                 className="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white text-gray-700">
                 <option value="">All Services</option>
                 <optgroup label="─ Loans ─">
@@ -902,11 +902,11 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                 </button>
               ))}
               <input type="date" value={webDateFrom}
-                onChange={e => { setWebDateFrom(e.target.value); webDateFromRef.current = e.target.value; }}
+                onChange={e => { setWebDateFrom(e.target.value); webDateFromRef.current = e.target.value; if (e.target.value && webDateToRef.current) fetchLeads(1); }}
                 className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-teal-500" />
               <span className="text-gray-400 text-xs">to</span>
               <input type="date" value={webDateTo}
-                onChange={e => { setWebDateTo(e.target.value); webDateToRef.current = e.target.value; }}
+                onChange={e => { setWebDateTo(e.target.value); webDateToRef.current = e.target.value; if (e.target.value && webDateFromRef.current) fetchLeads(1); }}
                 className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-teal-500" />
               <button onClick={() => fetchLeads(1)}
                 className="px-3 py-1.5 rounded-lg text-xs font-bold bg-teal-600 text-white hover:bg-teal-700 transition-colors">
@@ -1051,14 +1051,14 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                   </button>
                 )}
               </div>
-              <select value={domStatusFilter} onChange={(e) => { setDomStatusFilter(e.target.value); domStatusRef.current = e.target.value; }}
+              <select value={domStatusFilter} onChange={(e) => { setDomStatusFilter(e.target.value); domStatusRef.current = e.target.value; fetchDomLeads(1); }}
                 className="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white text-gray-700">
                 <option value="">All Statuses</option>
                 <option value="pending">Pending</option>
                 <option value="completed">Completed</option>
                 <option value="rejected">Rejected</option>
               </select>
-              <select value={domProductFilter} onChange={(e) => { setDomProductFilter(e.target.value); domProductRef.current = e.target.value; }}
+              <select value={domProductFilter} onChange={(e) => { setDomProductFilter(e.target.value); domProductRef.current = e.target.value; fetchDomLeads(1); }}
                 className="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white text-gray-700">
                 <option value="">All Services</option>
                 <optgroup label="── Loans ──">
@@ -1118,11 +1118,11 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                 </button>
               ))}
               <input type="date" value={domDateFrom}
-                onChange={e => { setDomDateFrom(e.target.value); domDateFromRef.current = e.target.value; }}
+                onChange={e => { setDomDateFrom(e.target.value); domDateFromRef.current = e.target.value; if (e.target.value && domDateToRef.current) fetchDomLeads(1); }}
                 className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-[#065F36]" />
               <span className="text-gray-400 text-xs">to</span>
               <input type="date" value={domDateTo}
-                onChange={e => { setDomDateTo(e.target.value); domDateToRef.current = e.target.value; }}
+                onChange={e => { setDomDateTo(e.target.value); domDateToRef.current = e.target.value; if (e.target.value && domDateFromRef.current) fetchDomLeads(1); }}
                 className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-[#065F36]" />
               <button onClick={() => fetchDomLeads(1)}
                 className="px-3 py-1.5 rounded-lg text-xs font-bold bg-[#065F36] text-white hover:bg-[#054A2E] transition-colors">
@@ -1704,7 +1704,9 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                 not_interested: { label: 'Not Interested', cls: 'bg-red-100 text-red-700 border-red-300',             icon: '❌' },
                 callback:       { label: 'Callback',       cls: 'bg-amber-100 text-amber-700 border-amber-300',       icon: '📞' },
                 not_reachable:  { label: 'Not Reachable',  cls: 'bg-orange-100 text-orange-700 border-orange-300',    icon: '📵' },
+                not_answering:  { label: 'Not Answering',  cls: 'bg-slate-100 text-slate-700 border-slate-300',       icon: '🔕' },
                 wrong_number:   { label: 'Wrong Number',   cls: 'bg-gray-100 text-gray-600 border-gray-300',          icon: '❓' },
+                other:          { label: 'Other',          cls: 'bg-purple-100 text-purple-700 border-purple-300',    icon: '✏️' },
               };
               const oc  = OUTCOME_CFG[l.callOutcome] || { label: l.callOutcome || 'No Disposition', cls: 'bg-gray-100 text-gray-500 border-gray-200', icon: '—' };
               const fmt = (d) => d ? new Date(d).toLocaleString('en-IN', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '—';
@@ -1722,7 +1724,9 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                       l.callOutcome === 'not_interested' ? 'bg-gradient-to-r from-red-500 to-rose-600' :
                       l.callOutcome === 'callback'       ? 'bg-gradient-to-r from-amber-400 to-orange-500' :
                       l.callOutcome === 'not_reachable'  ? 'bg-gradient-to-r from-orange-400 to-amber-500' :
+                      l.callOutcome === 'not_answering'  ? 'bg-gradient-to-r from-slate-400 to-slate-500' :
                       l.callOutcome === 'wrong_number'   ? 'bg-gradient-to-r from-gray-500 to-gray-600' :
+                      l.callOutcome === 'other'          ? 'bg-gradient-to-r from-purple-500 to-violet-600' :
                       'bg-gradient-to-r from-[#065F36] to-[#00874A]'
                     } text-white`}>
                       <div className="flex items-start justify-between">
@@ -2171,14 +2175,18 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                                 l.callOutcome === 'not_interested' ? 'bg-red-100 text-red-700 border-red-200' :
                                 l.callOutcome === 'callback'       ? 'bg-amber-100 text-amber-700 border-amber-200' :
                                 l.callOutcome === 'not_reachable'  ? 'bg-orange-100 text-orange-700 border-orange-200' :
+                                l.callOutcome === 'not_answering'  ? 'bg-slate-100 text-slate-700 border-slate-200' :
                                 l.callOutcome === 'wrong_number'   ? 'bg-gray-100 text-gray-500 border-gray-200' :
+                                l.callOutcome === 'other'          ? 'bg-purple-100 text-purple-700 border-purple-200' :
                                 'bg-gray-100 text-gray-400 border-gray-200'
                               }`}>
                                 {l.callOutcome === 'interested'     ? '✅ Interested' :
                                  l.callOutcome === 'not_interested' ? '❌ Not Interested' :
                                  l.callOutcome === 'callback'       ? '📞 Callback' :
                                  l.callOutcome === 'not_reachable'  ? '📵 Not Reachable' :
+                                 l.callOutcome === 'not_answering'  ? '🔕 Not Answering' :
                                  l.callOutcome === 'wrong_number'   ? '❓ Wrong No.' :
+                                 l.callOutcome === 'other'          ? `✏️ ${l.customCallOutcome || 'Other'}` :
                                  l.callOutcome.replace(/_/g,' ')}
                               </span>
                             ) : (
@@ -2284,10 +2292,10 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                     {p.l}
                   </button>
                 ))}
-                <input type="date" value={assignedDateFrom} onChange={e => setAssignedDateFrom(e.target.value)}
+                <input type="date" value={assignedDateFrom} onChange={e => { setAssignedDateFrom(e.target.value); if (e.target.value && assignedDateTo) fetchAssignedLeadsData(1, assignedSearch, e.target.value, assignedDateTo, assignedSourceType); }}
                   className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-amber-400" />
                 <span className="text-gray-400 text-xs">to</span>
-                <input type="date" value={assignedDateTo} onChange={e => setAssignedDateTo(e.target.value)}
+                <input type="date" value={assignedDateTo} onChange={e => { setAssignedDateTo(e.target.value); if (e.target.value && assignedDateFrom) fetchAssignedLeadsData(1, assignedSearch, assignedDateFrom, e.target.value, assignedSourceType); }}
                   className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-amber-400" />
                 <button onClick={() => fetchAssignedLeadsData(1, assignedSearch, assignedDateFrom, assignedDateTo, assignedSourceType)}
                   className="px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-500 text-white hover:bg-amber-600 transition-colors">
