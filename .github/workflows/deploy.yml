@@ -29,6 +29,16 @@ jobs:
             git pull origin main
             echo ">>> Code is now at: $(git log -1 --oneline)"
 
+            echo "=== [3.5] Rescuing any uploads still inside old container ==="
+            mkdir -p /root/Olivialms/domestic-server/uploads
+            if docker inspect domestic-backend > /dev/null 2>&1; then
+              docker cp domestic-backend:/app/uploads/. /root/Olivialms/domestic-server/uploads/ 2>/dev/null \
+                && echo ">>> Uploads rescued to host filesystem" \
+                || echo ">>> No uploads to rescue"
+            else
+              echo ">>> No running domestic-backend container found"
+            fi
+
             echo "=== [4] Running deploy script ==="
             chmod +x /root/Olivialms/deploy.sh
             bash /root/Olivialms/deploy.sh

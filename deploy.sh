@@ -30,6 +30,14 @@ docker stop lms-backend 2>/dev/null || true
 docker rm lms-backend 2>/dev/null || true
 docker stop lms-frontend 2>/dev/null || true
 docker rm lms-frontend 2>/dev/null || true
+
+# ── Domestic backend: rescue uploads BEFORE removing old container ──────────
+echo ">> Rescuing uploaded documents from old domestic-backend container..."
+mkdir -p /root/Olivialms/domestic-server/uploads
+# Copy any files from inside the old container to the host (safe even if container absent)
+if docker inspect domestic-backend > /dev/null 2>&1; then
+  docker cp domestic-backend:/app/uploads/. /root/Olivialms/domestic-server/uploads/ 2>/dev/null || echo "  (no uploads to rescue or already on host)"
+fi
 docker stop domestic-backend 2>/dev/null || true
 docker rm domestic-backend 2>/dev/null || true
 docker stop domestic-frontend 2>/dev/null || true
@@ -51,10 +59,13 @@ docker run -d --network host \
   olivialms-frontend
 
 echo ">> Starting Domestic LMS backend..."
+# Ensure uploads directory exists on host before mounting
+mkdir -p /root/Olivialms/domestic-server/uploads
 docker run -d --network host \
   --env-file ./domestic-server/.env \
   --name domestic-backend \
   --restart unless-stopped \
+  -v /root/Olivialms/domestic-server/uploads:/app/uploads \
   domestic-backend
 
 echo ">> Starting Domestic LMS frontend..."

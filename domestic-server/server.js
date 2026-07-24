@@ -99,8 +99,26 @@ app.use(mongoSanitize()); // prevent NoSQL injection
 const uploadsDir = path.join(__dirname, process.env.UPLOAD_PATH || 'uploads');
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
-// Serve uploaded files (documents)
-app.use('/domestic-api/files', express.static(uploadsDir));
+// Serve uploaded files — static with CORP header already set by helmet
+app.use('/domestic-api/files', express.static(uploadsDir, {
+  setHeaders: (res) => {
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+  },
+}));
+
+// Explicit fallback: if express.static couldn't find the file, return a clear 404
+app.get('/domestic-api/files/:leadId/:filename', (req, res) => {
+  const { leadId, filename } = req.params;
+  // Safety: prevent path traversal
+  if (filename.includes('..') || leadId.includes('..')) {
+    return res.status(400).json({ success: false, message: 'Invalid path.' });
+  }
+  const filePath = path.join(uploadsDir, leadId, filename);
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).json({ success: false, message: 'File not found. It may have been deleted or the server was restarted.' });
+  }
+  res.sendFile(filePath);
+});
 
 // ── Routes ────────────────────────────────────────────────────────────────
 const authRoutes          = require('./routes/auth');
