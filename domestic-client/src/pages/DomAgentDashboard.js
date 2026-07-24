@@ -417,6 +417,13 @@ const DomAgentDashboard = () => {
                     </button>
                   )}
                 </div>
+                <button
+                  onClick={() => { setSearchQuery(''); setDateFilter(''); }}
+                  className={`flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-bold border transition-all ${
+                    (searchQuery || dateFilter) ? 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100' : 'bg-gray-50 text-gray-300 border-gray-200 cursor-default'
+                  }`} title="Clear all filters">
+                  <X className="h-3.5 w-3.5" /> Clear
+                </button>
                 {(searchQuery || dateFilter) && (
                   <span className="text-xs text-gray-400">{filteredToWork.length} of {toWorkLeads.length} shown</span>
                 )}
@@ -540,6 +547,13 @@ const DomAgentDashboard = () => {
                 <option value="partial">📎 Partial Docs</option>
                 <option value="full">✅ Full Docs</option>
               </select>
+              <button
+                onClick={() => { setSearchQuery(''); setDateFilter(''); setDocFilter('all'); }}
+                className={`flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-bold border transition-all ${
+                  (searchQuery || dateFilter || docFilter !== 'all') ? 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100' : 'bg-gray-50 text-gray-300 border-gray-200 cursor-default'
+                }`} title="Clear all filters">
+                <X className="h-3.5 w-3.5" /> Clear
+              </button>
               {(searchQuery || dateFilter || docFilter !== 'all') && (
                 <span className="text-xs text-gray-400">{filteredWorked.length} of {workedLeads.length} shown</span>
               )}
@@ -757,6 +771,13 @@ const DomAgentDashboard = () => {
                 {(searchQuery || followupDateFilter) && (
                   <span className="text-xs text-gray-400">{filteredFollowups.length} of {followups.length} shown</span>
                 )}
+                <button
+                  onClick={() => { setSearchQuery(''); setFollowupDateFilter(''); }}
+                  className={`flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-bold border transition-all ${
+                    (searchQuery || followupDateFilter) ? 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100' : 'bg-gray-50 text-gray-300 border-gray-200 cursor-default'
+                  }`} title="Clear all filters">
+                  <X className="h-3.5 w-3.5" /> Clear
+                </button>
               </div>
             </div>
 

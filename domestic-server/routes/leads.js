@@ -243,7 +243,7 @@ router.get('/', protect, async (req, res) => {
   try {
     const { role, _id: userId } = req.user;
     const page   = Math.max(1, parseInt(req.query.page)  || 1);
-    const limit  = Math.min(100, parseInt(req.query.limit) || 50);
+    const limit  = Math.min(500, parseInt(req.query.limit) || 50);
     const skip   = (page - 1) * limit;
     const status = req.query.status;
     const search = (req.query.search || '').trim();
@@ -275,6 +275,15 @@ router.get('/', protect, async (req, res) => {
 
     if (status && ['pending', 'completed', 'rejected'].includes(status)) {
       filter.status = status;
+    }
+    // Filter by specific call outcome / disposition
+    if (req.query.callOutcome) {
+      const validOutcomes = ['interested', 'not_interested', 'callback', 'not_reachable', 'not_answering', 'wrong_number', 'other', 'none'];
+      if (req.query.callOutcome === 'none') {
+        filter.$or = [{ callOutcome: '' }, { callOutcome: { $exists: false } }];
+      } else if (validOutcomes.includes(req.query.callOutcome)) {
+        filter.callOutcome = req.query.callOutcome;
+      }
     }
     if (search) {
       // Search by leadRef directly if it looks like a ref code (contains a dash)

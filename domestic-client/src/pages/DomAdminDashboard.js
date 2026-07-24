@@ -154,6 +154,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
   const [domDateFrom,  setDomDateFrom]  = useState('');
   const [domDateTo,    setDomDateTo]    = useState('');
   const [domDocFilter, setDomDocFilter] = useState('all'); // 'all'|'none'|'partial'|'full'
+  const [domOutcomeFilter, setDomOutcomeFilter] = useState(''); // '' = all outcomes
 
   // Bulk select — website leads
   const [webSelectedIds,  setWebSelectedIds]  = useState(new Set());
@@ -197,6 +198,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
   const domDateFromRef     = useRef('');
   const domDateToRef       = useRef('');
   const domDocFilterRef    = useRef('all');
+  const domOutcomeRef      = useRef('');
   const assignedDocFilterRef = useRef('all');
 
   const statsLoadedRef = useRef(false);
@@ -250,7 +252,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
     setDomLeadsLoading(true);
     try {
       // When any filter is active, fetch all results so pagination doesn't hide matches
-      const anyFilter = domSearchRef.current.trim() || domStatusRef.current || domProductRef.current || domDateFromRef.current || domDateToRef.current || domDocFilterRef.current !== 'all';
+      const anyFilter = domSearchRef.current.trim() || domStatusRef.current || domProductRef.current || domDateFromRef.current || domDateToRef.current || domDocFilterRef.current !== 'all' || domOutcomeRef.current;
       const limit = anyFilter ? 500 : 30;
       const q = new URLSearchParams({ page, limit });
       if (domSearchRef.current.trim())   q.set('search',      domSearchRef.current.trim());
@@ -258,6 +260,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
       if (domProductRef.current)         q.set('productType', domProductRef.current);
       if (domDateFromRef.current)        q.set('dateFrom',    domDateFromRef.current);
       if (domDateToRef.current)          q.set('dateTo',      domDateToRef.current);
+      if (domOutcomeRef.current)         q.set('callOutcome', domOutcomeRef.current);
       const res = await api.get(`/domestic-api/leads?${q}`);
       setDomLeads(res.data?.data || []);
       setDomLeadsTotal(res.data?.pagination?.total || 0);
@@ -910,6 +913,17 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                 className="flex items-center gap-2 text-sm bg-[#065F36] text-white px-4 py-2 rounded-xl hover:bg-[#054A2E] font-semibold">
                 <Search className="h-4 w-4" /> Search
               </button>
+              {/* Clear all filters */}
+              <button
+                onClick={() => { setSearch(''); searchRef.current=''; setStatusFilter(''); statusFilterRef.current=''; setProductTypeFilter(''); productTypeRef.current=''; setWebDateFrom(''); webDateFromRef.current=''; setWebDateTo(''); webDateToRef.current=''; fetchLeads(1); }}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border transition-all ${
+                  (search || statusFilter || productTypeFilter || webDateFrom || webDateTo)
+                    ? 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100'
+                    : 'bg-gray-50 text-gray-300 border-gray-200 cursor-default'
+                }`}
+                title="Clear all filters">
+                <X className="h-3.5 w-3.5" /> Clear
+              </button>
             </div>
             {/* Date filter row */}
             <div className="px-5 pb-3 flex items-center gap-2 flex-wrap border-b border-gray-100">
@@ -1093,9 +1107,22 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
               <select value={domStatusFilter} onChange={(e) => { setDomStatusFilter(e.target.value); domStatusRef.current = e.target.value; fetchDomLeads(1); }}
                 className="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white text-gray-700">
                 <option value="">All Statuses</option>
-                <option value="pending">Pending</option>
-                <option value="completed">Completed</option>
-                <option value="rejected">Rejected</option>
+                <option value="pending">⏳ Pending</option>
+                <option value="completed">✅ Completed</option>
+                <option value="rejected">❌ Rejected</option>
+              </select>
+              {/* Disposition / Call Outcome filter */}
+              <select value={domOutcomeFilter} onChange={(e) => { setDomOutcomeFilter(e.target.value); domOutcomeRef.current = e.target.value; fetchDomLeads(1); }}
+                className="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white text-gray-700 font-medium">
+                <option value="">🗂 All Dispositions</option>
+                <option value="none">— Not Called Yet</option>
+                <option value="interested">✅ Interested</option>
+                <option value="not_interested">❌ Not Interested</option>
+                <option value="callback">📞 Callback</option>
+                <option value="not_reachable">📵 Not Reachable</option>
+                <option value="not_answering">🔕 Not Answering</option>
+                <option value="wrong_number">❓ Wrong Number</option>
+                <option value="other">✏️ Other</option>
               </select>
               <select value={domProductFilter} onChange={(e) => { setDomProductFilter(e.target.value); domProductRef.current = e.target.value; fetchDomLeads(1); }}
                 className="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white text-gray-700">
@@ -1127,6 +1154,17 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
               <button onClick={() => fetchDomLeads(1)}
                 className="flex items-center gap-2 text-sm bg-[#065F36] text-white px-4 py-2 rounded-xl hover:bg-[#054A2E] font-semibold">
                 <Search className="h-4 w-4" /> Search
+              </button>
+              {/* Clear all filters */}
+              <button
+                onClick={() => { setDomSearch(''); domSearchRef.current=''; setDomStatusFilter(''); domStatusRef.current=''; setDomProductFilter(''); domProductRef.current=''; setDomDateFrom(''); domDateFromRef.current=''; setDomDateTo(''); domDateToRef.current=''; setDomOutcomeFilter(''); domOutcomeRef.current=''; setDomDocFilter('all'); domDocFilterRef.current='all'; fetchDomLeads(1); }}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border transition-all ${
+                  (domSearch || domStatusFilter || domProductFilter || domDateFrom || domDateTo || domOutcomeFilter || domDocFilter !== 'all')
+                    ? 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100'
+                    : 'bg-gray-50 text-gray-300 border-gray-200 cursor-default'
+                }`}
+                title="Clear all filters">
+                <X className="h-3.5 w-3.5" /> Clear
               </button>
               {/* Doc status filter */}
               <select value={domDocFilter} onChange={e => { setDomDocFilter(e.target.value); domDocFilterRef.current = e.target.value; fetchDomLeads(1); }}
@@ -1294,7 +1332,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
               </div>
               </>
             )}
-            {domDocFilter === 'all' && !domSearch && !domStatusFilter && !domProductFilter && !domDateFrom && !domDateTo ? (
+            {domDocFilter === 'all' && !domSearch && !domStatusFilter && !domProductFilter && !domDateFrom && !domDateTo && !domOutcomeFilter ? (
               <Pagination total={domLeadsTotal} page={domLeadsPage} perPage={30} count={domLeads.length}
                 onPrev={() => fetchDomLeads(domLeadsPage - 1)} onNext={() => fetchDomLeads(domLeadsPage + 1)} />
             ) : (
@@ -1307,6 +1345,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                   setDomDateFrom(''); domDateFromRef.current = '';
                   setDomDateTo(''); domDateToRef.current = '';
                   setDomDocFilter('all'); domDocFilterRef.current = 'all';
+                  setDomOutcomeFilter(''); domOutcomeRef.current = '';
                   fetchDomLeads(1);
                 }}>Clear all filters</button>
               </div>
@@ -2383,12 +2422,17 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                   <option value="partial">📎 Partial</option>
                   <option value="full">✅ Full Docs</option>
                 </select>
-                {(assignedSearch || assignedDateFrom || assignedDateTo || assignedDocFilter !== 'all') && (
-                  <button onClick={() => { setAssignedSearch(''); setAssignedDateFrom(''); setAssignedDateTo(''); setAssignedDocFilter('all'); assignedDocFilterRef.current = 'all'; fetchAssignedLeadsData(1); }}
-                    className="px-3 py-1.5 rounded-lg text-xs text-gray-500 border border-gray-200 hover:bg-gray-100 transition-colors">
-                    Clear all
-                  </button>
-                )}
+                {/* Clear all — always visible, red when active */}
+                <button
+                  onClick={() => { setAssignedSearch(''); setAssignedDateFrom(''); setAssignedDateTo(''); setAssignedDocFilter('all'); assignedDocFilterRef.current='all'; setAssignedSourceType('all'); fetchAssignedLeadsData(1); }}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
+                    (assignedSearch || assignedDateFrom || assignedDateTo || assignedDocFilter !== 'all' || assignedSourceType !== 'all')
+                      ? 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100'
+                      : 'bg-gray-50 text-gray-300 border-gray-200 cursor-default'
+                  }`}
+                  title="Clear all filters">
+                  <X className="h-3 w-3" /> Clear
+                </button>
               </div>
 
               {/* Table */}
