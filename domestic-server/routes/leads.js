@@ -361,30 +361,64 @@ router.patch('/:id/status', protect, authorize('dom_admin', 'dom_superadmin'), a
   }
 });
 
+// Helper: build MongoDB filter for document completeness
+const CORE_DOC_TYPES       = ['aadhaar_front', 'aadhaar_back'];
+const FINANCIAL_DOC_TYPES  = ['salary_slip_1', 'bank_statement', 'itr', 'form_16', 'business_proof'];
+const FULL_DOC_FILTER = {
+  $and: [
+    { documents: { $elemMatch: { docType: { $in: CORE_DOC_TYPES } } } },        // has ID doc
+    { documents: { $elemMatch: { docType: 'pan_card' } } },                      // has PAN
+    { documents: { $elemMatch: { docType: { $in: FINANCIAL_DOC_TYPES } } } },    // has financial doc
+  ],
+};
+function buildDocStatusFilter(docStatus) {
+  if (docStatus === 'none')    return { $or: [{ documents: { $size: 0 } }, { 'documents.0': { $exists: false } }] };
+  if (docStatus === 'full')    return FULL_DOC_FILTER;
+  if (docStatus === 'partial') return { $and: [{ 'documents.0': { $exists: true } }, { $nor: [FULL_DOC_FILTER] }] };
+  return null;
+}
+
 // ── GET /domestic-api/leads/export ────────────────────────────────────────
 // SuperAdmin only: export all filtered leads as Excel download.
-// Accepts same query params as GET / (status, search, productType, agentId).
 router.get('/export', protect, authorize('dom_superadmin'), async (req, res) => {
   try {
     const status      = req.query.status;
     const search      = (req.query.search || '').trim();
     const productType = req.query.productType;
     const agentId     = req.query.agentId;
+    const callOutcome = req.query.callOutcome;
+    const docStatus   = req.query.docStatus;   // 'none'|'partial'|'full'
 
     const filter = {};
     if (agentId)    filter.assignedTo = agentId;
     if (status && ['pending', 'completed', 'rejected'].includes(status)) filter.status = status;
     if (productType) filter.productType = productType;
+    if (req.query.dateFrom || req.query.dateTo) {
+      filter.createdAt = {};
+      if (req.query.dateFrom) { const [y,m,d] = req.query.dateFrom.split('-').map(Number); filter.createdAt.$gte = new Date(y,m-1,d,0,0,0,0); }
+      if (req.query.dateTo)   { const [y,m,d] = req.query.dateTo.split('-').map(Number);   filter.createdAt.$lte = new Date(y,m-1,d,23,59,59,999); }
+    }
+    // Use $and to safely combine callOutcome and search without $or conflict
+    const andConds = [];
+    if (callOutcome) {
+      if (callOutcome === 'none') andConds.push({ $or: [{ callOutcome: '' }, { callOutcome: { $exists: false } }] });
+      else andConds.push({ callOutcome });
+    }
     if (search) {
-      filter.$or = [
+      andConds.push({ $or: [
         { leadRef: { $regex: search, $options: 'i' } },
         { name:    { $regex: search, $options: 'i' } },
         { mobile:  { $regex: search, $options: 'i' } },
         { pan:     { $regex: search, $options: 'i' } },
         { email:   { $regex: search, $options: 'i' } },
         { city:    { $regex: search, $options: 'i' } },
-      ];
+      ]});
     }
+    if (andConds.length) filter.$and = andConds;
+
+    // Doc status filter
+    const dsf = buildDocStatusFilter(docStatus);
+    if (dsf) Object.assign(filter, dsf.$and ? { $and: [...(filter.$and || []), ...dsf.$and] } : dsf);
 
     const leads = await DomLead.find(filter)
       .populate('assignedTo', 'name email')
@@ -393,36 +427,45 @@ router.get('/export', protect, authorize('dom_superadmin'), async (req, res) => 
       .lean();
 
     const headers = [
-      'Lead ID', 'Name', 'Mobile', 'Alternate Mobile', 'Email', 'DOB', 'PAN', 'Aadhaar',
-      'City', 'State', 'Pincode', 'Address',
-      'Employment Type', 'Company Name', 'Monthly Salary (₹)',
-      'Product / Service', 'Loan Amount Required (₹)',
-      'Existing Bank', 'Salary Account Bank',
-      'CIBIL Score Range', 'Existing EMI (₹)',
-      'Call Outcome', 'Callback Date', 'Notes',
-      'Status', 'Agent Name', 'Agent Email',
-      'Documents Uploaded', 'Document Types',
-      'Created On',
+      'Lead ID', 'Segment', 'Location', 'TC Name',
+      'Name', 'Father Name', 'Mother Name', 'DOB', 'PAN', 'Aadhaar', 'Education', 'Marital Status', 'Spouse Name',
+      'Mobile', 'Alt Mobile', 'Email', 'Official Email',
+      'Current Address', 'City', 'State', 'Pincode', 'Residence Type', 'Years at Residence',
+      'Permanent Address', 'PA Contact',
+      'Employment', 'Company', 'Monthly Salary (₹)', 'Office Address', 'Office Landline',
+      'Years at Job', 'Total Exp',
+      'Product', 'Loan Amount (₹)', 'Existing Bank', 'Salary Bank', 'CIBIL Range', 'Existing EMI (₹)',
+      'Ref1 Name', 'Ref1 Contact', 'Ref1 Address',
+      'Ref2 Name', 'Ref2 Contact', 'Ref2 Address',
+      'Disposition', 'Custom Disposition', 'Callback Date', 'Notes',
+      'Status', 'Agent', 'Agent Email',
+      'Docs Count', 'Doc Types', 'Created On',
     ];
 
     const rows = leads.map((l) => [
       l.leadRef || '',
-      l.name || '', l.mobile || '', l.alternateMobile || '', l.email || '',
-      l.dob || '', l.pan || '', l.aadhaar || '',
-      l.city || '', l.state || '', l.pincode || '', l.address || '',
-      (l.employmentType || '').replace(/_/g, ' '),
-      l.companyName || '',
+      l.segment || '', l.location || '', l.tcName || '',
+      l.name || '', l.fatherName || '', l.motherName || '',
+      l.dob || '', l.pan || '', l.aadhaar || '', l.educationDetails || '',
+      l.maritalStatus || '', l.spouseName || '',
+      l.mobile || '', l.alternateMobile || '', l.email || '', l.officialEmail || '',
+      l.address || '', l.city || '', l.state || '', l.pincode || '',
+      l.currentAddressType || '', l.yearsAtCurrentAddress ?? '',
+      l.permanentAddress || '', l.paContactNumber || '',
+      (l.employmentType || '').replace(/_/g, ' '), l.companyName || '',
       l.monthlySalary ? Number(l.monthlySalary) : '',
+      l.officeAddress || '', l.officeLandline || '',
+      l.yearsAtCurrentJob ?? '', l.totalJobExp ?? '',
       (l.productType || '').replace(/_/g, ' '),
       l.loanAmountRequired ? Number(l.loanAmountRequired) : '',
       l.existingBank || '', l.salaryAccountBank || '',
       (l.cibilScoreRange || '').replace(/_/g, ' '),
       l.existingEMI ? Number(l.existingEMI) : '',
-      (l.callOutcome || '').replace(/_/g, ' '),
-      l.callbackDate || '',
-      l.notes || '',
-      l.status || '',
-      l.assignedTo?.name || '', l.assignedTo?.email || '',
+      l.ref1Name || '', l.ref1Contact || '', l.ref1Address || '',
+      l.ref2Name || '', l.ref2Contact || '', l.ref2Address || '',
+      (l.callOutcome || '').replace(/_/g, ' '), l.customCallOutcome || '',
+      l.callbackDate || '', l.notes || '',
+      l.status || '', l.assignedTo?.name || '', l.assignedTo?.email || '',
       (l.documents || []).length,
       (l.documents || []).map((d) => d.docType.replace(/_/g, ' ')).join('; '),
       l.createdAt ? new Date(l.createdAt).toLocaleString('en-IN', { hour12: true }) : '',
@@ -463,21 +506,42 @@ router.get('/export-zip', protect, authorize('dom_superadmin'), async (req, res)
     const search      = (req.query.search || '').trim();
     const productType = req.query.productType;
     const agentId     = req.query.agentId;
+    const callOutcome = req.query.callOutcome;
+    const docStatus   = req.query.docStatus;  // 'none'|'partial'|'full'
 
     const filter = {};
     if (agentId)    filter.assignedTo = agentId;
     if (status && ['pending', 'completed', 'rejected'].includes(status)) filter.status = status;
     if (productType) filter.productType = productType;
+
+    // Date range
+    if (req.query.dateFrom || req.query.dateTo) {
+      filter.createdAt = {};
+      if (req.query.dateFrom) { const [y,m,d] = req.query.dateFrom.split('-').map(Number); filter.createdAt.$gte = new Date(y,m-1,d,0,0,0,0); }
+      if (req.query.dateTo)   { const [y,m,d] = req.query.dateTo.split('-').map(Number);   filter.createdAt.$lte = new Date(y,m-1,d,23,59,59,999); }
+    }
+
+    // Call outcome + search via $and to avoid $or conflict
+    const andConditions = [];
+    if (callOutcome) {
+      if (callOutcome === 'none') andConditions.push({ $or: [{ callOutcome: '' }, { callOutcome: { $exists: false } }] });
+      else andConditions.push({ callOutcome });
+    }
     if (search) {
-      filter.$or = [
+      andConditions.push({ $or: [
         { leadRef: { $regex: search, $options: 'i' } },
         { name:    { $regex: search, $options: 'i' } },
         { mobile:  { $regex: search, $options: 'i' } },
-        { pan:     { $regex: search, $options: 'i' } },
-        { email:   { $regex: search, $options: 'i' } },
         { city:    { $regex: search, $options: 'i' } },
-      ];
+      ]});
     }
+    // Doc status filter — when partial/full, only leads with matching doc set
+    const dsf = buildDocStatusFilter(docStatus);
+    if (dsf) {
+      if (dsf.$and) andConditions.push(...dsf.$and);
+      else andConditions.push(dsf);
+    }
+    if (andConditions.length) filter.$and = andConditions;
 
     const leads = await DomLead.find(filter)
       .populate('assignedTo', 'name email')
@@ -485,8 +549,9 @@ router.get('/export-zip', protect, authorize('dom_superadmin'), async (req, res)
       .limit(1000)
       .lean();
 
-    const dateTag  = new Date().toISOString().slice(0, 10);
-    const zipName  = `domestic-leads-${dateTag}.zip`;
+    const suffix  = docStatus ? `-${docStatus}-docs` : '';
+    const dateTag = new Date().toISOString().slice(0, 10);
+    const zipName = `leads-with-docs${suffix}-${dateTag}.zip`;
 
     res.setHeader('Content-Type', 'application/zip');
     res.setHeader('Content-Disposition', `attachment; filename="${zipName}"`);
@@ -499,37 +564,46 @@ router.get('/export-zip', protect, authorize('dom_superadmin'), async (req, res)
     });
     archive.pipe(res);
 
-    // ── Master Excel sheet ────────────────────────────────────────────────
+    // ── Master Excel sheet (all fields) ──────────────────────────────────
     const headers = [
-      'Lead ID', 'Name', 'Mobile', 'Alternate Mobile', 'Email', 'DOB', 'PAN', 'Aadhaar',
-      'City', 'State', 'Pincode', 'Address',
-      'Employment Type', 'Company Name', 'Monthly Salary (₹)',
-      'Product / Service', 'Loan Amount Required (₹)',
-      'Existing Bank', 'Salary Account Bank',
-      'CIBIL Score Range', 'Existing EMI (₹)',
-      'Call Outcome', 'Callback Date', 'Notes',
-      'Status', 'Agent Name', 'Agent Email',
-      'Documents Uploaded', 'Document Types',
-      'Created On',
+      'Lead ID', 'Segment', 'Location', 'TC Name',
+      'Name', 'Father Name', 'Mother Name', 'DOB', 'PAN', 'Aadhaar', 'Education', 'Marital Status', 'Spouse Name',
+      'Mobile', 'Alt Mobile', 'Email', 'Official Email',
+      'Current Address', 'City', 'State', 'Pincode', 'Residence Type', 'Years at Residence',
+      'Permanent Address', 'PA Contact',
+      'Employment', 'Company', 'Monthly Salary (₹)', 'Office Address', 'Office Landline',
+      'Years at Job', 'Total Exp',
+      'Product', 'Loan Amount (₹)', 'Existing Bank', 'Salary Bank', 'CIBIL Range', 'Existing EMI (₹)',
+      'Ref1 Name', 'Ref1 Contact', 'Ref1 Address',
+      'Ref2 Name', 'Ref2 Contact', 'Ref2 Address',
+      'Disposition', 'Custom Disposition', 'Callback Date', 'Notes',
+      'Status', 'Agent', 'Agent Email',
+      'Docs Count', 'Doc Types', 'Created On',
     ];
     const rows = leads.map((l) => [
       l.leadRef || '',
-      l.name || '', l.mobile || '', l.alternateMobile || '', l.email || '',
-      l.dob || '', l.pan || '', l.aadhaar || '',
-      l.city || '', l.state || '', l.pincode || '', l.address || '',
-      (l.employmentType || '').replace(/_/g, ' '),
-      l.companyName || '',
+      l.segment || '', l.location || '', l.tcName || '',
+      l.name || '', l.fatherName || '', l.motherName || '',
+      l.dob || '', l.pan || '', l.aadhaar || '', l.educationDetails || '',
+      l.maritalStatus || '', l.spouseName || '',
+      l.mobile || '', l.alternateMobile || '', l.email || '', l.officialEmail || '',
+      l.address || '', l.city || '', l.state || '', l.pincode || '',
+      l.currentAddressType || '', l.yearsAtCurrentAddress ?? '',
+      l.permanentAddress || '', l.paContactNumber || '',
+      (l.employmentType || '').replace(/_/g, ' '), l.companyName || '',
       l.monthlySalary ? Number(l.monthlySalary) : '',
+      l.officeAddress || '', l.officeLandline || '',
+      l.yearsAtCurrentJob ?? '', l.totalJobExp ?? '',
       (l.productType || '').replace(/_/g, ' '),
       l.loanAmountRequired ? Number(l.loanAmountRequired) : '',
       l.existingBank || '', l.salaryAccountBank || '',
       (l.cibilScoreRange || '').replace(/_/g, ' '),
       l.existingEMI ? Number(l.existingEMI) : '',
-      (l.callOutcome || '').replace(/_/g, ' '),
-      l.callbackDate || '',
-      l.notes || '',
-      l.status || '',
-      l.assignedTo?.name || '', l.assignedTo?.email || '',
+      l.ref1Name || '', l.ref1Contact || '', l.ref1Address || '',
+      l.ref2Name || '', l.ref2Contact || '', l.ref2Address || '',
+      (l.callOutcome || '').replace(/_/g, ' '), l.customCallOutcome || '',
+      l.callbackDate || '', l.notes || '',
+      l.status || '', l.assignedTo?.name || '', l.assignedTo?.email || '',
       (l.documents || []).length,
       (l.documents || []).map((d) => d.docType.replace(/_/g, ' ')).join('; '),
       l.createdAt ? new Date(l.createdAt).toLocaleString('en-IN', { hour12: true }) : '',
@@ -537,14 +611,6 @@ router.get('/export-zip', protect, authorize('dom_superadmin'), async (req, res)
 
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
-    ws['!cols'] = [
-      { wch: 16 }, { wch: 20 }, { wch: 16 }, { wch: 16 }, { wch: 26 },
-      { wch: 12 }, { wch: 12 }, { wch: 16 }, { wch: 14 }, { wch: 14 },
-      { wch: 10 }, { wch: 30 }, { wch: 16 }, { wch: 22 }, { wch: 16 },
-      { wch: 18 }, { wch: 20 }, { wch: 18 }, { wch: 18 }, { wch: 16 },
-      { wch: 14 }, { wch: 16 }, { wch: 14 }, { wch: 30 }, { wch: 12 },
-      { wch: 20 }, { wch: 26 }, { wch: 8  }, { wch: 30 }, { wch: 22 },
-    ];
     XLSX.utils.book_append_sheet(wb, ws, 'All Leads');
     const masterBuf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
     archive.append(masterBuf, { name: `All-Leads-${dateTag}.xlsx` });

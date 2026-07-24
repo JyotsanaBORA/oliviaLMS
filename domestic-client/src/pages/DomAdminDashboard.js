@@ -551,6 +551,10 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
       if (domSearchRef.current.trim())  q.set('search',      domSearchRef.current.trim());
       if (domStatusRef.current)         q.set('status',      domStatusRef.current);
       if (domProductRef.current)        q.set('productType', domProductRef.current);
+      if (domDateFromRef.current)       q.set('dateFrom',    domDateFromRef.current);
+      if (domDateToRef.current)         q.set('dateTo',      domDateToRef.current);
+      if (domOutcomeRef.current)        q.set('callOutcome', domOutcomeRef.current);
+      if (domDocFilterRef.current !== 'all') q.set('docStatus', domDocFilterRef.current);
       const token = localStorage.getItem('dom_token');
       const res   = await fetch(`/domestic-api/leads/export?${q}`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -560,10 +564,9 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
       const url  = URL.createObjectURL(blob);
       const a    = document.createElement('a');
       a.href     = url;
-      a.download = `domestic-leads-${localDateStr()}.xlsx`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+      const suffix = domOutcomeRef.current ? `_${domOutcomeRef.current}` : domStatusRef.current ? `_${domStatusRef.current}` : '';
+      a.download = `leads${suffix}-${localDateStr()}.xlsx`;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
       URL.revokeObjectURL(url);
       toast.success('Excel exported!', { id: 'csv' });
     } catch (err) { toast.error(`Export failed: ${err.message}`, { id: 'csv' }); }
@@ -576,6 +579,10 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
       if (domSearchRef.current.trim())  q.set('search',      domSearchRef.current.trim());
       if (domStatusRef.current)         q.set('status',      domStatusRef.current);
       if (domProductRef.current)        q.set('productType', domProductRef.current);
+      if (domDateFromRef.current)       q.set('dateFrom',    domDateFromRef.current);
+      if (domDateToRef.current)         q.set('dateTo',      domDateToRef.current);
+      if (domOutcomeRef.current)        q.set('callOutcome', domOutcomeRef.current);
+      if (domDocFilterRef.current !== 'all') q.set('docStatus', domDocFilterRef.current);
       const token = localStorage.getItem('dom_token');
       const res   = await fetch(`/domestic-api/leads/export-zip?${q}`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -585,14 +592,61 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
       const url  = URL.createObjectURL(blob);
       const a    = document.createElement('a');
       a.href     = url;
-      a.download = `domestic-leads-${localDateStr()}.zip`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+      a.download = `leads-with-docs${domDocFilterRef.current !== 'all' ? `-${domDocFilterRef.current}` : ''}-${localDateStr()}.zip`;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
       URL.revokeObjectURL(url);
       toast.success('ZIP downloaded!', { id: 'exzip' });
     } catch (err) { toast.error(`Export failed: ${err.message}`, { id: 'exzip' }); }
   }, []);
+
+  // Client-side CSV export helper — used for website leads and assigned leads
+  const downloadCSV = useCallback((rows, filename) => {
+    const csv = rows.map(r => r.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a'); a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, []);
+
+  const handleExportWebLeads = useCallback(() => {
+    if (!leads.length) { toast.error('No leads to export.'); return; }
+    const headers = ['Name', 'Mobile', 'City', 'State', 'Product / Service', 'Status', 'PAN', 'Assigned To', 'Date'];
+    const rows = leads.map(l => [
+      l.name || '', l.mobile || '', l.city || '', l.state || '',
+      (l.productType || '').replace(/_/g, ' '), l.status || '', l.pan || '',
+      l.loadedBy?.name || 'Unassigned',
+      l.createdAt ? new Date(l.createdAt).toLocaleDateString('en-IN') : '',
+    ]);
+    const suffix = statusFilter ? `_${statusFilter}` : '';
+    downloadCSV([headers, ...rows], `meta-leads${suffix}-${localDateStr()}.csv`);
+    toast.success(`Exported ${leads.length} leads`);
+  }, [leads, statusFilter, downloadCSV]);
+
+  const handleExportAssignedLeads = useCallback(() => {
+    if (!assignedLeadsData.length) { toast.error('No assigned leads to export.'); return; }
+    const headers = ['Source', 'Name', 'Mobile', 'City', 'Product', 'Assigned To', 'Assigned On', 'Disposition', 'Doc Status'];
+    const filtered = assignedDocFilter === 'all' ? assignedLeadsData : assignedLeadsData.filter(l => {
+      const isW = l._sourceType === 'website';
+      const dList = isW ? (l.domLead?.documents || l.domLeadId?.documents || []) : (l.domLeadId?.documents || []);
+      return getDocStatus(dList).status === assignedDocFilter;
+    });
+    const rows = filtered.map(l => {
+      const isW = l._sourceType === 'website';
+      const dList = isW ? (l.domLead?.documents || l.domLeadId?.documents || []) : (l.domLeadId?.documents || []);
+      return [
+        isW ? 'Website/Meta' : 'Imported Pool',
+        l.name || '', l.mobile || '', (l.city || l.state || ''),
+        ((isW ? l.productType : (l.loanType || l.productType)) || '').replace(/_/g, ' '),
+        isW ? (l.loadedBy?.name || '') : (l.assignedTo?.name || ''),
+        l.assignedAt || l.loadedAt ? new Date(l.assignedAt || l.loadedAt).toLocaleDateString('en-IN') : '',
+        (l.callOutcome || l.workStatus || '').replace(/_/g, ' '),
+        getDocStatus(dList).label,
+      ];
+    });
+    downloadCSV([headers, ...rows], `assigned-leads-${localDateStr()}.csv`);
+    toast.success(`Exported ${rows.length} leads`);
+  }, [assignedLeadsData, assignedDocFilter, downloadCSV]);
 
   const maxPipeline = useMemo(
     () => pipeline.length ? Math.max(...pipeline.map(p => p.count), 1) : 1,
@@ -923,6 +977,11 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                 }`}
                 title="Clear all filters">
                 <X className="h-3.5 w-3.5" /> Clear
+              </button>
+              {/* Export filtered leads */}
+              <button onClick={handleExportWebLeads}
+                className="flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors">
+                <Download className="h-3.5 w-3.5" /> Export CSV ({leads.length})
               </button>
             </div>
             {/* Date filter row */}
@@ -2432,6 +2491,11 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                   }`}
                   title="Clear all filters">
                   <X className="h-3 w-3" /> Clear
+                </button>
+                {/* Export filtered assigned leads */}
+                <button onClick={handleExportAssignedLeads}
+                  className="flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors">
+                  <Download className="h-3.5 w-3.5" /> Export CSV
                 </button>
               </div>
 
