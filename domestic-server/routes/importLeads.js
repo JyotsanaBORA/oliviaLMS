@@ -437,6 +437,53 @@ router.post('/share', protect, authorize('dom_superadmin'), async (req, res) => 
   }
 });
 
+// ── POST /domestic-api/import-leads/assign-batch ─────────────────────────
+// Super Admin: directly assign all unassigned leads in a batch to an agent
+router.post('/assign-batch', protect, authorize('dom_superadmin'), async (req, res) => {
+  try {
+    const { batchId, agentId } = req.body;
+    if (!batchId || !agentId) {
+      return res.status(400).json({ success: false, message: 'batchId and agentId are required.' });
+    }
+    const agent = await DomUser.findOne({ _id: agentId, role: 'domagent', isActive: true }).lean();
+    if (!agent) return res.status(400).json({ success: false, message: 'Agent not found or inactive.' });
+
+    const result = await DomImportedLead.updateMany(
+      { importBatchId: batchId, assignedTo: null, status: { $in: ['imported', 'shared'] } },
+      { $set: { assignedTo: agentId, assignedBy: req.user._id, assignedAt: new Date(), status: 'assigned' } }
+    );
+
+    if (result.modifiedCount === 0) {
+      return res.status(400).json({ success: false, message: 'No unassigned leads found in this batch.' });
+    }
+
+    // Get batch name for the notification
+    const sample = await DomImportedLead.findOne({ importBatchId: batchId }).lean();
+    const batchName = sample?.importBatchName || batchId;
+
+    // Notify the agent via socket — their dashboard will refresh immediately
+    const io = req.app.get('io');
+    if (io) {
+      io.to('domagents').emit('pool_batch_assigned', {
+        agentId,
+        batchId,
+        batchName,
+        count: result.modifiedCount,
+        message: `${result.modifiedCount} new lead(s) from batch "${batchName}" have been assigned to you.`,
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `${result.modifiedCount} lead(s) from batch assigned to ${agent.name}.`,
+      modifiedCount: result.modifiedCount,
+    });
+  } catch (err) {
+    console.error('[ImportLeads] Assign batch error:', err.message);
+    return res.status(500).json({ success: false, message: 'Failed to assign batch.' });
+  }
+});
+
 // ── POST /domestic-api/import-leads/assign ───────────────────────────────
 // Admin assigns N leads from the shared pool to an agent
 // Body: { agentId, count }  OR  { agentId, leadIds: [...] }

@@ -453,14 +453,44 @@ router.delete('/leads/:id', authorize('dom_superadmin'), async (req, res) => {
   }
 });
 
-// DELETE /domestic-api/admin/import-batch/:batchId — delete entire import batch + all its leads
+// DELETE /domestic-api/admin/import-batch/:batchId — delete unworked leads in a batch
+// Worked leads (workStatus !== 'new') are preserved so agents' completed cases remain visible.
 router.delete('/import-batch/:batchId', authorize('dom_superadmin'), async (req, res) => {
   try {
-    const result = await DomImportedLead.deleteMany({ importBatchId: req.params.batchId });
+    const io = req.app.get('io');
+    const batchId = req.params.batchId;
+
+    // Get batch name for the notification
+    const sample = await DomImportedLead.findOne({ importBatchId: batchId }).lean();
+    const batchName = sample?.importBatchName || batchId;
+
+    // Find affected agents BEFORE deleting (to notify them)
+    const affectedAgents = await DomImportedLead.distinct('assignedTo', {
+      importBatchId: batchId,
+      workStatus: 'new',
+      assignedTo: { $ne: null },
+    });
+
+    // Only delete UNWORKED leads — preserve leads the agent has already called/worked
+    const result = await DomImportedLead.deleteMany({
+      importBatchId: batchId,
+      $or: [{ workStatus: 'new' }, { workStatus: null }, { workStatus: { $exists: false } }],
+    });
+
+    // Notify affected agents via socket so their dashboards update immediately
+    if (io && affectedAgents.length > 0) {
+      io.to('domagents').emit('pool_batch_deleted', {
+        batchId,
+        batchName,
+        deletedCount: result.deletedCount,
+        message: `Batch "${batchName}" was removed. ${result.deletedCount} unworked lead(s) have been cleared from your queue.`,
+      });
+    }
+
     return res.status(200).json({
       success: true,
       deleted: result.deletedCount,
-      message: `Deleted ${result.deletedCount} leads from batch.`,
+      message: `Deleted ${result.deletedCount} unworked leads from batch "${batchName}".`,
     });
   } catch (err) {
     console.error('[Admin] Delete batch error:', err.message);

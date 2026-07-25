@@ -73,6 +73,11 @@ const DomSuperAdminDashboard = () => {
   const [allAdmins,       setAllAdmins]       = useState([]);
   const [shareModal,      setShareModal]      = useState(null);
   const [selectedAdmins,  setSelectedAdmins]  = useState([]);
+
+  // Batch assign to agent (SA direct assign)
+  const [batchAssignModal,  setBatchAssignModal]  = useState(null);
+  const [batchAssignAgentId,setBatchAssignAgentId]= useState('');
+  const [batchAssigning,    setBatchAssigning]    = useState(false);
   const [sharing,         setSharing]         = useState(false);
 
   // Website Leads management state
@@ -380,6 +385,23 @@ const DomSuperAdminDashboard = () => {
       toast.error(err.response?.data?.message || 'Failed to share.');
     } finally { setSharing(false); }
   }, [shareModal, selectedAdmins, fetchBatches]);
+
+  const handleBatchAssign = useCallback(async () => {
+    if (!batchAssignModal || !batchAssignAgentId) return;
+    setBatchAssigning(true);
+    try {
+      const res = await api.post('/domestic-api/import-leads/assign-batch', {
+        batchId: batchAssignModal.batchId,
+        agentId: batchAssignAgentId,
+      });
+      toast.success(res.data.message);
+      setBatchAssignModal(null);
+      setBatchAssignAgentId('');
+      fetchBatches();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Batch assign failed.');
+    } finally { setBatchAssigning(false); }
+  }, [batchAssignModal, batchAssignAgentId, fetchBatches]);
 
   useEffect(() => {
     if (superTab === 'users')     fetchUsers();
@@ -1492,39 +1514,6 @@ const DomSuperAdminDashboard = () => {
           </div>
         )}
 
-        {/* Universal Delete Confirmation Modal */}
-        {deleteConfirm && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
-            onClick={() => setDeleteConfirm(null)}>
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden"
-              onClick={e => e.stopPropagation()}>
-              <div className="bg-gradient-to-r from-red-500 to-rose-600 px-6 py-4">
-                <div className="flex items-center gap-2">
-                  <span className="text-2xl">🗑️</span>
-                  <h3 className="text-white font-bold text-base">Confirm Delete</h3>
-                </div>
-              </div>
-              <div className="p-6">
-                <p className="text-gray-700 text-sm mb-1 font-semibold">You are about to permanently delete:</p>
-                <p className="text-gray-500 text-sm bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 mb-4">
-                  {deleteConfirm.name}
-                  {deleteConfirm.type === 'batch' && <span className="block text-xs text-orange-600 font-semibold mt-1">⚠️ This will delete all leads in the entire batch.</span>}
-                </p>
-                <p className="text-red-600 text-xs font-semibold mb-5">This action cannot be undone.</p>
-                <div className="flex gap-3">
-                  <button onClick={() => setDeleteConfirm(null)}
-                    className="flex-1 py-2.5 text-sm border border-gray-200 rounded-xl hover:bg-gray-50 font-medium text-gray-600 transition-colors">
-                    Cancel
-                  </button>
-                  <button onClick={handleDelete}
-                    className="flex-1 py-2.5 text-sm bg-red-600 text-white rounded-xl hover:bg-red-700 font-bold transition-colors shadow-sm">
-                    Yes, Delete
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     );
   })()}
@@ -2651,12 +2640,17 @@ const DomSuperAdminDashboard = () => {
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0 ml-4">
                       <button
+                        onClick={() => { setBatchAssignModal({ batchId: b._id, batchName: b.batchName || b._id, total: b.total }); setBatchAssignAgentId(''); }}
+                        className="flex items-center gap-1.5 text-sm bg-violet-600 text-white px-4 py-2 rounded-xl hover:bg-violet-700 font-semibold shadow-sm transition-all">
+                        <Users className="h-4 w-4" /> Assign
+                      </button>
+                      <button
                         onClick={() => { setShareModal({ batchId: b._id, batchName: b.batchName || b._id }); setSelectedAdmins([]); }}
                         className="flex items-center gap-1.5 text-sm bg-[#065F36] text-white px-4 py-2 rounded-xl hover:bg-[#054A2E] font-semibold shadow-sm transition-all">
                         <Share2 className="h-4 w-4" /> Share
                       </button>
                       <button
-                        onClick={() => setDeleteConfirm({ type: 'batch', batchId: b._id, name: b.batchName || b._id, successMsg: `Batch "${b.batchName || b._id}" and all its leads deleted.` })}
+                        onClick={() => setDeleteConfirm({ type: 'batch', batchId: b._id, name: b.batchName || b._id, totalLeads: b.total, successMsg: `Batch "${b.batchName || b._id}" and all its leads deleted.` })}
                         className="flex items-center gap-1 text-sm px-3 py-2 rounded-xl border border-gray-200 text-gray-500 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-all"
                         title="Delete entire batch">
                         🗑 Delete
@@ -3140,6 +3134,84 @@ DOMESTIC_LMS_API_KEY=${apiKeyVisible ? apiKey : '<show key above>'}`}
       </div>
     );
   })()}
+
+    {/* ── Global Delete Confirmation Modal (works on ALL tabs) ── */}
+    {deleteConfirm && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+        onClick={() => setDeleteConfirm(null)}>
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden"
+          onClick={e => e.stopPropagation()}>
+          <div className="bg-gradient-to-r from-red-500 to-rose-600 px-6 py-4">
+            <div className="flex items-center gap-2">
+              <span className="text-2xl">🗑️</span>
+              <h3 className="text-white font-bold text-base">Confirm Delete</h3>
+            </div>
+          </div>
+          <div className="p-6">
+            <p className="text-gray-700 text-sm mb-1 font-semibold">You are about to permanently delete:</p>
+            <p className="text-gray-500 text-sm bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 mb-4">
+              {deleteConfirm.name}
+              {deleteConfirm.type === 'batch' && <span className="block text-xs text-orange-600 font-semibold mt-1">⚠️ This will delete all {deleteConfirm.totalLeads ? `${deleteConfirm.totalLeads} ` : ''}leads in the entire batch.</span>}
+            </p>
+            <p className="text-red-600 text-xs font-semibold mb-5">This action cannot be undone.</p>
+            <div className="flex gap-3">
+              <button onClick={() => setDeleteConfirm(null)}
+                className="flex-1 py-2.5 text-sm border border-gray-200 rounded-xl hover:bg-gray-50 font-medium text-gray-600 transition-colors">
+                Cancel
+              </button>
+              <button onClick={handleDelete}
+                className="flex-1 py-2.5 text-sm bg-red-600 text-white rounded-xl hover:bg-red-700 font-bold transition-colors shadow-sm">
+                Yes, Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {/* ── Batch Assign to Agent Modal ── */}
+    {batchAssignModal && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+        onClick={() => setBatchAssignModal(null)}>
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
+          onClick={e => e.stopPropagation()}>
+          <div className="bg-gradient-to-r from-violet-600 to-purple-600 px-6 py-4 flex items-center justify-between">
+            <div>
+              <h3 className="text-white font-bold text-base">Assign Batch to Agent</h3>
+              <p className="text-white/70 text-xs mt-0.5">{batchAssignModal.batchName} · {batchAssignModal.total} leads</p>
+            </div>
+            <button onClick={() => setBatchAssignModal(null)} className="text-white/70 hover:text-white"><X className="h-5 w-5" /></button>
+          </div>
+          <div className="p-5 space-y-4">
+            <p className="text-xs text-gray-500 bg-violet-50 border border-violet-100 rounded-xl px-4 py-3">
+              All unassigned leads in this batch will be directly assigned to the selected agent.
+            </p>
+            <div>
+              <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Select Agent</p>
+              <select value={batchAssignAgentId} onChange={e => setBatchAssignAgentId(e.target.value)}
+                className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-violet-400/40 focus:border-violet-500">
+                <option value="">— Choose an agent —</option>
+                {users.filter(u => u.role === 'domagent' && u.isActive).map(u => (
+                  <option key={u._id} value={u._id}>{u.name} ({u.email})</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="flex items-center justify-between gap-3 px-5 py-4 border-t border-gray-100 bg-gray-50">
+            <button onClick={() => setBatchAssignModal(null)}
+              className="px-4 py-2 text-sm text-gray-600 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 font-medium">
+              Cancel
+            </button>
+            <button onClick={handleBatchAssign} disabled={!batchAssignAgentId || batchAssigning}
+              className="flex items-center gap-2 px-5 py-2 text-sm font-bold text-white bg-violet-600 hover:bg-violet-700 disabled:bg-gray-300 rounded-xl shadow-sm transition-colors">
+              {batchAssigning
+                ? <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Assigning…</>
+                : <><Database className="h-4 w-4" /> Assign All Leads</>}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
 
       </div>
     </div>

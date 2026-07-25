@@ -82,14 +82,28 @@ const DomAgentDashboard = () => {
     socketRef.current = socket;
     socket.on('connect',    () => { setConnected(true); socket.emit('join_room', user.role); });
     socket.on('disconnect', () => setConnected(false));
+
+    // New pool leads assigned to this agent via batch
+    socket.on('pool_batch_assigned', (data) => {
+      if (data.agentId && data.agentId !== user._id?.toString()) return; // not for this agent (double-check on client)
+      toast.success(data.message || `New batch leads assigned to you!`, { icon: '📦', duration: 6000 });
+      fetchAssignedLeads();
+    });
+
+    // A batch was deleted — refresh to remove cleared leads
+    socket.on('pool_batch_deleted', (data) => {
+      toast(`${data.message || 'A batch was removed from your queue.'}`, { icon: '🗑️', duration: 5000 });
+      fetchAssignedLeads();
+    });
+
+    // Single website lead assigned
     socket.on('lead_assigned_to_you', (data) => {
-      // Only act if the socket message is for this agent
-      if (data.agentId === socket.auth?.token) return; // id check happens server-side
+      if (data.agentId === socket.auth?.token) return;
       toast.success(`Lead assigned to you: ${data.leadName || data.mobile || 'new lead'}`, { icon: '📋' });
       fetchMyLeads(true);
     });
     return () => socket.disconnect();
-  }, [user.role]);
+  }, [user.role, user._id, fetchMyLeads, fetchAssignedLeads]);
 
   const fetchMyLeads = useCallback(async (silent = false) => {
     if (!silent) setLoading(true); else setRefreshing(true);
@@ -161,6 +175,12 @@ const DomAgentDashboard = () => {
   }, []);
 
   useEffect(() => { fetchMyLeads(); fetchMyStatus(); fetchAssignedLeads(); }, [fetchMyLeads, fetchMyStatus, fetchAssignedLeads]);
+
+  // Auto-refresh pool leads every 60 seconds so agents always see fresh batch data
+  useEffect(() => {
+    const timer = setInterval(() => fetchAssignedLeads(), 60000);
+    return () => clearInterval(timer);
+  }, [fetchAssignedLeads]);
 
   useEffect(() => {
     if (tab === 'followups') fetchFollowups();
