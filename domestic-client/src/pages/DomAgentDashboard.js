@@ -103,7 +103,7 @@ const DomAgentDashboard = () => {
       fetchMyLeads(true);
     });
     return () => socket.disconnect();
-  }, [user.role, user._id, fetchMyLeads, fetchAssignedLeads]);
+  }, [user.role, user._id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchMyLeads = useCallback(async (silent = false) => {
     if (!silent) setLoading(true); else setRefreshing(true);
