@@ -142,9 +142,11 @@ const DomAgentDashboard = () => {
   const handleOpenImportedLead = useCallback(async (lead) => {
     setSelectedImportedLead(lead);
     setImportedLeadDomLead(null);
-    if (lead.domLeadId) {
+    // domLeadId may be a populated object or a plain ObjectId string
+    const domLeadId = lead.domLeadId?._id || lead.domLeadId;
+    if (domLeadId) {
       try {
-        const r = await api.get(`/domestic-api/leads/${lead.domLeadId}`);
+        const r = await api.get(`/domestic-api/leads/${domLeadId}`);
         setImportedLeadDomLead(r.data?.data || null);
       } catch { /* open fresh form */ }
     }

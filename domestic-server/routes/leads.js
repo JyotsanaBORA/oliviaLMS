@@ -171,7 +171,7 @@ router.patch('/:id', protect, authorize('domagent', 'dom_admin', 'dom_superadmin
       if (['not_interested', 'wrong_number'].includes(updates.callOutcome)) {
         // Customer closed — mark as rejected (no further work needed)
         updates.status = 'rejected';
-      } else if (['interested', 'callback', 'not_reachable'].includes(updates.callOutcome)) {
+      } else if (['interested', 'callback', 'not_reachable', 'not_answering', 'other'].includes(updates.callOutcome)) {
         // Still active — keep/restore to pending so it stays in the work queue
         // (only if it was previously rejected, e.g. agent changes their mind)
         if (lead.status === 'rejected') updates.status = 'pending';
