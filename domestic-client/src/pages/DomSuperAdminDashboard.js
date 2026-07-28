@@ -111,6 +111,7 @@ const DomSuperAdminDashboard = () => {
   const [reportLastUpdated, setReportLastUpdated] = useState(null);
   const [trendView,     setTrendView]     = useState('daily'); // 'daily' | 'hourly'
   const [trackerLoading,      setTrackerLoading]      = useState(false);
+  const [trackerSearch,       setTrackerSearch]       = useState('');
   const [selectedTrackAgent,  setSelectedTrackAgent]  = useState(null);
   const [trackLeads,          setTrackLeads]          = useState([]);
   const [trackWorkedLeads,    setTrackWorkedLeads]    = useState([]);
@@ -413,6 +414,13 @@ const DomSuperAdminDashboard = () => {
     if (superTab === 'manual_leads') { fetchManualLeads(); }
     if (superTab === 'agent_performance') { /* uses DomAdminDashboard internally */ }
   }, [superTab, fetchUsers, fetchApiKey, fetchBatches, fetchAdmins, fetchWebLeads, fetchWebProductTypes, fetchWebAgents, fetchWebServiceStats, fetchTrackerAgents, fetchReport, fetchManualLeads]);
+
+  // Auto-refresh tracker every 30 seconds for live monitoring
+  useEffect(() => {
+    if (superTab !== 'tracker') return;
+    const timer = setInterval(fetchTrackerAgents, 30000);
+    return () => clearInterval(timer);
+  }, [superTab, fetchTrackerAgents]);
 
   // Auto-refresh reports when the tab is active
   useEffect(() => {
@@ -1527,13 +1535,51 @@ const DomSuperAdminDashboard = () => {
       unavailable: { dot: 'bg-red-500',     label: 'Unavailable', cls: 'bg-red-100 text-red-700 border-red-300' },
     };
 
-    const sortedAgents = [...trackerAgents].sort((a, b) => {
-      const order = { available: 0, break: 1, unavailable: 2 };
-      const sa = order[a.agentStatus || 'available'] ?? 3;
-      const sb = order[b.agentStatus || 'available'] ?? 3;
-      if (sa !== sb) return sa - sb;
-      return getAgentTier(b).score - getAgentTier(a).score;
-    });
+    // Aggregate totals across all agents
+    const totalMeta       = trackerAgents.reduce((s, a) => s + (a.leadsLoaded     || 0), 0);
+    const totalImported   = trackerAgents.reduce((s, a) => s + (a.poolAssigned    || 0), 0);
+    const totalDisp       = trackerAgents.reduce((s, a) => s + (a.domLeadsCreated || 0), 0);
+    const totalInterested = trackerAgents.reduce((s, a) => s + (a.interestedCount || 0), 0);
+    const totalCallback   = trackerAgents.reduce((s, a) => s + (a.callbackCount   || 0), 0);
+    const totalPoolWorked = trackerAgents.reduce((s, a) => s + (a.poolWorked      || 0), 0);
+
+    // Export all agents data as CSV
+    const handleExportTracker = () => {
+      const headers = ['Rank', 'Name', 'Email', 'Status', 'Active', 'Last Login',
+        'Meta Leads Loaded', 'Meta Completed', 'Pool Leads Assigned', 'Pool Leads Worked',
+        'Total Dispositions Filed', 'Interested', 'Callbacks', 'Conversion Rate %', 'Last Seen'];
+      const rows = [...trackerAgents]
+        .sort((a, b) => getAgentTier(b).score - getAgentTier(a).score)
+        .filter(a => !trackerSearch || a.name?.toLowerCase().includes(trackerSearch.toLowerCase()) || a.email?.toLowerCase().includes(trackerSearch.toLowerCase()))
+        .map((a, i) => [
+          i + 1, a.name || '', a.email || '',
+          a.agentStatus || 'available', a.isActive ? 'Yes' : 'No',
+          a.lastLogin ? new Date(a.lastLogin).toLocaleDateString('en-IN') : 'Never',
+          a.leadsLoaded || 0, a.leadsCompleted || 0,
+          a.poolAssigned || 0, a.poolWorked || 0,
+          a.domLeadsCreated || 0, a.interestedCount || 0, a.callbackCount || 0,
+          `${a.conversionRate || 0}%`,
+          a.agentStatusUpdatedAt ? new Date(a.agentStatusUpdatedAt).toLocaleString('en-IN') : '—',
+        ]);
+      const csv = [headers, ...rows].map(r => r.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url;
+      a.download = `agent-tracker-${new Date().toISOString().slice(0,10)}.csv`;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success(`Exported ${rows.length} agents`);
+    };
+
+    const sortedAgents = [...trackerAgents]
+      .filter(a => !trackerSearch || a.name?.toLowerCase().includes(trackerSearch.toLowerCase()) || a.email?.toLowerCase().includes(trackerSearch.toLowerCase()))
+      .sort((a, b) => {
+        const order = { available: 0, break: 1, unavailable: 2 };
+        const sa = order[a.agentStatus || 'available'] ?? 3;
+        const sb = order[b.agentStatus || 'available'] ?? 3;
+        if (sa !== sb) return sa - sb;
+        return getAgentTier(b).score - getAgentTier(a).score;
+      });
 
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-gray-50 to-emerald-50/30">
@@ -1566,6 +1612,18 @@ const DomSuperAdminDashboard = () => {
               </div>
             </div>
             <div className="flex items-center gap-2">
+              {/* Search agents */}
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 pointer-events-none" />
+                <input type="text" placeholder="Search agent…" value={trackerSearch}
+                  onChange={e => setTrackerSearch(e.target.value)}
+                  className="pl-9 pr-7 py-2 text-sm border border-gray-200 rounded-xl bg-white w-44 focus:outline-none focus:ring-2 focus:ring-[#065F36]/20 focus:border-[#065F36]" />
+                {trackerSearch && <button onClick={() => setTrackerSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500"><X className="h-3.5 w-3.5" /></button>}
+              </div>
+              <button onClick={handleExportTracker}
+                className="flex items-center gap-1.5 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 rounded-xl px-3 py-2 font-semibold transition-colors">
+                <Download className="h-4 w-4" /> Export CSV
+              </button>
               <button onClick={fetchTrackerAgents}
                 className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-[#065F36] border border-gray-200 rounded-xl px-3 py-2 transition-all">
                 <RefreshCw className={`h-4 w-4 ${trackerLoading ? 'animate-spin' : ''}`} /> Refresh
@@ -1592,6 +1650,30 @@ const DomSuperAdminDashboard = () => {
                   </div>
                 ))}
                 <span className="text-xs text-gray-400 ml-auto">{trackerAgents.length} total agents</span>
+              </div>
+            )}
+
+            {/* ── Aggregate stat cards ── */}
+            {!trackerLoading && trackerAgents.length > 0 && (
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {[
+                  { label: 'Total Leads',        val: totalMeta + totalImported, sub: 'Meta + Imported', icon: '📊', bg: 'from-[#065F36] to-[#00874A]', text: 'text-white' },
+                  { label: 'Meta Leads',          val: totalMeta,                sub: 'Website / Meta',  icon: '🌐', bg: 'from-teal-500 to-cyan-600',       text: 'text-white' },
+                  { label: 'Imported Leads',      val: totalImported,            sub: 'Pool / Batches',  icon: '📥', bg: 'from-violet-500 to-purple-600',    text: 'text-white' },
+                  { label: 'Dispositions Filed',  val: totalDisp,                sub: 'Forms submitted', icon: '📝', bg: 'from-blue-500 to-indigo-600',      text: 'text-white' },
+                  { label: 'Interested',          val: totalInterested,          sub: 'Hot leads',       icon: '✅', bg: 'from-emerald-500 to-green-600',    text: 'text-white' },
+                  { label: 'Callbacks',           val: totalCallback,            sub: 'Follow-ups due',  icon: '📞', bg: 'from-amber-400 to-orange-500',     text: 'text-white' },
+                ].map(s => (
+                  <div key={s.label} className={`relative overflow-hidden rounded-2xl bg-gradient-to-br ${s.bg} p-4 text-white shadow-md`}>
+                    <div className="flex items-start justify-between mb-1">
+                      <span className="text-2xl">{s.icon}</span>
+                    </div>
+                    <p className="text-2xl font-black">{s.val.toLocaleString()}</p>
+                    <p className="text-white/80 text-xs font-semibold mt-0.5">{s.label}</p>
+                    <p className="text-white/50 text-[10px]">{s.sub}</p>
+                    <div className="absolute -bottom-3 -right-3 w-16 h-16 rounded-full bg-white/10" />
+                  </div>
+                ))}
               </div>
             )}
 
@@ -1643,26 +1725,39 @@ const DomSuperAdminDashboard = () => {
                         </div>
                       </div>
 
-                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold border ${tierCls} mb-3`}>
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold border ${tierCls} mb-2`}>
                         {tier.emoji} {tier.label}
                       </span>
 
+                      {/* 6-stat grid: meta, pool, dispositions, interested, callbacks, conv */}
                       <div className="grid grid-cols-3 gap-1 text-center">
+                        <div className="bg-teal-50 rounded-xl py-1.5">
+                          <p className="text-sm font-black text-teal-600">{a.leadsLoaded}</p>
+                          <p className="text-[10px] text-gray-400">Meta</p>
+                        </div>
+                        <div className="bg-violet-50 rounded-xl py-1.5">
+                          <p className="text-sm font-black text-violet-600">{a.poolAssigned || 0}</p>
+                          <p className="text-[10px] text-gray-400">Pool</p>
+                        </div>
                         <div className="bg-blue-50 rounded-xl py-1.5">
-                          <p className="text-sm font-black text-blue-600">{a.leadsLoaded}</p>
-                          <p className="text-xs text-gray-400">Loaded</p>
+                          <p className="text-sm font-black text-blue-600">{a.domLeadsCreated}</p>
+                          <p className="text-[10px] text-gray-400">Disposed</p>
                         </div>
                         <div className="bg-emerald-50 rounded-xl py-1.5">
-                          <p className="text-sm font-black text-emerald-600">{a.leadsCompleted}</p>
-                          <p className="text-xs text-gray-400">Done</p>
+                          <p className="text-sm font-black text-emerald-600">{a.interestedCount || 0}</p>
+                          <p className="text-[10px] text-gray-400">Interested</p>
                         </div>
-                        <div className={`${conv >= 50 ? 'bg-amber-50' : 'bg-gray-50'} rounded-xl py-1.5`}>
-                          <p className={`text-sm font-black ${conv >= 50 ? 'text-amber-600' : 'text-gray-600'}`}>{conv}%</p>
-                          <p className="text-xs text-gray-400">Conv.</p>
+                        <div className="bg-amber-50 rounded-xl py-1.5">
+                          <p className="text-sm font-black text-amber-600">{a.callbackCount || 0}</p>
+                          <p className="text-[10px] text-gray-400">Callbacks</p>
+                        </div>
+                        <div className={`${conv >= 50 ? 'bg-green-50' : 'bg-gray-50'} rounded-xl py-1.5`}>
+                          <p className={`text-sm font-black ${conv >= 50 ? 'text-green-600' : 'text-gray-500'}`}>{conv}%</p>
+                          <p className="text-[10px] text-gray-400">Conv.</p>
                         </div>
                       </div>
 
-                      <p className="text-xs text-gray-400 mt-2.5">Last login: {fmtShortDt(a.lastLogin)}</p>
+                      <p className="text-xs text-gray-400 mt-2">Last login: {fmtShortDt(a.lastLogin)}</p>
                     </div>
                   );
                 })}
@@ -1709,17 +1804,19 @@ const DomSuperAdminDashboard = () => {
                   </button>
                 </div>
 
-                {/* Quick stats */}
-                <div className="grid grid-cols-4 gap-3 mt-5">
+                {/* Quick stats — full breakdown */}
+                <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mt-5">
                   {[
-                    { label: 'Leads Loaded',  val: selectedTrackAgent.leadsLoaded,    color: 'text-blue-600',    bg: 'bg-blue-50' },
-                    { label: 'Completed',      val: selectedTrackAgent.leadsCompleted, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-                    { label: 'Disposition Allocation',  val: selectedTrackAgent.domLeadsCreated,color: 'text-[#065F36]',   bg: 'bg-[#E8FFF5]' },
-                    { label: 'Pool Leads',     val: trackPoolLeads.length,              color: 'text-violet-600',  bg: 'bg-violet-50' },
+                    { label: '🌐 Meta',        val: selectedTrackAgent.leadsLoaded    || 0, color: 'text-teal-600',    bg: 'bg-teal-50' },
+                    { label: '📥 Pool',         val: selectedTrackAgent.poolAssigned   || 0, color: 'text-violet-600',  bg: 'bg-violet-50' },
+                    { label: '📝 Disposed',     val: selectedTrackAgent.domLeadsCreated|| 0, color: 'text-blue-600',    bg: 'bg-blue-50' },
+                    { label: '✅ Interested',   val: selectedTrackAgent.interestedCount|| 0, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+                    { label: '📞 Callbacks',    val: selectedTrackAgent.callbackCount  || 0, color: 'text-amber-600',   bg: 'bg-amber-50' },
+                    { label: '📊 Pool Worked',  val: selectedTrackAgent.poolWorked     || 0, color: 'text-indigo-600',  bg: 'bg-indigo-50' },
                   ].map(s => (
                     <div key={s.label} className={`${s.bg} rounded-xl p-3 text-center`}>
-                      <p className={`text-2xl font-black ${s.color}`}>{s.val}</p>
-                      <p className="text-xs text-gray-500 mt-0.5">{s.label}</p>
+                      <p className={`text-xl font-black ${s.color}`}>{s.val}</p>
+                      <p className="text-[10px] text-gray-500 mt-0.5 leading-tight">{s.label}</p>
                     </div>
                   ))}
                 </div>

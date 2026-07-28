@@ -155,6 +155,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
   const [domDateTo,    setDomDateTo]    = useState('');
   const [domDocFilter, setDomDocFilter] = useState('all'); // 'all'|'none'|'partial'|'full'
   const [domOutcomeFilter, setDomOutcomeFilter] = useState(''); // '' = all outcomes
+  const [domAgentFilter,  setDomAgentFilter]  = useState(''); // '' = all agents
 
   // Bulk select — website leads
   const [webSelectedIds,  setWebSelectedIds]  = useState(new Set());
@@ -179,6 +180,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
   const [agentActivity,         setAgentActivity]         = useState({ workedLeads: [], poolLeads: [] });
   const [agentActivityLoading,  setAgentActivityLoading]  = useState(false);
   const [agentLeadDetail,       setAgentLeadDetail]       = useState(null);
+  const [agentSearch,           setAgentSearch]           = useState('');
 
   // Transfer leads modal
   const [transferModal,    setTransferModal]    = useState(false);
@@ -199,6 +201,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
   const domDateToRef       = useRef('');
   const domDocFilterRef    = useRef('all');
   const domOutcomeRef      = useRef('');
+  const domAgentRef        = useRef('');
   const assignedDocFilterRef = useRef('all');
 
   const statsLoadedRef = useRef(false);
@@ -252,7 +255,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
     setDomLeadsLoading(true);
     try {
       // When any filter is active, fetch all results so pagination doesn't hide matches
-      const anyFilter = domSearchRef.current.trim() || domStatusRef.current || domProductRef.current || domDateFromRef.current || domDateToRef.current || domDocFilterRef.current !== 'all' || domOutcomeRef.current;
+      const anyFilter = domSearchRef.current.trim() || domStatusRef.current || domProductRef.current || domDateFromRef.current || domDateToRef.current || domDocFilterRef.current !== 'all' || domOutcomeRef.current || domAgentRef.current;
       const limit = anyFilter ? 500 : 30;
       const q = new URLSearchParams({ page, limit });
       if (domSearchRef.current.trim())   q.set('search',      domSearchRef.current.trim());
@@ -261,6 +264,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
       if (domDateFromRef.current)        q.set('dateFrom',    domDateFromRef.current);
       if (domDateToRef.current)          q.set('dateTo',      domDateToRef.current);
       if (domOutcomeRef.current)         q.set('callOutcome', domOutcomeRef.current);
+      if (domAgentRef.current)           q.set('agentId',     domAgentRef.current);
       const res = await api.get(`/domestic-api/leads?${q}`);
       setDomLeads(res.data?.data || []);
       setDomLeadsTotal(res.data?.pagination?.total || 0);
@@ -555,6 +559,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
       if (domDateToRef.current)         q.set('dateTo',      domDateToRef.current);
       if (domOutcomeRef.current)        q.set('callOutcome', domOutcomeRef.current);
       if (domDocFilterRef.current !== 'all') q.set('docStatus', domDocFilterRef.current);
+      if (domAgentRef.current)            q.set('agentId',    domAgentRef.current);
       const token = localStorage.getItem('dom_token');
       const res   = await fetch(`/domestic-api/leads/export?${q}`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -564,7 +569,8 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
       const url  = URL.createObjectURL(blob);
       const a    = document.createElement('a');
       a.href     = url;
-      const suffix = domOutcomeRef.current ? `_${domOutcomeRef.current}` : domStatusRef.current ? `_${domStatusRef.current}` : '';
+      const agentName = domAgentRef.current ? agents.find(ag => ag._id === domAgentRef.current)?.name?.replace(/\s+/g, '_') : '';
+      const suffix = agentName ? `_${agentName}` : domOutcomeRef.current ? `_${domOutcomeRef.current}` : domStatusRef.current ? `_${domStatusRef.current}` : '';
       a.download = `leads${suffix}-${localDateStr()}.xlsx`;
       document.body.appendChild(a); a.click(); document.body.removeChild(a);
       URL.revokeObjectURL(url);
@@ -583,6 +589,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
       if (domDateToRef.current)         q.set('dateTo',      domDateToRef.current);
       if (domOutcomeRef.current)        q.set('callOutcome', domOutcomeRef.current);
       if (domDocFilterRef.current !== 'all') q.set('docStatus', domDocFilterRef.current);
+      if (domAgentRef.current)            q.set('agentId',    domAgentRef.current);
       const token = localStorage.getItem('dom_token');
       const res   = await fetch(`/domestic-api/leads/export-zip?${q}`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -1183,6 +1190,14 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                 <option value="wrong_number">❓ Wrong Number</option>
                 <option value="other">✏️ Other</option>
               </select>
+              {/* Agent filter */}
+              <select value={domAgentFilter} onChange={(e) => { setDomAgentFilter(e.target.value); domAgentRef.current = e.target.value; fetchDomLeads(1); }}
+                className="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white text-gray-700">
+                <option value="">👤 All Agents</option>
+                {[...agents].filter(a => a.isActive).sort((a,b) => a.name.localeCompare(b.name)).map(a => (
+                  <option key={a._id} value={a._id}>{a.name}</option>
+                ))}
+              </select>
               <select value={domProductFilter} onChange={(e) => { setDomProductFilter(e.target.value); domProductRef.current = e.target.value; fetchDomLeads(1); }}
                 className="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white text-gray-700">
                 <option value="">All Services</option>
@@ -1216,9 +1231,9 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
               </button>
               {/* Clear all filters */}
               <button
-                onClick={() => { setDomSearch(''); domSearchRef.current=''; setDomStatusFilter(''); domStatusRef.current=''; setDomProductFilter(''); domProductRef.current=''; setDomDateFrom(''); domDateFromRef.current=''; setDomDateTo(''); domDateToRef.current=''; setDomOutcomeFilter(''); domOutcomeRef.current=''; setDomDocFilter('all'); domDocFilterRef.current='all'; fetchDomLeads(1); }}
+                onClick={() => { setDomSearch(''); domSearchRef.current=''; setDomStatusFilter(''); domStatusRef.current=''; setDomProductFilter(''); domProductRef.current=''; setDomDateFrom(''); domDateFromRef.current=''; setDomDateTo(''); domDateToRef.current=''; setDomOutcomeFilter(''); domOutcomeRef.current=''; setDomDocFilter('all'); domDocFilterRef.current='all'; setDomAgentFilter(''); domAgentRef.current=''; fetchDomLeads(1); }}
                 className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border transition-all ${
-                  (domSearch || domStatusFilter || domProductFilter || domDateFrom || domDateTo || domOutcomeFilter || domDocFilter !== 'all')
+                  (domSearch || domStatusFilter || domProductFilter || domDateFrom || domDateTo || domOutcomeFilter || domDocFilter !== 'all' || domAgentFilter)
                     ? 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100'
                     : 'bg-gray-50 text-gray-300 border-gray-200 cursor-default'
                 }`}
@@ -1391,7 +1406,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
               </div>
               </>
             )}
-            {domDocFilter === 'all' && !domSearch && !domStatusFilter && !domProductFilter && !domDateFrom && !domDateTo && !domOutcomeFilter ? (
+            {domDocFilter === 'all' && !domSearch && !domStatusFilter && !domProductFilter && !domDateFrom && !domDateTo && !domOutcomeFilter && !domAgentFilter ? (
               <Pagination total={domLeadsTotal} page={domLeadsPage} perPage={30} count={domLeads.length}
                 onPrev={() => fetchDomLeads(domLeadsPage - 1)} onNext={() => fetchDomLeads(domLeadsPage + 1)} />
             ) : (
@@ -1481,25 +1496,85 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
 
               {/* Full agent list */}
               <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+                <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between flex-wrap gap-3">
                   <div className="flex items-center gap-3">
                     <div className="p-2 bg-gradient-to-br from-teal-500 to-emerald-600 rounded-xl shadow-sm">
                       <Users className="h-5 w-5 text-white" />
                     </div>
                     <div>
                       <h2 className="font-bold text-gray-800">All Agents — Performance Ranking</h2>
-                      <p className="text-xs text-gray-400">Click any agent to inspect their activity</p>
+                      <p className="text-xs text-gray-400">Search, inspect, and export agent activity</p>
                     </div>
                   </div>
-                  <button onClick={fetchAgents}
-                    className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-[#065F36] border border-gray-200 rounded-xl px-3 py-2 hover:border-[#065F36] transition-all">
-                    <RefreshCw className="h-4 w-4" /> Refresh
-                  </button>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {/* Search agents */}
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 pointer-events-none" />
+                      <input
+                        type="text"
+                        placeholder="Search agent name or email…"
+                        value={agentSearch}
+                        onChange={e => setAgentSearch(e.target.value)}
+                        className="pl-9 pr-8 py-2 text-sm border border-gray-200 rounded-xl bg-white w-52 focus:outline-none focus:ring-2 focus:ring-[#065F36]/20 focus:border-[#065F36]"
+                      />
+                      {agentSearch && (
+                        <button onClick={() => setAgentSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500">
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                    {/* Export agents CSV */}
+                    <button
+                      onClick={() => {
+                        const filtered = [...agents]
+                          .filter(a => !agentSearch || a.name?.toLowerCase().includes(agentSearch.toLowerCase()) || a.email?.toLowerCase().includes(agentSearch.toLowerCase()))
+                          .sort((a, b) => getAgentTier(b).score - getAgentTier(a).score);
+                        const headers = ['Rank', 'Name', 'Email', 'Status', 'Active', 'Last Login',
+                          'Website Leads Loaded', 'Website Leads Completed',
+                          'Forms Filled (Total Worked)', 'Pool Leads Assigned', 'Pool Leads Worked',
+                          'Interested', 'Callbacks', 'Conversion Rate %'];
+                        const rows = filtered.map((a, i) => [
+                          i + 1, a.name || '', a.email || '',
+                          a.agentStatus || 'available', a.isActive ? 'Yes' : 'No',
+                          a.lastLogin ? new Date(a.lastLogin).toLocaleDateString('en-IN') : 'Never',
+                          a.leadsLoaded || 0, a.leadsCompleted || 0,
+                          a.domLeadsCreated || 0, a.poolAssigned || 0, a.poolWorked || 0,
+                          a.interestedCount || 0, a.callbackCount || 0,
+                          `${a.conversionRate || 0}%`,
+                        ]);
+                        const csv = [headers, ...rows].map(r => r.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+                        const blob = new Blob([csv], { type: 'text/csv' });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url; a.download = `agents-${localDateStr()}.csv`;
+                        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                        URL.revokeObjectURL(url);
+                        toast.success(`Exported ${filtered.length} agents`);
+                      }}
+                      className="flex items-center gap-1.5 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 rounded-xl px-3 py-2 font-semibold transition-colors">
+                      <Download className="h-4 w-4" /> Export CSV
+                    </button>
+                    <button onClick={fetchAgents}
+                      className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-[#065F36] border border-gray-200 rounded-xl px-3 py-2 hover:border-[#065F36] transition-all">
+                      <RefreshCw className="h-4 w-4" /> Refresh
+                    </button>
+                  </div>
                 </div>
 
                 {agentsLoading ? <Spinner /> : agents.length === 0 ? <Empty label="No agents found." /> : (
                   <div className="divide-y divide-gray-50">
-                    {[...agents].sort((a, b) => getAgentTier(b).score - getAgentTier(a).score).map((a, idx) => {
+                    {(() => {
+                      const filtered = [...agents]
+                        .filter(a => !agentSearch || a.name?.toLowerCase().includes(agentSearch.toLowerCase()) || a.email?.toLowerCase().includes(agentSearch.toLowerCase()))
+                        .sort((a, b) => getAgentTier(b).score - getAgentTier(a).score);
+                      if (filtered.length === 0) return (
+                        <div className="flex flex-col items-center justify-center py-12 gap-2 text-gray-400">
+                          <Search className="h-8 w-8 text-gray-200" />
+                          <p className="text-sm font-medium">No agents match "{agentSearch}"</p>
+                          <button onClick={() => setAgentSearch('')} className="text-xs text-[#065F36] hover:underline">Clear search</button>
+                        </div>
+                      );
+                      return filtered.map((a, idx) => {
                       const tier = getAgentTier(a);
                       const conv = a.leadsLoaded > 0 ? Math.round((a.leadsCompleted / a.leadsLoaded) * 100) : 0;
                       const tierStyle = TIER_STYLES[tier.color] || TIER_STYLES.gray;
@@ -1580,33 +1655,38 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
 
                             {/* Stats row — full when not selected */}
                             {!selectedAgent && (
-                              <div className="hidden sm:flex items-center gap-3 flex-shrink-0">
-                                <div className="text-center bg-blue-50 border border-blue-100 rounded-xl px-4 py-2">
-                                  <p className="text-xl font-black text-blue-600">{a.leadsLoaded}</p>
-                                  <p className="text-xs text-gray-400">Loaded</p>
+                              <div className="hidden sm:flex items-center gap-2 flex-shrink-0 flex-wrap">
+                                <div className="text-center bg-blue-50 border border-blue-100 rounded-xl px-3 py-2">
+                                  <p className="text-lg font-black text-blue-600">{a.leadsLoaded}</p>
+                                  <p className="text-[10px] text-gray-400">Website</p>
                                 </div>
-                                <div className="text-center bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-2">
-                                  <p className="text-xl font-black text-emerald-600">{a.leadsCompleted}</p>
-                                  <p className="text-xs text-gray-400">Done</p>
+                                <div className="text-center bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-2">
+                                  <p className="text-lg font-black text-emerald-600">{a.domLeadsCreated}</p>
+                                  <p className="text-[10px] text-gray-400">Forms Filled</p>
                                 </div>
-                                <div className={`text-center rounded-xl px-4 py-2 ${
-                                  tier.tier === 5 ? 'bg-amber-50 border border-amber-100' : 'bg-gray-50 border border-gray-100'
-                                }`}>
-                                  <p className={`text-xl font-black ${tier.tier === 5 ? 'text-amber-600' : 'text-gray-700'}`}>
-                                    {a.domLeadsCreated}
-                                  </p>
-                                  <p className="text-xs text-gray-400">Worked</p>
+                                <div className="text-center bg-violet-50 border border-violet-100 rounded-xl px-3 py-2">
+                                  <p className="text-lg font-black text-violet-600">{a.poolAssigned || 0}</p>
+                                  <p className="text-[10px] text-gray-400">Pool</p>
+                                </div>
+                                <div className="text-center bg-amber-50 border border-amber-100 rounded-xl px-3 py-2">
+                                  <p className="text-lg font-black text-amber-600">{a.interestedCount || 0}</p>
+                                  <p className="text-[10px] text-gray-400">Interested</p>
+                                </div>
+                                <div className={`text-center rounded-xl px-3 py-2 ${conv >= 50 ? 'bg-emerald-50 border border-emerald-100' : 'bg-gray-50 border border-gray-100'}`}>
+                                  <p className={`text-lg font-black ${conv >= 50 ? 'text-emerald-600' : 'text-gray-500'}`}>{conv}%</p>
+                                  <p className="text-[10px] text-gray-400">Conv.</p>
                                 </div>
                               </div>
                             )}
                           </div>
                         </div>
                       );
-                    })}
-                  </div>
-                )}
-              </div>
+                    });
+                  })()}
+                </div>
+              )}
             </div>
+          </div>
 
             {/* ── RIGHT: Agent Activity Panel ── */}
             {selectedAgent && (

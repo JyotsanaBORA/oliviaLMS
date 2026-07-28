@@ -101,7 +101,7 @@ router.get('/agents', async (req, res) => {
     // Counts per agent
     const agentIds = agents.map((a) => a._id);
 
-    const [loadedCounts, completedCounts, domLeadCounts] = await Promise.all([
+    const [loadedCounts, completedCounts, domLeadCounts, poolCounts, interestedCounts, callbackCounts] = await Promise.all([
       DomWebsiteLead.aggregate([
         { $match: { loadedBy: { $in: agentIds } } },
         { $group: { _id: '$loadedBy', count: { $sum: 1 } } },
@@ -112,6 +112,23 @@ router.get('/agents', async (req, res) => {
       ]),
       DomLead.aggregate([
         { $match: { assignedTo: { $in: agentIds } } },
+        { $group: { _id: '$assignedTo', count: { $sum: 1 } } },
+      ]),
+      // Pool / imported leads stats
+      DomImportedLead.aggregate([
+        { $match: { assignedTo: { $in: agentIds } } },
+        { $group: {
+          _id:    '$assignedTo',
+          total:  { $sum: 1 },
+          worked: { $sum: { $cond: [{ $ne: ['$workStatus', 'new'] }, 1, 0] } },
+        }},
+      ]),
+      DomLead.aggregate([
+        { $match: { assignedTo: { $in: agentIds }, callOutcome: 'interested' } },
+        { $group: { _id: '$assignedTo', count: { $sum: 1 } } },
+      ]),
+      DomLead.aggregate([
+        { $match: { assignedTo: { $in: agentIds }, callOutcome: 'callback' } },
         { $group: { _id: '$assignedTo', count: { $sum: 1 } } },
       ]),
     ]);
@@ -125,13 +142,33 @@ router.get('/agents', async (req, res) => {
     const loadedMap    = toMap(loadedCounts);
     const completedMap = toMap(completedCounts);
     const domLeadMap   = toMap(domLeadCounts);
+    const poolMap      = {};
+    poolCounts.forEach(({ _id, total, worked }) => {
+      poolMap[_id.toString()] = { total, worked };
+    });
+    const interestedMap = toMap(interestedCounts);
+    const callbackMap   = toMap(callbackCounts);
 
-    const data = agents.map((a) => ({
-      ...a,
-      leadsLoaded:     loadedMap[a._id.toString()]    || 0,
-      leadsCompleted:  completedMap[a._id.toString()] || 0,
-      domLeadsCreated: domLeadMap[a._id.toString()]   || 0,
-    }));
+    const data = agents.map((a) => {
+      const id        = a._id.toString();
+      const loaded    = loadedMap[id]    || 0;
+      const completed = completedMap[id] || 0;
+      const domLeads  = domLeadMap[id]   || 0;
+      const pool      = poolMap[id]      || { total: 0, worked: 0 };
+      const totalWorked = domLeads; // DomLeads = total forms filled
+      const totalCalls  = loaded + pool.total;
+      return {
+        ...a,
+        leadsLoaded:      loaded,
+        leadsCompleted:   completed,
+        domLeadsCreated:  domLeads,
+        poolAssigned:     pool.total,
+        poolWorked:       pool.worked,
+        interestedCount:  interestedMap[id] || 0,
+        callbackCount:    callbackMap[id]   || 0,
+        conversionRate:   totalWorked > 0 ? +((completed / totalWorked) * 100).toFixed(1) : 0,
+      };
+    });
 
     return res.status(200).json({ success: true, data });
   } catch (err) {
