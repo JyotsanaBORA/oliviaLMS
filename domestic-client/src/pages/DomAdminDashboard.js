@@ -10,18 +10,18 @@ import { useAuth } from '../contexts/AuthContext';
 import api   from '../utils/axios';
 import toast from 'react-hot-toast';
 
+const IST_MS = 5.5 * 60 * 60 * 1000; // UTC+5:30 — India has no DST
+/** Returns today's date in IST as YYYY-MM-DD. offsetDays > 0 = days ago */
+const localDateStr = (offsetDays = 0) => {
+  const ist = new Date(Date.now() + IST_MS - offsetDays * 86400000);
+  return ist.toISOString().slice(0, 10);
+};
+
 const fmtDate = (d) =>
-  d ? new Date(d).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
+  d ? new Date(d).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
 
 const fmtShort = (d) =>
-  d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Never';
-
-/** Returns LOCAL date string YYYY-MM-DD — avoids UTC offset issues in IST */
-const localDateStr = (offsetDays = 0) => {
-  const d = new Date();
-  d.setDate(d.getDate() - offsetDays);
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-};
+  d ? new Date(d).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric' }) : 'Never';
 
 /** Compute document completeness from a DomLead's documents array */
 const CORE_DOCS     = ['aadhaar_front', 'aadhaar_back', 'pan_card'];
@@ -149,6 +149,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
   const [assignedDateTo,          setAssignedDateTo]          = useState('');
   const [assignedSourceType,      setAssignedSourceType]      = useState('all');
   const [assignedDocFilter,       setAssignedDocFilter]       = useState('all'); // 'all'|'none'|'partial'|'full'
+  const [assignedAgentFilter,     setAssignedAgentFilter]     = useState(''); // '' = all agents
 
   // Date filters for Disposition Allocation tab
   const [domDateFrom,  setDomDateFrom]  = useState('');
@@ -181,6 +182,16 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
   const [agentActivityLoading,  setAgentActivityLoading]  = useState(false);
   const [agentLeadDetail,       setAgentLeadDetail]       = useState(null);
   const [agentSearch,           setAgentSearch]           = useState('');
+  const [agentsDateFrom,        setAgentsDateFrom]        = useState('');
+  const [agentsDateTo,          setAgentsDateTo]          = useState('');
+  // Agent Leads Explorer — per-agent filterable leads panel
+  const [agentExpLeads,    setAgentExpLeads]    = useState([]);
+  const [agentExpLoading,  setAgentExpLoading]  = useState(false);
+  const [agentExpDateFrom, setAgentExpDateFrom] = useState('');
+  const [agentExpDateTo,   setAgentExpDateTo]   = useState('');
+  const [agentExpSearch,   setAgentExpSearch]   = useState('');
+  const [agentExpSource,   setAgentExpSource]   = useState('all'); // 'all'|'website'|'pool'
+  const [agentExpDisp,     setAgentExpDisp]     = useState('');   // '' = all dispositions
 
   // Transfer leads modal
   const [transferModal,    setTransferModal]    = useState(false);
@@ -202,7 +213,10 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
   const domDocFilterRef    = useRef('all');
   const domOutcomeRef      = useRef('');
   const domAgentRef        = useRef('');
-  const assignedDocFilterRef = useRef('all');
+  const assignedDocFilterRef  = useRef('all');
+  const assignedAgentRef     = useRef('');
+  const agentsDateFromRef    = useRef('');
+  const agentsDateToRef      = useRef('');
 
   const statsLoadedRef = useRef(false);
   const [statsLastUpdated, setStatsLastUpdated] = useState(null);
@@ -276,24 +290,79 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
   const fetchAgents = useCallback(async () => {
     setAgentsLoading(true);
     try {
-      const res = await api.get('/domestic-api/admin/agents');
+      const q = new URLSearchParams();
+      if (agentsDateFromRef.current) q.set('dateFrom', agentsDateFromRef.current);
+      if (agentsDateToRef.current)   q.set('dateTo',   agentsDateToRef.current);
+      const res = await api.get(`/domestic-api/admin/agents${q.toString() ? '?' + q : ''}`);
       setAgents(res.data?.data || []);
     } catch { toast.error('Failed to load agents.'); }
     finally { setAgentsLoading(false); }
   }, []);
 
+  const fetchAgentExpLeads = useCallback(async (agentId, dateFrom, dateTo, search, source, disp = '') => {
+    if (!agentId) return;
+    setAgentExpLoading(true);
+    try {
+      const [domLeads, poolLeads] = await Promise.all([
+        source !== 'pool' ? (() => {
+          const q = new URLSearchParams({ agentId, limit: 200 });
+          if (dateFrom)        q.set('dateFrom',    dateFrom);
+          if (dateTo)          q.set('dateTo',      dateTo);
+          if (search?.trim())  q.set('search',      search.trim());
+          if (disp)            q.set('callOutcome', disp);
+          return api.get(`/domestic-api/leads?${q}`).then(r => (r.data?.data || []).map(l => ({ ...l, _isPool: false })));
+        })() : Promise.resolve([]),
+        source !== 'website' ? (
+          api.get(`/domestic-api/import-leads?agentId=${agentId}&limit=200`)
+            .catch(() => ({ data: { data: [] } }))
+            .then(r => {
+              let pool = (r.data?.data || []).map(l => ({ ...l, _isPool: true }));
+              if (dateFrom || dateTo) {
+                const from = dateFrom ? new Date(dateFrom + 'T00:00:00+05:30').getTime() : 0;
+                const to   = dateTo   ? new Date(dateTo   + 'T23:59:59+05:30').getTime() : Infinity;
+                pool = pool.filter(l => {
+                  const d = new Date(l.workedAt || l.assignedAt || l.createdAt).getTime();
+                  return d >= from && d <= to;
+                });
+              }
+              if (search?.trim()) {
+                const sq = search.trim().toLowerCase();
+                pool = pool.filter(l => (l.name||'').toLowerCase().includes(sq) || (l.mobile||'').includes(sq));
+              }
+              if (disp) pool = pool.filter(l => disp === 'none' ? !l.callOutcome : l.callOutcome === disp);
+              return pool;
+            })
+        ) : Promise.resolve([]),
+      ]);
+      setAgentExpLeads([...domLeads, ...poolLeads]
+        .sort((a, b) => new Date(b.createdAt || b.workedAt || b.assignedAt) - new Date(a.createdAt || a.workedAt || a.assignedAt)));
+    } catch { /* silent */ }
+    finally { setAgentExpLoading(false); }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleSelectAgent = useCallback(async (agent) => {
     setSelectedAgent(agent);
     setAgentActivityLoading(true);
-    setAgentActivity({ workedLeads: [], poolLeads: [] });
+    setAgentActivity({ workedLeads: [], poolLeads: [], todayLeads: [] });
     try {
-      const [workedRes, poolRes] = await Promise.all([
+      const today = localDateStr();
+      const [workedRes, poolRes, todayRes] = await Promise.all([
         api.get(`/domestic-api/leads?agentId=${agent._id}&limit=15`),
-        api.get(`/domestic-api/import-leads?agentId=${agent._id}&limit=15`).catch(() => ({ data: { data: [] } })),
+        api.get(`/domestic-api/import-leads?agentId=${agent._id}&limit=100`).catch(() => ({ data: { data: [] } })),
+        api.get(`/domestic-api/leads?agentId=${agent._id}&limit=200&dateFrom=${today}&dateTo=${today}`),
       ]);
+      // Pool leads worked today — filter client-side by workedAt
+      const allPool = poolRes.data?.data || [];
+      const todayPoolWorked = allPool.filter(l => {
+        if (!l.workedAt || l.workStatus === 'new') return false;
+        const ist = new Date(new Date(l.workedAt).getTime() + IST_MS);
+        return ist.toISOString().slice(0, 10) === today;
+      });
       setAgentActivity({
-        workedLeads: workedRes.data?.data || [],
-        poolLeads:   poolRes.data?.data   || [],
+        workedLeads:  workedRes.data?.data  || [],
+        poolLeads:    allPool,
+        todayLeads:   [...(todayRes.data?.data || []), ...todayPoolWorked.map(l => ({ ...l, _isPool: true }))]
+          .sort((a, b) => new Date(b.createdAt || b.workedAt) - new Date(a.createdAt || a.workedAt)),
       });
     } catch { toast.error('Failed to load agent activity.'); }
     finally { setAgentActivityLoading(false); }
@@ -374,16 +443,16 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
     setAssignedLeadsLoading(true);
     try {
       const promises = [];
-      // When any filter is active, fetch all results — no pagination needed
-      const anyFilter = search.trim() || dateFrom || dateTo || sourceType !== 'all' || assignedDocFilterRef.current !== 'all';
+      // When any filter is active, fetch a larger set so client-side filters work correctly
+      const anyFilter = search.trim() || dateFrom || dateTo || sourceType !== 'all' || assignedDocFilterRef.current !== 'all' || assignedAgentRef.current;
       const limit = anyFilter ? 500 : 50;
 
-      // Website leads (assigned = status 'loaded' or 'completed')
+      // Website leads (assigned = status 'loaded')
+      // NOTE: dateFrom/dateTo are NOT sent to the API — that route filters by createdAt (submission date).
+      // We need to filter by loadedAt (assignment date), so we do it client-side below.
       if (sourceType === 'all' || sourceType === 'website') {
         const wq = new URLSearchParams({ page, limit, status: 'loaded' });
         if (search.trim()) wq.set('search', search.trim());
-        if (dateFrom) wq.set('dateFrom', dateFrom);
-        if (dateTo)   wq.set('dateTo', dateTo);
         promises.push(api.get(`/domestic-api/website-leads?${wq}`).then(r =>
           (r.data?.data || []).map(l => ({ ...l, _sourceType: 'website' }))
         ));
@@ -392,11 +461,10 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
       }
 
       // Imported leads (assigned = status 'assigned')
+      // Same reason — filter client-side by assignedAt, not createdAt.
       if (sourceType === 'all' || sourceType === 'imported') {
         const iq = new URLSearchParams({ page, limit, status: 'assigned' });
         if (search.trim()) iq.set('search', search.trim());
-        if (dateFrom) iq.set('dateFrom', dateFrom);
-        if (dateTo)   iq.set('dateTo', dateTo);
         promises.push(api.get(`/domestic-api/import-leads?${iq}`).then(r =>
           (r.data?.data || []).map(l => ({ ...l, _sourceType: 'imported' }))
         ));
@@ -405,8 +473,22 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
       }
 
       const [websiteLeads, importedLeads] = await Promise.all(promises);
-      const combined = [...websiteLeads, ...importedLeads]
-        .sort((a, b) => new Date(b.assignedAt || b.loadedAt || b.createdAt) - new Date(a.assignedAt || a.loadedAt || a.createdAt));
+      let combined = [...websiteLeads, ...importedLeads]
+        .sort((a, b) => new Date(b.loadedAt || b.assignedAt || b.createdAt) - new Date(a.loadedAt || a.assignedAt || a.createdAt));
+
+      // Client-side date filter on ASSIGNMENT date (loadedAt for website, assignedAt for imported)
+      if (dateFrom || dateTo) {
+        const from = dateFrom ? new Date(dateFrom + 'T00:00:00+05:30').getTime() : 0;
+        const to   = dateTo   ? new Date(dateTo   + 'T23:59:59+05:30').getTime() : Infinity;
+        combined = combined.filter(l => {
+          const d = new Date(
+            l._sourceType === 'website'
+              ? (l.loadedAt   || l.createdAt)
+              : (l.assignedAt || l.createdAt)
+          ).getTime();
+          return d >= from && d <= to;
+        });
+      }
 
       setAssignedLeadsData(combined);
       setAssignedLeadsTotal(combined.length);
@@ -421,8 +503,29 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
     if (tab === 'dom_leads')     fetchDomLeads(1);
     if (tab === 'agents')        fetchAgents();
     if (tab === 'lead_pool')     { fetchPoolStats(); fetchPoolLeads(1); fetchAgents(); }
-    if (tab === 'assigned_leads') fetchAssignedLeadsData(1);
+    if (tab === 'assigned_leads') { fetchAssignedLeadsData(1); fetchAgents(); }
   }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Agent Leads Explorer: re-initialise when a different agent is selected
+  useEffect(() => {
+    if (!selectedAgent) { setAgentExpLeads([]); return; }
+    const today = localDateStr();
+    setAgentExpDateFrom(today);
+    setAgentExpDateTo(today);
+    setAgentExpSearch('');
+    setAgentExpSource('all');
+    setAgentExpDisp('');
+    fetchAgentExpLeads(selectedAgent._id, today, today, '', 'all', '');
+  }, [selectedAgent?._id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Real-time auto-refresh every 30 s while viewing today's leads
+  useEffect(() => {
+    if (!selectedAgent || agentExpDateFrom !== localDateStr() || agentExpDateTo !== localDateStr()) return;
+    const id = setInterval(() => {
+      fetchAgentExpLeads(selectedAgent._id, agentExpDateFrom, agentExpDateTo, agentExpSearch, agentExpSource, agentExpDisp);
+    }, 30000);
+    return () => clearInterval(id);
+  }, [selectedAgent?._id, agentExpDateFrom, agentExpDateTo]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleViewLead = useCallback(async (lead) => {
     setViewLead(lead);
@@ -623,7 +726,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
       l.name || '', l.mobile || '', l.city || '', l.state || '',
       (l.productType || '').replace(/_/g, ' '), l.status || '', l.pan || '',
       l.loadedBy?.name || 'Unassigned',
-      l.createdAt ? new Date(l.createdAt).toLocaleDateString('en-IN') : '',
+      l.createdAt ? new Date(l.createdAt).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' }) : '',
     ]);
     const suffix = statusFilter ? `_${statusFilter}` : '';
     downloadCSV([headers, ...rows], `meta-leads${suffix}-${localDateStr()}.csv`);
@@ -646,7 +749,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
         l.name || '', l.mobile || '', (l.city || l.state || ''),
         ((isW ? l.productType : (l.loanType || l.productType)) || '').replace(/_/g, ' '),
         isW ? (l.loadedBy?.name || '') : (l.assignedTo?.name || ''),
-        l.assignedAt || l.loadedAt ? new Date(l.assignedAt || l.loadedAt).toLocaleDateString('en-IN') : '',
+        l.assignedAt || l.loadedAt ? new Date(l.assignedAt || l.loadedAt).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' }) : '',
         (l.callOutcome || l.workStatus || '').replace(/_/g, ' '),
         getDocStatus(dList).label,
       ];
@@ -779,9 +882,9 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                   <div className="p-2.5 bg-white/15 rounded-xl"><Calendar className="h-5 w-5" /></div>
                   <div>
                     <p className="font-black text-lg">Today's Activity</p>
-                    <p className="text-white/70 text-xs">{new Date().toLocaleDateString('en-IN', { weekday:'long', day:'2-digit', month:'long', year:'numeric' })}</p>
+                    <p className="text-white/70 text-xs">{new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', weekday:'long', day:'2-digit', month:'long', year:'numeric' })}</p>
                     {statsLastUpdated && (
-                      <p className="text-white/50 text-[10px] mt-0.5">Updated: {statsLastUpdated.toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit', second:'2-digit' })}</p>
+                      <p className="text-white/50 text-[10px] mt-0.5">Updated: {statsLastUpdated.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour:'2-digit', minute:'2-digit', second:'2-digit' })}</p>
                     )}
                   </div>
                   <button onClick={() => fetchStats()} disabled={statsRefreshing}
@@ -998,7 +1101,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
               {[
                 { l: 'Today',      f: localDateStr(), t: localDateStr() },
                 { l: 'This Week',  f: localDateStr(6), t: localDateStr() },
-                { l: 'This Month', f: new Date().getFullYear()+'-'+String(new Date().getMonth()+1).padStart(2,'0')+'-01', t: localDateStr() },
+                { l: 'This Month', f: localDateStr().slice(0, 7) + '-01',                                                 t: localDateStr() },
               ].map(p => (
                 <button key={p.l}
                   onClick={() => { setWebDateFrom(p.f); setWebDateTo(p.t); webDateFromRef.current = p.f; webDateToRef.current = p.t; fetchLeads(1); }}
@@ -1025,6 +1128,14 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
               )}
             </div>
 
+            {/* Results count bar */}
+            {(search || statusFilter || productTypeFilter || webDateFrom || webDateTo) && !leadsLoading && leads.length > 0 && (
+              <div className="px-5 py-2.5 bg-teal-50 border-b border-teal-100 flex items-center gap-2">
+                <Search className="h-3.5 w-3.5 text-teal-500 flex-shrink-0" />
+                <span className="text-sm font-bold text-teal-700">{leads.length} lead{leads.length !== 1 ? 's' : ''} found</span>
+                <span className="text-xs text-teal-400 ml-1">matching current filters</span>
+              </div>
+            )}
             {leadsLoading ? <Spinner /> : leads.length === 0 ? <Empty label="No website leads found." /> : (
               <>
                 {/* Bulk action bar */}
@@ -1268,7 +1379,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
               {[
                 { l: 'Today',      f: localDateStr(),                                                                                                to: localDateStr() },
                 { l: 'This Week',  f: localDateStr(6),                                                                           to: localDateStr() },
-                { l: 'This Month', f: new Date().getFullYear()+'-'+String(new Date().getMonth()+1).padStart(2,'0')+'-01',                                                  to: localDateStr() },
+                { l: 'This Month', f: localDateStr().slice(0, 7) + '-01',                                                                                                  to: localDateStr() },
               ].map(p => (
                 <button key={p.l}
                   onClick={() => { setDomDateFrom(p.f); setDomDateTo(p.to); domDateFromRef.current = p.f; domDateToRef.current = p.to; fetchDomLeads(1); }}
@@ -1295,6 +1406,17 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
               )}
             </div>
 
+            {/* Results count bar */}
+            {(domSearch || domStatusFilter || domProductFilter || domDateFrom || domDateTo || domOutcomeFilter || domAgentFilter || domDocFilter !== 'all') && !domLeadsLoading && (() => {
+              const c = domLeads.filter(dl => domDocFilter === 'all' || getDocStatus(dl.documents).status === domDocFilter).length;
+              return c > 0 ? (
+                <div className="px-5 py-2.5 bg-[#E8FFF5] border-b border-[#D1FAE5] flex items-center gap-2">
+                  <Search className="h-3.5 w-3.5 text-[#065F36] flex-shrink-0" />
+                  <span className="text-sm font-bold text-[#065F36]">{c} lead{c !== 1 ? 's' : ''} found</span>
+                  <span className="text-xs text-[#065F36]/50 ml-1">matching current filters</span>
+                </div>
+              ) : null;
+            })()}
             {domLeadsLoading ? <Spinner /> : domLeads.length === 0 ? <Empty label="No worked leads found. Try adjusting the filters." /> : (
               <>
                 {/* Source colour legend */}
@@ -1503,7 +1625,11 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                     </div>
                     <div>
                       <h2 className="font-bold text-gray-800">All Agents — Performance Ranking</h2>
-                      <p className="text-xs text-gray-400">Search, inspect, and export agent activity</p>
+                      <p className="text-xs text-gray-400">
+                        {(agentsDateFrom || agentsDateTo)
+                          ? `Stats for ${agentsDateFrom || '…'} – ${agentsDateTo || '…'}`
+                          : 'Search, inspect, and export agent activity'}
+                      </p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2 flex-wrap">
@@ -1536,7 +1662,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                         const rows = filtered.map((a, i) => [
                           i + 1, a.name || '', a.email || '',
                           a.agentStatus || 'available', a.isActive ? 'Yes' : 'No',
-                          a.lastLogin ? new Date(a.lastLogin).toLocaleDateString('en-IN') : 'Never',
+                          a.lastLogin ? new Date(a.lastLogin).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' }) : 'Never',
                           a.leadsLoaded || 0, a.leadsCompleted || 0,
                           a.domLeadsCreated || 0, a.poolAssigned || 0, a.poolWorked || 0,
                           a.interestedCount || 0, a.callbackCount || 0,
@@ -1559,6 +1685,38 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                       <RefreshCw className="h-4 w-4" /> Refresh
                     </button>
                   </div>
+                </div>
+
+                {/* Disposition date filter row */}
+                <div className="px-5 py-3 bg-gray-50 border-b border-gray-100 flex items-center gap-2 flex-wrap">
+                  <Calendar className="h-3.5 w-3.5 text-gray-400 flex-shrink-0" />
+                  <span className="text-xs font-semibold text-gray-500">Disposition date:</span>
+                  {[
+                    { l: 'Today',      f: localDateStr(),   t: localDateStr() },
+                    { l: 'This Week',  f: localDateStr(6),  t: localDateStr() },
+                    { l: 'This Month', f: localDateStr().slice(0,7)+'-01', t: localDateStr() },
+                  ].map(p => (
+                    <button key={p.l}
+                      onClick={() => { setAgentsDateFrom(p.f); setAgentsDateTo(p.t); agentsDateFromRef.current=p.f; agentsDateToRef.current=p.t; fetchAgents(); }}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
+                        agentsDateFrom===p.f && agentsDateTo===p.t ? 'bg-[#065F36] text-white border-[#065F36]' : 'bg-white text-gray-600 border-gray-200 hover:border-[#065F36]/40'
+                      }`}>{p.l}</button>
+                  ))}
+                  <input type="date" value={agentsDateFrom}
+                    onChange={e => { setAgentsDateFrom(e.target.value); agentsDateFromRef.current=e.target.value; if (e.target.value && agentsDateToRef.current) fetchAgents(); }}
+                    className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-[#065F36]" />
+                  <span className="text-gray-400 text-xs">to</span>
+                  <input type="date" value={agentsDateTo}
+                    onChange={e => { setAgentsDateTo(e.target.value); agentsDateToRef.current=e.target.value; if (e.target.value && agentsDateFromRef.current) fetchAgents(); }}
+                    className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-[#065F36]" />
+                  <button onClick={() => fetchAgents()}
+                    className="px-3 py-1.5 rounded-lg text-xs font-bold bg-[#065F36] text-white hover:bg-[#054A2E] transition-colors">Apply</button>
+                  {(agentsDateFrom || agentsDateTo) && (
+                    <button onClick={() => { setAgentsDateFrom(''); setAgentsDateTo(''); agentsDateFromRef.current=''; agentsDateToRef.current=''; fetchAgents(); }}
+                      className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold border bg-red-50 text-red-600 border-red-200 hover:bg-red-100 transition-all">
+                      <X className="h-3 w-3" /> Clear
+                    </button>
+                  )}
                 </div>
 
                 {agentsLoading ? <Spinner /> : agents.length === 0 ? <Empty label="No agents found." /> : (
@@ -1762,87 +1920,271 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                   </div>
                 ) : (
                   <>
-                    {/* Recent Disposition Allocation */}
-                    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                      <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-3">
-                        <div className="p-2 bg-[#E8FFF5] rounded-xl"><Briefcase className="h-4 w-4 text-[#065F36]" /></div>
-                        <div>
-                          <h3 className="font-bold text-gray-800 text-sm">Recent Disposition Allocation</h3>
-                          <p className="text-xs text-gray-400">Leads this agent has filled the work form for</p>
-                        </div>
-                      </div>
-                      {agentActivity.workedLeads.length === 0 ? (
-                        <p className="text-center text-gray-400 text-sm py-8">No worked cases yet.</p>
-                      ) : (
-                        <div className="divide-y divide-gray-50">
-                          {agentActivity.workedLeads.map((l) => {
-                            const src = getSourceMeta(l);
-                            return (
-                            <div key={l._id}
-                              onClick={() => setAgentLeadDetail(l)}
-                              className={`px-5 py-3 flex items-center justify-between cursor-pointer transition-colors ${src.borderL} ${src.rowHover}`}>
-                              <div>
-                                <div className="flex items-center gap-2">
-                                  <span className="font-mono text-xs font-bold bg-gray-900 text-emerald-400 px-1.5 py-0.5 rounded">{l.leadRef || '—'}</span>
-                                  <span className="font-semibold text-sm text-gray-800">{l.name || '—'}</span>
-                                  <SourceBadge lead={l} />
-                                </div>
-                                <p className="text-xs text-gray-400 mt-0.5">{l.mobile} · {l.productType?.replace(/_/g,' ')} · {fmtDate(l.createdAt)}</p>
+                    {/* ── TODAY'S DISPOSITIONS ── */}
+                    {(() => {
+                      const tl = agentActivity.todayLeads || [];
+                      const OUTCOME_CFG2 = {
+                        interested:     { label: 'Interested',     cls: 'bg-emerald-100 text-emerald-700 border-emerald-200', dot: 'bg-emerald-500' },
+                        not_interested: { label: 'Not Interested', cls: 'bg-red-100 text-red-700 border-red-200',             dot: 'bg-red-500' },
+                        callback:       { label: 'Callback',       cls: 'bg-amber-100 text-amber-700 border-amber-200',       dot: 'bg-amber-500' },
+                        not_reachable:  { label: 'Not Reachable',  cls: 'bg-orange-100 text-orange-700 border-orange-200',    dot: 'bg-orange-500' },
+                        not_answering:  { label: 'Not Answering',  cls: 'bg-slate-100 text-slate-700 border-slate-200',       dot: 'bg-slate-400' },
+                        wrong_number:   { label: 'Wrong Number',   cls: 'bg-gray-100 text-gray-600 border-gray-200',          dot: 'bg-gray-400' },
+                        other:          { label: 'Other',          cls: 'bg-purple-100 text-purple-700 border-purple-200',    dot: 'bg-purple-500' },
+                      };
+                      const outcomeOrder = ['interested','callback','not_reachable','not_answering','not_interested','wrong_number','other'];
+                      const counts = outcomeOrder.reduce((acc, k) => {
+                        acc[k] = tl.filter(l => (l.callOutcome || l.workStatus) === k).length;
+                        return acc;
+                      }, {});
+                      const noDisp = tl.filter(l => !l.callOutcome && !l.workStatus).length;
+                      return (
+                        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                          <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <div className="p-2 bg-gradient-to-br from-[#065F36] to-teal-600 rounded-xl">
+                                <Calendar className="h-4 w-4 text-white" />
                               </div>
-                              <div className="flex flex-col items-end gap-1">
-                                {l.callOutcome && (
-                                  <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
-                                    l.callOutcome === 'interested'     ? 'bg-emerald-100 text-emerald-700' :
-                                    l.callOutcome === 'not_interested' ? 'bg-red-100 text-red-700' :
-                                    l.callOutcome === 'callback'       ? 'bg-amber-100 text-amber-700' :
-                                    l.callOutcome === 'not_reachable'  ? 'bg-orange-100 text-orange-700' :
-                                    'bg-gray-100 text-gray-600'
-                                  }`}>{l.callOutcome.replace(/_/g,' ')}</span>
-                                )}
-                                <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
-                                  l.status === 'completed' ? 'bg-emerald-100 text-emerald-700' :
-                                  l.status === 'rejected'  ? 'bg-red-100 text-red-700' :
-                                  'bg-blue-100 text-blue-700'
-                                }`}>{l.status}</span>
+                              <div>
+                                <h3 className="font-bold text-gray-800 text-sm">Today's Dispositions</h3>
+                                <p className="text-xs text-gray-400">{new Date().toLocaleDateString('en-IN', { timeZone:'Asia/Kolkata', weekday:'short', day:'2-digit', month:'short' })}</p>
                               </div>
                             </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
+                            <span className={`text-sm font-black px-3 py-1 rounded-xl ${
+                              tl.length > 0 ? 'bg-[#E8FFF5] text-[#065F36]' : 'bg-gray-100 text-gray-400'
+                            }`}>{tl.length} filed</span>
+                          </div>
 
-                    {/* Pool Leads Assigned */}
-                    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                      <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-3">
-                        <div className="p-2 bg-violet-100 rounded-xl"><Database className="h-4 w-4 text-violet-600" /></div>
-                        <div>
-                          <h3 className="font-bold text-gray-800 text-sm">Data Pool Assigned</h3>
-                          <p className="text-xs text-gray-400">Imported leads assigned to this agent</p>
-                        </div>
-                      </div>
-                      {agentActivity.poolLeads.length === 0 ? (
-                        <p className="text-center text-gray-400 text-sm py-8">No pool leads assigned.</p>
-                      ) : (
-                        <div className="divide-y divide-gray-50">
-                          {agentActivity.poolLeads.slice(0, 10).map((l) => (
-                            <div key={l._id} className="px-5 py-3 flex items-center justify-between hover:bg-gray-50">
-                              <div>
-                                <p className="font-semibold text-sm text-gray-800">{l.name || '—'}</p>
-                                <p className="text-xs text-gray-400">{l.mobile} · {l.loanType || l.productType || '—'}</p>
-                              </div>
-                              <span className={`text-xs px-2 py-0.5 rounded-full font-semibold border ${
-                                l.workStatus === 'interested'     ? 'bg-emerald-100 text-emerald-700 border-emerald-200' :
-                                l.workStatus === 'not_interested' ? 'bg-red-100 text-red-700 border-red-200' :
-                                l.workStatus === 'in_progress'    ? 'bg-blue-100 text-blue-700 border-blue-200' :
-                                l.workStatus === 'closed'         ? 'bg-gray-100 text-gray-600 border-gray-200' :
-                                'bg-orange-100 text-orange-700 border-orange-200'
-                              }`}>{l.workStatus === 'new' ? 'Not Called' : (l.workStatus?.replace(/_/g,' ') || 'New')}</span>
+                          {/* Outcome summary chips */}
+                          {tl.length > 0 && (
+                            <div className="px-5 py-3 border-b border-gray-50 flex items-center gap-2 flex-wrap">
+                              {outcomeOrder.filter(k => counts[k] > 0).map(k => (
+                                <div key={k} className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border ${OUTCOME_CFG2[k].cls}`}>
+                                  <span className={`w-1.5 h-1.5 rounded-full ${OUTCOME_CFG2[k].dot}`} />
+                                  {OUTCOME_CFG2[k].label}: <strong>{counts[k]}</strong>
+                                </div>
+                              ))}
+                              {noDisp > 0 && (
+                                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border bg-gray-100 text-gray-500 border-gray-200">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-gray-400" />
+                                  No Disp: <strong>{noDisp}</strong>
+                                </div>
+                              )}
                             </div>
-                          ))}
+                          )}
+
+                          {tl.length === 0 ? (
+                            <div className="flex flex-col items-center justify-center py-10 gap-2 text-gray-400">
+                              <Calendar className="h-8 w-8 text-gray-200" />
+                              <p className="text-sm font-medium">No dispositions filed today</p>
+                            </div>
+                          ) : (
+                            <div className="divide-y divide-gray-50 max-h-72 overflow-y-auto">
+                              {tl.map((l) => {
+                                const outcome = l._isPool
+                                  ? (OUTCOME_CFG2[l.workStatus] || OUTCOME_CFG2.other)
+                                  : (OUTCOME_CFG2[l.callOutcome] || null);
+                                const time = l._isPool
+                                  ? new Date(l.workedAt).toLocaleTimeString('en-IN', { timeZone:'Asia/Kolkata', hour:'2-digit', minute:'2-digit' })
+                                  : new Date(l.createdAt).toLocaleTimeString('en-IN', { timeZone:'Asia/Kolkata', hour:'2-digit', minute:'2-digit' });
+                                return (
+                                  <div key={l._id}
+                                    onClick={() => !l._isPool && setAgentLeadDetail(l)}
+                                    className={`px-5 py-3 flex items-center justify-between gap-3 ${
+                                      !l._isPool ? 'cursor-pointer hover:bg-[#E8FFF5]/50' : 'cursor-default hover:bg-gray-50'
+                                    } transition-colors`}>
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-2">
+                                        {!l._isPool && l.leadRef && (
+                                          <span className="font-mono text-[10px] font-bold bg-gray-900 text-emerald-400 px-1.5 py-0.5 rounded flex-shrink-0">{l.leadRef}</span>
+                                        )}
+                                        {l._isPool && (
+                                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700 border border-violet-200 flex-shrink-0">📊 Pool</span>
+                                        )}
+                                        <span className="font-semibold text-sm text-gray-800 truncate">{l.name || '—'}</span>
+                                      </div>
+                                      <p className="text-xs text-gray-400 mt-0.5 truncate">{l.mobile} · {(l.productType || l.loanType || '').replace(/_/g,' ')}</p>
+                                    </div>
+                                    <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                                      {outcome ? (
+                                        <span className={`text-xs px-2 py-0.5 rounded-full font-semibold border ${outcome.cls}`}>
+                                          {outcome.label}
+                                        </span>
+                                      ) : (
+                                        <span className="text-xs px-2 py-0.5 rounded-full font-semibold border bg-gray-100 text-gray-500 border-gray-200">No Disp.</span>
+                                      )}
+                                      <span className="text-[10px] text-gray-400">{time}</span>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
+                      );
+                    })()}
+                    {/* ── ALL LEADS EXPLORER ── */}
+                    {(() => {
+                      const OUTCOME_CLR = {
+                        interested:     'bg-emerald-100 text-emerald-700 border-emerald-200',
+                        not_interested: 'bg-red-100 text-red-700 border-red-200',
+                        callback:       'bg-amber-100 text-amber-700 border-amber-200',
+                        not_reachable:  'bg-orange-100 text-orange-700 border-orange-200',
+                        not_answering:  'bg-slate-100 text-slate-700 border-slate-200',
+                        wrong_number:   'bg-gray-100 text-gray-600 border-gray-200',
+                        other:          'bg-purple-100 text-purple-700 border-purple-200',
+                      };
+                      const OUTCOME_LBL = {
+                        interested:'Interested', not_interested:'Not Interested', callback:'Callback',
+                        not_reachable:'Not Reachable', not_answering:'Not Answering',
+                        wrong_number:'Wrong Number', other:'Other',
+                      };
+                      const isToday = agentExpDateFrom === localDateStr() && agentExpDateTo === localDateStr();
+                      return (
+                        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                          {/* Header */}
+                          <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between flex-wrap gap-2">
+                            <div className="flex items-center gap-3">
+                              <div className="p-2 bg-gradient-to-br from-[#065F36] to-emerald-600 rounded-xl"><FileText className="h-4 w-4 text-white" /></div>
+                              <div>
+                                <h3 className="font-bold text-gray-800 text-sm">All Leads — Explorer</h3>
+                                <p className="text-xs text-gray-400">{agentExpLeads.length} leads &middot; filter by date, source &amp; search</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {isToday && <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700 border border-emerald-200"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> LIVE</span>}
+                              <button onClick={() => fetchAgentExpLeads(selectedAgent._id, agentExpDateFrom, agentExpDateTo, agentExpSearch, agentExpSource, agentExpDisp)} disabled={agentExpLoading}
+                                className="flex items-center gap-1 text-xs text-gray-500 hover:text-[#065F36] border border-gray-200 rounded-xl px-2.5 py-1.5 transition-all">
+                                <RefreshCw className={`h-3.5 w-3.5 ${agentExpLoading ? 'animate-spin' : ''}`} />
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Date presets */}
+                          <div className="px-5 py-2.5 border-b border-gray-100 bg-gray-50 flex items-center gap-2 flex-wrap">
+                            <Calendar className="h-3.5 w-3.5 text-gray-400 flex-shrink-0" />
+                            {[
+                              { l: 'Today',     f: localDateStr(),   t: localDateStr()   },
+                              { l: 'Yesterday', f: localDateStr(1),  t: localDateStr(1)  },
+                              { l: 'Tomorrow',  f: localDateStr(-1), t: localDateStr(-1) },
+                              { l: 'This Week', f: localDateStr(6),  t: localDateStr()   },
+                              { l: 'All',       f: '',               t: ''               },
+                            ].map(p => (
+                              <button key={p.l}
+                                onClick={() => { setAgentExpDateFrom(p.f); setAgentExpDateTo(p.t); fetchAgentExpLeads(selectedAgent._id, p.f, p.t, agentExpSearch, agentExpSource, agentExpDisp); }}
+                                className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border transition-all ${
+                                  agentExpDateFrom===p.f && agentExpDateTo===p.t ? 'bg-[#065F36] text-white border-[#065F36]' : 'bg-white text-gray-600 border-gray-200 hover:border-[#065F36]/40'
+                                }`}>{p.l}</button>
+                            ))}
+                            <input type="date" value={agentExpDateFrom}
+                              onChange={e => { setAgentExpDateFrom(e.target.value); if (e.target.value && agentExpDateTo) fetchAgentExpLeads(selectedAgent._id, e.target.value, agentExpDateTo, agentExpSearch, agentExpSource, agentExpDisp); }}
+                              className="border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-[#065F36]" />
+                            <span className="text-gray-400 text-xs">–</span>
+                            <input type="date" value={agentExpDateTo}
+                              onChange={e => { setAgentExpDateTo(e.target.value); if (e.target.value && agentExpDateFrom) fetchAgentExpLeads(selectedAgent._id, agentExpDateFrom, e.target.value, agentExpSearch, agentExpSource, agentExpDisp); }}
+                              className="border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-[#065F36]" />
+                          </div>
+
+                          {/* Search + disposition + source toggle */}
+                          <div className="px-5 py-2.5 border-b border-gray-100 flex items-center gap-2 flex-wrap">
+                            <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1.5 flex-1 min-w-[140px]">
+                              <Search className="h-3 w-3 text-gray-400 flex-shrink-0" />
+                              <input type="text" placeholder="Name or mobile…" value={agentExpSearch}
+                                onChange={e => setAgentExpSearch(e.target.value)}
+                                onKeyDown={e => e.key === 'Enter' && fetchAgentExpLeads(selectedAgent._id, agentExpDateFrom, agentExpDateTo, agentExpSearch, agentExpSource, agentExpDisp)}
+                                className="flex-1 text-xs outline-none bg-transparent" />
+                              {agentExpSearch && <button onClick={() => { setAgentExpSearch(''); fetchAgentExpLeads(selectedAgent._id, agentExpDateFrom, agentExpDateTo, '', agentExpSource, agentExpDisp); }}><X className="h-3 w-3 text-gray-400 hover:text-gray-600" /></button>}
+                            </div>
+                            {/* Disposition filter */}
+                            <select value={agentExpDisp}
+                              onChange={e => { setAgentExpDisp(e.target.value); fetchAgentExpLeads(selectedAgent._id, agentExpDateFrom, agentExpDateTo, agentExpSearch, agentExpSource, e.target.value); }}
+                              className="text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white text-gray-700 focus:outline-none focus:border-[#065F36]">
+                              <option value="">🎯 All Dispositions</option>
+                              <option value="interested">✅ Interested</option>
+                              <option value="not_interested">❌ Not Interested</option>
+                              <option value="callback">📞 Callback</option>
+                              <option value="not_reachable">📵 Not Reachable</option>
+                              <option value="not_answering">🔕 Not Answering</option>
+                              <option value="wrong_number">❓ Wrong Number</option>
+                              <option value="other">✏️ Other</option>
+                              <option value="none">⏳ Not Called</option>
+                            </select>
+                            <div className="flex bg-gray-100 rounded-lg p-0.5 gap-0.5">
+                              {[{v:'all',l:'All'},{v:'website',l:'🌐 Web'},{v:'pool',l:'📊 Pool'}].map(s => (
+                                <button key={s.v}
+                                  onClick={() => { setAgentExpSource(s.v); fetchAgentExpLeads(selectedAgent._id, agentExpDateFrom, agentExpDateTo, agentExpSearch, s.v, agentExpDisp); }}
+                                  className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all ${agentExpSource===s.v?'bg-white shadow-sm text-gray-800':'text-gray-500 hover:text-gray-700'}`}>
+                                  {s.l}
+                                </button>
+                              ))}
+                            </div>
+                            <button onClick={() => fetchAgentExpLeads(selectedAgent._id, agentExpDateFrom, agentExpDateTo, agentExpSearch, agentExpSource, agentExpDisp)}
+                              className="px-3 py-1.5 rounded-lg text-xs font-bold bg-[#065F36] text-white hover:bg-[#054A2E] transition-colors">Apply</button>
+                          </div>
+
+                          {/* Outcome summary bar */}
+                          {!agentExpLoading && agentExpLeads.length > 0 && (() => {
+                            const counts = {};
+                            agentExpLeads.forEach(l => { const k = l._isPool ? (l.workStatus||'new') : (l.callOutcome||'none'); counts[k]=(counts[k]||0)+1; });
+                            return (
+                              <div className="px-5 py-2 bg-[#E8FFF5] border-b border-[#D1FAE5] flex items-center gap-2 flex-wrap">
+                                <span className="text-xs font-black text-[#065F36]">{agentExpLeads.length} total</span>
+                                {Object.entries(counts).sort((a,b)=>b[1]-a[1]).map(([k,v]) => (
+                                  <span key={k} className={`text-xs px-2 py-0.5 rounded-full font-semibold border ${OUTCOME_CLR[k]||'bg-gray-100 text-gray-500 border-gray-200'}`}>
+                                    {OUTCOME_LBL[k]||(k==='none'?'No Disp.':k==='new'?'Not Called':k.replace(/_/g,' '))}: <strong>{v}</strong>
+                                  </span>
+                                ))}
+                              </div>
+                            );
+                          })()}
+
+                          {/* Leads list */}
+                          {agentExpLoading ? (
+                            <div className="flex items-center justify-center py-10 gap-2">
+                              <div className="w-5 h-5 border-2 border-gray-200 border-t-[#065F36] rounded-full animate-spin" />
+                              <span className="text-xs text-gray-400">Loading…</span>
+                            </div>
+                          ) : agentExpLeads.length === 0 ? (
+                            <div className="flex flex-col items-center justify-center py-10 gap-2 text-gray-400">
+                              <FileText className="h-8 w-8 text-gray-200" />
+                              <p className="text-sm font-medium">No leads found</p>
+                              <p className="text-xs">Try adjusting the date or search</p>
+                            </div>
+                          ) : (
+                            <div className="divide-y divide-gray-50 max-h-[420px] overflow-y-auto">
+                              {agentExpLeads.map((l) => {
+                                const isPool = !!l._isPool;
+                                const outcome = isPool ? l.workStatus : l.callOutcome;
+                                const lbl = OUTCOME_LBL[outcome]||(outcome==='new'?'Not Called':(outcome?.replace(/_/g,' ')||'No Disp.'));
+                                const cls = OUTCOME_CLR[outcome]||'bg-gray-100 text-gray-500 border-gray-200';
+                                const dt  = isPool ? new Date(l.workedAt||l.assignedAt||l.createdAt) : new Date(l.createdAt);
+                                const dtStr = isNaN(dt)?'—':dt.toLocaleString('en-IN',{timeZone:'Asia/Kolkata',day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
+                                return (
+                                  <div key={l._id}
+                                    onClick={() => !isPool && setAgentLeadDetail(l)}
+                                    className={`px-5 py-3 flex items-center gap-3 transition-colors ${!isPool?'cursor-pointer hover:bg-[#E8FFF5]/40':'cursor-default hover:bg-gray-50'}`}>
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-1.5 flex-wrap">
+                                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 ${isPool?'bg-violet-100 text-violet-700 border border-violet-200':'bg-teal-100 text-teal-700 border border-teal-200'}`}>
+                                          {isPool?'📊 Pool':'🌐 Web'}
+                                        </span>
+                                        {!isPool && l.leadRef && <span className="font-mono text-[10px] font-bold bg-gray-900 text-emerald-400 px-1.5 py-0.5 rounded flex-shrink-0">{l.leadRef}</span>}
+                                        <span className="font-semibold text-sm text-gray-800 truncate">{l.name||'—'}</span>
+                                      </div>
+                                      <p className="text-xs text-gray-400 mt-0.5 truncate">{l.mobile} · {(l.productType||l.loanType||'').replace(/_/g,' ')}</p>
+                                    </div>
+                                    <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                                      <span className={`text-xs px-2 py-0.5 rounded-full font-semibold border ${cls}`}>{lbl}</span>
+                                      <span className="text-[10px] text-gray-400 whitespace-nowrap">{dtStr}</span>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </>
                 )}
               </div>
@@ -1961,7 +2303,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                 other:          { label: 'Other',          cls: 'bg-purple-100 text-purple-700 border-purple-300',    icon: '✏️' },
               };
               const oc  = OUTCOME_CFG[l.callOutcome] || { label: l.callOutcome || 'No Disposition', cls: 'bg-gray-100 text-gray-500 border-gray-200', icon: '—' };
-              const fmt = (d) => d ? new Date(d).toLocaleString('en-IN', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '—';
+              const fmt = (d) => d ? new Date(d).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '—';
               const CIBIL_LABEL = { below_600:'< 600 (Poor)', '600_699':'600–699 (Fair)', '700_749':'700–749 (Good)', '750_800':'750–800 (Very Good)', above_800:'> 800 (Excellent)', unknown:'Unknown' };
 
               return (
@@ -2536,7 +2878,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                 {[
                   { l: 'Today',      from: localDateStr(), to: localDateStr() },
                   { l: 'This Week',  from: localDateStr(6), to: localDateStr() },
-                  { l: 'This Month', from: new Date().getFullYear()+'-'+String(new Date().getMonth()+1).padStart(2,'0')+'-01', to: localDateStr() },
+                  { l: 'This Month', from: localDateStr().slice(0, 7) + '-01',                                               to: localDateStr() },
                 ].map(p => (
                   <button key={p.l}
                     onClick={() => { setAssignedDateFrom(p.from); setAssignedDateTo(p.to); fetchAssignedLeadsData(1, assignedSearch, p.from, p.to, assignedSourceType); }}
@@ -2553,6 +2895,14 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                   className="px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-500 text-white hover:bg-amber-600 transition-colors">
                   Search
                 </button>
+                {/* Agent filter */}
+                <select value={assignedAgentFilter} onChange={e => { setAssignedAgentFilter(e.target.value); assignedAgentRef.current = e.target.value; fetchAssignedLeadsData(1, assignedSearch, assignedDateFrom, assignedDateTo, assignedSourceType); }}
+                  className="text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400">
+                  <option value="">👤 All Agents</option>
+                  {agents.map(a => (
+                    <option key={a._id} value={a._id}>{a.name}</option>
+                  ))}
+                </select>
                 {/* Doc status filter */}
                 <select value={assignedDocFilter} onChange={e => { setAssignedDocFilter(e.target.value); assignedDocFilterRef.current = e.target.value; fetchAssignedLeadsData(1, assignedSearch, assignedDateFrom, assignedDateTo, assignedSourceType); }}
                   className="text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400">
@@ -2563,9 +2913,9 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                 </select>
                 {/* Clear all — always visible, red when active */}
                 <button
-                  onClick={() => { setAssignedSearch(''); setAssignedDateFrom(''); setAssignedDateTo(''); setAssignedDocFilter('all'); assignedDocFilterRef.current='all'; setAssignedSourceType('all'); fetchAssignedLeadsData(1); }}
+                  onClick={() => { setAssignedSearch(''); setAssignedDateFrom(''); setAssignedDateTo(''); setAssignedDocFilter('all'); assignedDocFilterRef.current='all'; setAssignedAgentFilter(''); assignedAgentRef.current=''; setAssignedSourceType('all'); fetchAssignedLeadsData(1); }}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
-                    (assignedSearch || assignedDateFrom || assignedDateTo || assignedDocFilter !== 'all' || assignedSourceType !== 'all')
+                    (assignedSearch || assignedDateFrom || assignedDateTo || assignedDocFilter !== 'all' || assignedAgentFilter || assignedSourceType !== 'all')
                       ? 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100'
                       : 'bg-gray-50 text-gray-300 border-gray-200 cursor-default'
                   }`}
@@ -2580,6 +2930,26 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
               </div>
 
               {/* Table */}
+              {/* Results count bar */}
+              {(assignedSearch || assignedDateFrom || assignedDateTo || assignedDocFilter !== 'all' || assignedAgentFilter || assignedSourceType !== 'all') && !assignedLeadsLoading && (() => {
+                const c = assignedLeadsData.filter(l => {
+                  if (assignedAgentFilter) {
+                    const aId = l._sourceType === 'website' ? l.loadedBy?._id?.toString() : l.assignedTo?._id?.toString();
+                    if (aId !== assignedAgentFilter) return false;
+                  }
+                  if (assignedDocFilter === 'all') return true;
+                  const isW = l._sourceType === 'website';
+                  const dList = isW ? (l.domLead?.documents || l.domLeadId?.documents || []) : (l.domLeadId?.documents || []);
+                  return getDocStatus(dList).status === assignedDocFilter;
+                }).length;
+                return c > 0 ? (
+                  <div className="px-5 py-2.5 bg-amber-50 border-b border-amber-100 flex items-center gap-2">
+                    <Search className="h-3.5 w-3.5 text-amber-500 flex-shrink-0" />
+                    <span className="text-sm font-bold text-amber-700">{c} lead{c !== 1 ? 's' : ''} found</span>
+                    <span className="text-xs text-amber-400 ml-1">matching current filters</span>
+                  </div>
+                ) : null;
+              })()}
               {assignedLeadsLoading ? <Spinner /> : assignedLeadsData.length === 0 ? (
                 <Empty label={`No ${assignedSourceType === 'website' ? 'meta/website' : assignedSourceType === 'imported' ? 'imported' : ''} assigned leads found.`} />
               ) : (
@@ -2599,6 +2969,10 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                     </thead>
                     <tbody className="divide-y divide-gray-50">
                       {assignedLeadsData.filter(l => {
+                        if (assignedAgentFilter) {
+                          const agentId = l._sourceType === 'website' ? l.loadedBy?._id?.toString() : l.assignedTo?._id?.toString();
+                          if (agentId !== assignedAgentFilter) return false;
+                        }
                         if (assignedDocFilter === 'all') return true;
                         const isWebsite = l._sourceType === 'website';
                         const docList = isWebsite ? (l.domLead?.documents || l.domLeadId?.documents || []) : (l.domLeadId?.documents || []);
@@ -2649,7 +3023,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                               ) : <span className="text-amber-500 text-xs font-medium">Unassigned</span>}
                             </td>
                             <td className="px-3 py-3.5 text-gray-400 text-xs whitespace-nowrap">
-                              {assignedOn ? new Date(assignedOn).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' }) : '—'}
+                              {assignedOn ? new Date(assignedOn).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day:'2-digit', month:'short', year:'numeric' }) : '—'}
                             </td>
                             <td className="px-3 py-3.5">
                               <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-semibold border ${docStat.cls}`}>
@@ -2675,9 +3049,13 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                 </div>
               )}
             </div>
-            {(assignedSearch || assignedDateFrom || assignedDateTo || assignedDocFilter !== 'all' || assignedSourceType !== 'all') ? (
+            {(assignedSearch || assignedDateFrom || assignedDateTo || assignedDocFilter !== 'all' || assignedAgentFilter || assignedSourceType !== 'all') ? (
               <div className="px-6 py-3 text-xs text-gray-500 bg-gray-50 border-t border-gray-100 flex items-center justify-between">
                 <span>Showing all <strong>{assignedLeadsData.filter(l => {
+                  if (assignedAgentFilter) {
+                    const aId = l._sourceType === 'website' ? l.loadedBy?._id?.toString() : l.assignedTo?._id?.toString();
+                    if (aId !== assignedAgentFilter) return false;
+                  }
                   if (assignedDocFilter === 'all') return true;
                   const isW = l._sourceType === 'website';
                   const dList = isW ? (l.domLead?.documents || l.domLeadId?.documents || []) : (l.domLeadId?.documents || []);
@@ -2688,6 +3066,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                   setAssignedDateFrom('');
                   setAssignedDateTo('');
                   setAssignedDocFilter('all'); assignedDocFilterRef.current = 'all';
+                  setAssignedAgentFilter(''); assignedAgentRef.current = '';
                   setAssignedSourceType('all');
                   fetchAssignedLeadsData(1);
                 }}>Clear all filters</button>

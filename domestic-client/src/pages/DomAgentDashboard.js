@@ -33,6 +33,19 @@ const getDocStatusA = (docs = []) => {
   return                                      { status: 'partial', count: docs.length, label: `Partial (${docs.length})`, cls: 'bg-amber-100  text-amber-700  border-amber-200',   emoji: '📎' };
 };
 
+const IST_MS = 5.5 * 60 * 60 * 1000; // UTC+5:30 — India has no DST
+/** Returns today's date in IST as YYYY-MM-DD. offsetDays > 0 = days ago */
+const todayIST = (offsetDays = 0) => {
+  const ist = new Date(Date.now() + IST_MS - offsetDays * 86400000);
+  return ist.toISOString().slice(0, 10);
+};
+/** Convert any date value to IST YYYY-MM-DD for comparisons */
+const toISTDateStr = (d) => {
+  if (!d) return '';
+  const ist = new Date(new Date(d).getTime() + IST_MS);
+  return ist.toISOString().slice(0, 10);
+};
+
 const DomAgentDashboard = () => {
   const { user, logout } = useAuth();
 
@@ -66,8 +79,8 @@ const DomAgentDashboard = () => {
   // UI state
   const [sidebarOpen,        setSidebarOpen]        = useState(true);
   const [searchQuery,        setSearchQuery]        = useState('');
-  const [dateFilter,         setDateFilter]         = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; });
-  const [followupDateFilter, setFollowupDateFilter] = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; });
+  const [dateFilter,         setDateFilter]         = useState(''); // '' = show all dates by default
+  const [followupDateFilter, setFollowupDateFilter] = useState(todayIST); // default = today in IST
   const [docFilter,          setDocFilter]          = useState('all'); // 'all'|'none'|'partial'|'full'
 
   useEffect(() => {
@@ -225,8 +238,11 @@ const DomAgentDashboard = () => {
   const filteredToWork = useMemo(() => {
     const q = searchQuery.toLowerCase();
     return toWorkLeads.filter(l => {
-      const d = l.loadedAt || l.assignedAt || l.createdAt;
-      const dateOk = !dateFilter || (d && (() => { const dt = new Date(d); return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}` === dateFilter; })());
+      // Use the date most relevant to when the agent received/loaded the lead
+      const d = l._src === 'website'
+        ? (l.loadedAt   || l.createdAt)
+        : (l.assignedAt || l.createdAt);
+      const dateOk = !dateFilter || (d && toISTDateStr(d) === dateFilter);
       const searchOk = !q || (l.name||'').toLowerCase().includes(q) || (l.mobile||'').includes(q) || (l.city||'').toLowerCase().includes(q);
       return dateOk && searchOk;
     });
@@ -235,8 +251,11 @@ const DomAgentDashboard = () => {
   const filteredWorked = useMemo(() => {
     const q = searchQuery.toLowerCase();
     return workedLeads.filter(l => {
-      const d = l.loadedAt || l.assignedAt || l.createdAt;
-      const dateOk = !dateFilter || (d && (() => { const dt = new Date(d); return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}` === dateFilter; })());
+      // Use the date the agent actually worked the lead
+      const d = l._src === 'website'
+        ? (l.completedAt || l.loadedAt   || l.createdAt)
+        : (l.workedAt    || l.assignedAt || l.createdAt);
+      const dateOk = !dateFilter || (d && toISTDateStr(d) === dateFilter);
       const searchOk = !q || (l.name||'').toLowerCase().includes(q) || (l.mobile||'').includes(q);
       const docList = l._src === 'website' ? (l.domLead?.documents || []) : (l.domLeadId?.documents || []);
       const ds = getDocStatusA(docList);
@@ -248,7 +267,7 @@ const DomAgentDashboard = () => {
   const filteredFollowups = useMemo(() => {
     const q = searchQuery.toLowerCase();
     return followups.filter(f => {
-      const dateOk = !followupDateFilter || (f.callbackDate && (() => { const dt = new Date(f.callbackDate); return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}` === followupDateFilter; })());
+      const dateOk = !followupDateFilter || (f.callbackDate && toISTDateStr(f.callbackDate) === followupDateFilter);
       const searchOk = !q || (f.name||'').toLowerCase().includes(q) || (f.mobile||'').includes(q);
       return dateOk && searchOk;
     });
@@ -451,6 +470,15 @@ const DomAgentDashboard = () => {
                 )}
               </div>
 
+              {/* Results count bar */}
+              {(searchQuery || dateFilter) && !(loading || assignedLeadsLoading) && filteredToWork.length > 0 && (
+                <div className="px-5 py-2.5 bg-orange-50 border-b border-orange-100 flex items-center gap-2">
+                  <Search className="h-3.5 w-3.5 text-orange-500 flex-shrink-0" />
+                  <span className="text-sm font-bold text-orange-700">{filteredToWork.length} lead{filteredToWork.length !== 1 ? 's' : ''} found</span>
+                  <span className="text-xs text-orange-400 ml-1">of {toWorkLeads.length} total</span>
+                </div>
+              )}
+
               {(loading || assignedLeadsLoading) ? (
                 <div className="flex flex-col items-center justify-center py-16 gap-3">
                   <span className="w-8 h-8 border-2 border-gray-200 border-t-orange-500 rounded-full animate-spin" />
@@ -505,7 +533,7 @@ const DomAgentDashboard = () => {
                                 : <span className="text-gray-300 text-xs">—</span>}
                             </td>
                             <td className="px-3 py-3.5 text-gray-400 text-xs whitespace-nowrap">
-                              {date ? new Date(date).toLocaleString('en-IN', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' }) : '—'}
+                              {date ? new Date(date).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' }) : '—'}
                             </td>
                             <td className="px-3 pr-6 py-3.5 text-right">
                               <button onClick={(e) => { e.stopPropagation(); isWebsite ? handleOpenLead(lead) : handleOpenImportedLead(lead); }}
@@ -581,6 +609,14 @@ const DomAgentDashboard = () => {
               )}
             </div>
 
+            {/* Results count bar */}
+            {(searchQuery || dateFilter || docFilter !== 'all') && filteredWorked.length > 0 && (
+              <div className="px-5 py-2.5 bg-emerald-50 border-b border-emerald-100 flex items-center gap-2">
+                <Search className="h-3.5 w-3.5 text-emerald-500 flex-shrink-0" />
+                <span className="text-sm font-bold text-emerald-700">{filteredWorked.length} lead{filteredWorked.length !== 1 ? 's' : ''} found</span>
+                <span className="text-xs text-emerald-400 ml-1">of {workedLeads.length} total</span>
+              </div>
+            )}
             {filteredWorked.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 gap-3 text-gray-400">
                 <FileText className="h-12 w-12 text-gray-200" />
@@ -666,8 +702,8 @@ const DomAgentDashboard = () => {
 
       {/* -- Follow-up Queue -- */}
       {tab === 'followups' && (() => {
-        const today     = new Date(); today.setHours(0,0,0,0);
-        const tomorrow  = new Date(today); tomorrow.setDate(today.getDate() + 1);
+        const today    = new Date(todayIST() + 'T00:00:00+05:30'); // IST midnight
+        const tomorrow = new Date(today.getTime() + 86400000);
 
         const parseDate = (d) => { if (!d) return null; const p = new Date(d); return isNaN(p) ? null : p; };
 
@@ -713,7 +749,7 @@ const DomAgentDashboard = () => {
                       <span className={`flex items-center gap-1 text-xs font-semibold ${isOverdue ? 'text-red-600' : isToday ? 'text-amber-600' : 'text-gray-500'}`}>
                         <Calendar className="h-3 w-3" />
                         {isOverdue ? '⚠️ Overdue · ' : isToday ? '🔔 Today · ' : ''}
-                        {callbackD.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                        {callbackD.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric' })}
                       </span>
                     )}
                   </div>
@@ -818,6 +854,14 @@ const DomAgentDashboard = () => {
               </div>
             ) : (
               <div className="space-y-6">
+                {/* Results count bar */}
+                {(searchQuery || followupDateFilter) && filteredFollowups.length > 0 && (
+                  <div className="px-5 py-2.5 bg-amber-50 border border-amber-100 rounded-xl flex items-center gap-2">
+                    <Search className="h-3.5 w-3.5 text-amber-500 flex-shrink-0" />
+                    <span className="text-sm font-bold text-amber-700">{filteredFollowups.length} follow-up{filteredFollowups.length !== 1 ? 's' : ''} found</span>
+                    <span className="text-xs text-amber-400 ml-1">of {followups.length} total</span>
+                  </div>
+                )}
                 <Section title="Overdue Callbacks" color="bg-red-100 text-red-800"   icon="🔴" items={overdue} />
                 <Section title="Call Today"         color="bg-amber-100 text-amber-800" icon="🟡" items={todayList} />
                 <Section title="Upcoming"           color="bg-emerald-100 text-emerald-800" icon="🟢" items={upcoming} />

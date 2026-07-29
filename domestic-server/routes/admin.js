@@ -91,7 +91,7 @@ router.get('/stats', async (req, res) => {
 });
 
 // ── GET /domestic-api/admin/agents ─────────────────────────────────────────
-// Agent performance table
+// Agent performance table — supports optional dateFrom/dateTo for disposition stats
 router.get('/agents', async (req, res) => {
   try {
     const agents = await DomUser.find({ role: 'domagent' })
@@ -101,20 +101,30 @@ router.get('/agents', async (req, res) => {
     // Counts per agent
     const agentIds = agents.map((a) => a._id);
 
+    // ── Optional date range for disposition stats ─────────────────────────
+    // Builds a { field: { $gte, $lte } } object; returns {} when no dates given
+    const buildDateCond = (field) => {
+      if (!req.query.dateFrom && !req.query.dateTo) return {};
+      const cond = {};
+      if (req.query.dateFrom) { const [y,m,d] = req.query.dateFrom.split('-').map(Number); cond.$gte = new Date(y,m-1,d,0,0,0,0); }
+      if (req.query.dateTo)   { const [y,m,d] = req.query.dateTo.split('-').map(Number);   cond.$lte = new Date(y,m-1,d,23,59,59,999); }
+      return { [field]: cond };
+    };
+
     const [loadedCounts, completedCounts, domLeadCounts, poolCounts, interestedCounts, callbackCounts] = await Promise.all([
       DomWebsiteLead.aggregate([
-        { $match: { loadedBy: { $in: agentIds } } },
+        { $match: { loadedBy: { $in: agentIds }, ...buildDateCond('loadedAt') } },
         { $group: { _id: '$loadedBy', count: { $sum: 1 } } },
       ]),
       DomWebsiteLead.aggregate([
-        { $match: { loadedBy: { $in: agentIds }, status: 'completed' } },
+        { $match: { loadedBy: { $in: agentIds }, status: 'completed', ...buildDateCond('completedAt') } },
         { $group: { _id: '$loadedBy', count: { $sum: 1 } } },
       ]),
       DomLead.aggregate([
-        { $match: { assignedTo: { $in: agentIds } } },
+        { $match: { assignedTo: { $in: agentIds }, ...buildDateCond('createdAt') } },
         { $group: { _id: '$assignedTo', count: { $sum: 1 } } },
       ]),
-      // Pool / imported leads stats
+      // Pool / imported leads stats — total assigned (lifetime) + worked in date range
       DomImportedLead.aggregate([
         { $match: { assignedTo: { $in: agentIds } } },
         { $group: {
@@ -124,11 +134,11 @@ router.get('/agents', async (req, res) => {
         }},
       ]),
       DomLead.aggregate([
-        { $match: { assignedTo: { $in: agentIds }, callOutcome: 'interested' } },
+        { $match: { assignedTo: { $in: agentIds }, callOutcome: 'interested', ...buildDateCond('createdAt') } },
         { $group: { _id: '$assignedTo', count: { $sum: 1 } } },
       ]),
       DomLead.aggregate([
-        { $match: { assignedTo: { $in: agentIds }, callOutcome: 'callback' } },
+        { $match: { assignedTo: { $in: agentIds }, callOutcome: 'callback', ...buildDateCond('createdAt') } },
         { $group: { _id: '$assignedTo', count: { $sum: 1 } } },
       ]),
     ]);

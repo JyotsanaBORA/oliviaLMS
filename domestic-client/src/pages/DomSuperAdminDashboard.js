@@ -46,8 +46,15 @@ const ROLE_COLORS = {
   domagent:       'bg-gray-100 text-gray-700 border border-gray-200',
 };
 
+const IST_MS = 5.5 * 60 * 60 * 1000; // UTC+5:30 — India has no DST
+/** Returns today's date in IST as YYYY-MM-DD. offsetDays > 0 = days ago */
+const istToday = (offsetDays = 0) => {
+  const ist = new Date(Date.now() + IST_MS - offsetDays * 86400000);
+  return ist.toISOString().slice(0, 10);
+};
+
 const fmtShort = (d) =>
-  d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Never';
+  d ? new Date(d).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric' }) : 'Never';
 
 const DomSuperAdminDashboard = () => {
   const { user, logout } = useAuth();
@@ -88,6 +95,9 @@ const DomSuperAdminDashboard = () => {
   const [webStatusFilter,    setWebStatusFilter]     = useState('');
   const [webProductFilter,   setWebProductFilter]    = useState('');
   const [webSearch,          setWebSearch]           = useState('');
+  const [webDateFrom,        setWebDateFrom]         = useState('');
+  const [webDateTo,          setWebDateTo]           = useState('');
+  const [webAgentFilter,     setWebAgentFilter]      = useState('');
   const [webProductTypes,    setWebProductTypes]     = useState([]);
   const [webAgents,          setWebAgents]           = useState([]);
   const [webAssignModal,     setWebAssignModal]      = useState(null);
@@ -98,6 +108,9 @@ const DomSuperAdminDashboard = () => {
   const webSearchRef      = useRef('');
   const webStatusRef      = useRef('');
   const webProductRef     = useRef('');
+  const webDateFromRef    = useRef('');
+  const webDateToRef      = useRef('');
+  const webAgentRef       = useRef('');
 
   // Agent Tracker state
   const [trackerAgents,       setTrackerAgents]       = useState([]);
@@ -124,6 +137,9 @@ const DomSuperAdminDashboard = () => {
   const [manualLeadsLoading, setManualLeadsLoading] = useState(false);
   const [manualLeadDetail,   setManualLeadDetail]   = useState(null);
   const [manualFilter,       setManualFilter]       = useState('all'); // 'all' | 'marked' | 'not_marked'
+  const [manualSearch,       setManualSearch]       = useState('');    // search by name/mobile
+  const [userSearch,         setUserSearch]         = useState('');    // search users table
+  const [batchSearch,        setBatchSearch]        = useState('');    // search import batches
 
   // Sidebar collapse state — 'agents' group is expanded by default
   const [openGroups, setOpenGroups] = useState(new Set(['agents']));
@@ -198,10 +214,15 @@ const DomSuperAdminDashboard = () => {
   const fetchWebLeads = useCallback(async (page = 1) => {
     setWebLeadsLoading(true);
     try {
-      const q = new URLSearchParams({ page, limit: 30 });
-      if (webStatusRef.current)  q.set('status',      webStatusRef.current);
-      if (webProductRef.current) q.set('productType', webProductRef.current);
-      if (webSearchRef.current.trim()) q.set('search', webSearchRef.current.trim());
+      const anyFilter = webSearchRef.current.trim() || webStatusRef.current || webProductRef.current || webDateFromRef.current || webDateToRef.current || webAgentRef.current;
+      const limit = anyFilter ? 500 : 30;
+      const q = new URLSearchParams({ page, limit });
+      if (webStatusRef.current)              q.set('status',      webStatusRef.current);
+      if (webProductRef.current)             q.set('productType', webProductRef.current);
+      if (webSearchRef.current.trim())       q.set('search',      webSearchRef.current.trim());
+      if (webDateFromRef.current)            q.set('dateFrom',    webDateFromRef.current);
+      if (webDateToRef.current)              q.set('dateTo',      webDateToRef.current);
+      if (webAgentRef.current)               q.set('agentId',     webAgentRef.current);
       const res = await api.get(`/domestic-api/website-leads?${q}`);
       setWebLeads(res.data?.data || []);
       setWebLeadsTotal(res.data?.pagination?.total || 0);
@@ -290,23 +311,22 @@ const DomSuperAdminDashboard = () => {
   const fetchReport = useCallback(async (range, customFrom, customTo) => {
     setReportLoading(true);
     try {
-      const today = new Date();
-      const toStr = today.toISOString().split('T')[0];
+      const toStr = istToday(); // today in IST
+      const [y, mo] = toStr.split('-').map(Number);
       let from, to = toStr;
       if (range === 'today') {
         from = toStr;
       } else if (range === 'week') {
-        const d = new Date(today); d.setDate(d.getDate() - 6);
-        from = d.toISOString().split('T')[0];
+        from = istToday(6);
       } else if (range === 'month') {
-        from = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-01`;
+        from = `${y}-${String(mo).padStart(2,'0')}-01`;
       } else if (range === '3month') {
-        const d = new Date(today); d.setMonth(d.getMonth() - 2); d.setDate(1);
-        from = d.toISOString().split('T')[0];
+        const d = new Date(Date.now() + IST_MS); d.setUTCMonth(d.getUTCMonth() - 2); d.setUTCDate(1);
+        from = d.toISOString().slice(0, 10);
       } else if (range === 'year') {
-        from = `${today.getFullYear()}-01-01`;
+        from = `${y}-01-01`;
       } else {
-        from = customFrom || `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-01`;
+        from = customFrom || `${y}-${String(mo).padStart(2,'0')}-01`;
         to   = customTo   || toStr;
       }
       const res = await api.get(`/domestic-api/admin/reports?from=${from}&to=${to}`);
@@ -927,7 +947,7 @@ const DomSuperAdminDashboard = () => {
                             const webDay = webTrend.find(w => w.date === d.date);
                             const barH = Math.max((d.total / maxCombined) * 140, 4);
                             const compH = d.total > 0 ? Math.round((d.completed / d.total) * barH) : 0;
-                            const label = new Date(d.date + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+                            const label = new Date(d.date + 'T12:00:00+05:30').toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short' });
                             return (
                               <div key={i} className="flex flex-col items-center gap-1 flex-1 group min-w-[28px]">
                                 <div className="flex items-center gap-0.5 mb-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -1321,14 +1341,24 @@ const DomSuperAdminDashboard = () => {
 
           {/* Users Table */}
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between flex-wrap gap-3">
               <div>
                 <h3 className="font-bold text-gray-800">All Domestic LMS Users</h3>
                 <p className="text-xs text-gray-400 mt-0.5">Manage agents, admins, and super admins</p>
               </div>
-              <button onClick={fetchUsers} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-[#065F36] border border-gray-200 rounded-xl px-3 py-2">
-                <RefreshCw className="h-4 w-4" /> Refresh
-              </button>
+              <div className="flex items-center gap-2">
+                {/* User search */}
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 pointer-events-none" />
+                  <input type="text" placeholder="Search name, email or role…" value={userSearch}
+                    onChange={e => setUserSearch(e.target.value)}
+                    className="pl-9 pr-8 py-2 text-sm border border-gray-200 rounded-xl bg-white w-52 focus:outline-none focus:ring-2 focus:ring-[#065F36]/20 focus:border-[#065F36]" />
+                  {userSearch && <button onClick={() => setUserSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500"><X className="h-3.5 w-3.5" /></button>}
+                </div>
+                <button onClick={fetchUsers} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-[#065F36] border border-gray-200 rounded-xl px-3 py-2">
+                  <RefreshCw className="h-4 w-4" /> Refresh
+                </button>
+              </div>
             </div>
 
             {usersLoading ? (
@@ -1350,7 +1380,7 @@ const DomSuperAdminDashboard = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
-                    {users.map((u) => (
+                    {users.filter(u => !userSearch || u.name?.toLowerCase().includes(userSearch.toLowerCase()) || u.email?.toLowerCase().includes(userSearch.toLowerCase()) || (ROLE_LABELS[u.role] || u.role)?.toLowerCase().includes(userSearch.toLowerCase())).map((u) => (
                       <tr key={u._id} className="hover:bg-[#E8FFF5]/40 transition-colors">
                         <td className="pl-6 pr-3 py-4">
                           <div className="flex items-center gap-2.5">
@@ -1417,7 +1447,7 @@ const DomSuperAdminDashboard = () => {
                       </tr>
                     ))}
                     {users.length === 0 && (
-                      <tr><td colSpan={6} className="text-center py-12 text-gray-400">No users found.</td></tr>
+                      <tr><td colSpan={6} className="text-center py-12 text-gray-400">{userSearch ? `No users match "${userSearch}"` : 'No users found.'}</td></tr>
                     )}
                   </tbody>
                 </table>
@@ -1527,8 +1557,8 @@ const DomSuperAdminDashboard = () => {
   })()}
 
   {superTab === 'tracker' && (() => {
-    const fmtDate = (d) => d ? new Date(d).toLocaleString('en-IN', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' }) : '—';
-    const fmtShortDt = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' }) : 'Never';
+    const fmtDate = (d) => d ? new Date(d).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' }) : '—';
+    const fmtShortDt = (d) => d ? new Date(d).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day:'2-digit', month:'short', year:'numeric' }) : 'Never';
     const STATUS_DOT = {
       available:   { dot: 'bg-emerald-500', label: 'Available',   cls: 'bg-emerald-100 text-emerald-700 border-emerald-300' },
       break:       { dot: 'bg-amber-400',   label: 'On Break',    cls: 'bg-amber-100 text-amber-700 border-amber-300' },
@@ -1554,12 +1584,12 @@ const DomSuperAdminDashboard = () => {
         .map((a, i) => [
           i + 1, a.name || '', a.email || '',
           a.agentStatus || 'available', a.isActive ? 'Yes' : 'No',
-          a.lastLogin ? new Date(a.lastLogin).toLocaleDateString('en-IN') : 'Never',
+          a.lastLogin ? new Date(a.lastLogin).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' }) : 'Never',
           a.leadsLoaded || 0, a.leadsCompleted || 0,
           a.poolAssigned || 0, a.poolWorked || 0,
           a.domLeadsCreated || 0, a.interestedCount || 0, a.callbackCount || 0,
           `${a.conversionRate || 0}%`,
-          a.agentStatusUpdatedAt ? new Date(a.agentStatusUpdatedAt).toLocaleString('en-IN') : '—',
+          a.agentStatusUpdatedAt ? new Date(a.agentStatusUpdatedAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : '—',
         ]);
       const csv = [headers, ...rows].map(r => r.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
       const blob = new Blob([csv], { type: 'text/csv' });
@@ -2223,30 +2253,40 @@ const DomSuperAdminDashboard = () => {
                 </button>
               </div>
             )}
-            {/* Filter bar */}
-            <div className="flex flex-wrap items-center gap-3 px-6 py-4 bg-gray-50 border-b border-gray-100">
+            {/* Filter bar — full set matching Disposition Allocation */}
+            <div className="flex flex-wrap items-center gap-3 px-6 py-3 bg-gray-50 border-b border-gray-100">
+              {/* Search */}
               <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3 py-2 flex-1 min-w-[200px]">
-                <Search className="h-4 w-4 text-gray-400" />
-                <input
-                  type="text"
-                  value={webSearch}
+                <Search className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                <input type="text" value={webSearch}
                   onChange={(e) => { setWebSearch(e.target.value); webSearchRef.current = e.target.value; }}
                   onKeyDown={(e) => e.key === 'Enter' && fetchWebLeads(1)}
-                  placeholder="Search by name, mobile, city…"
-                  className="flex-1 text-sm bg-transparent outline-none text-gray-700 placeholder-gray-400"
-                />
+                  placeholder="Search name, mobile, city…"
+                  className="flex-1 text-sm bg-transparent outline-none text-gray-700 placeholder-gray-400" />
+                {webSearch && <button onClick={() => { setWebSearch(''); webSearchRef.current=''; }} className="text-gray-300 hover:text-gray-500"><X className="h-3.5 w-3.5" /></button>}
               </div>
+              {/* Status */}
               <select value={webStatusFilter}
-                onChange={(e) => { setWebStatusFilter(e.target.value); webStatusRef.current = e.target.value; }}
+                onChange={(e) => { setWebStatusFilter(e.target.value); webStatusRef.current = e.target.value; fetchWebLeads(1); }}
                 className="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white text-gray-700">
                 <option value="">All Statuses</option>
-                <option value="new">New (Unclaimed)</option>
-                <option value="loaded">Loaded by Agent</option>
-                <option value="completed">Completed</option>
-                <option value="rejected">Rejected</option>
+                <option value="new">⏳ New (Unclaimed)</option>
+                <option value="loaded">📋 Loaded by Agent</option>
+                <option value="completed">✅ Completed</option>
+                <option value="rejected">❌ Rejected</option>
               </select>
+              {/* Agent */}
+              <select value={webAgentFilter}
+                onChange={(e) => { setWebAgentFilter(e.target.value); webAgentRef.current = e.target.value; fetchWebLeads(1); }}
+                className="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white text-gray-700">
+                <option value="">👤 All Agents</option>
+                {[...webAgents].sort((a,b) => a.name?.localeCompare(b.name)).map(a => (
+                  <option key={a._id} value={a._id}>{a.name}</option>
+                ))}
+              </select>
+              {/* Service */}
               <select value={webProductFilter}
-                onChange={(e) => { setWebProductFilter(e.target.value); webProductRef.current = e.target.value; }}
+                onChange={(e) => { setWebProductFilter(e.target.value); webProductRef.current = e.target.value; fetchWebLeads(1); }}
                 className="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white text-gray-700">
                 <option value="">All Services</option>
                 <optgroup label="─ Loans ─">
@@ -2258,9 +2298,7 @@ const DomSuperAdminDashboard = () => {
                   <option value="education_loan">Education Loan</option>
                   <option value="gold_loan">Gold Loan</option>
                 </optgroup>
-                <optgroup label="─ Cards ─">
-                  <option value="credit_card">Credit Card</option>
-                </optgroup>
+                <optgroup label="─ Cards ─"><option value="credit_card">Credit Card</option></optgroup>
                 <optgroup label="─ Insurance ─">
                   <option value="health_insurance">Health Insurance</option>
                   <option value="life_insurance">Life Insurance</option>
@@ -2273,26 +2311,64 @@ const DomSuperAdminDashboard = () => {
                   <option value="demat">Demat Account</option>
                 </optgroup>
               </select>
+              {/* Search button */}
               <button onClick={() => fetchWebLeads(1)}
                 className="flex items-center gap-2 text-sm bg-[#065F36] text-white px-4 py-2 rounded-xl hover:bg-[#054A2E] font-semibold">
                 <Search className="h-4 w-4" /> Search
               </button>
-              {(webStatusFilter || webProductFilter || webSearch) && (
-                <button onClick={() => {
-                  setWebStatusFilter(''); setWebProductFilter(''); setWebSearch('');
-                  webStatusRef.current = ''; webProductRef.current = ''; webSearchRef.current = '';
+              {/* Clear — always visible, red when active */}
+              <button
+                onClick={() => {
+                  setWebStatusFilter(''); setWebProductFilter(''); setWebSearch(''); setWebAgentFilter('');
+                  setWebDateFrom(''); setWebDateTo('');
+                  webStatusRef.current=''; webProductRef.current=''; webSearchRef.current='';
+                  webAgentRef.current=''; webDateFromRef.current=''; webDateToRef.current='';
                   fetchWebLeads(1);
-                }} className="text-xs text-gray-400 hover:text-red-500 font-medium px-2 py-1 rounded-lg border border-gray-200 hover:border-red-200 transition-colors">
-                  Clear filters
+                }}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border transition-all ${
+                  (webStatusFilter || webProductFilter || webSearch || webAgentFilter || webDateFrom || webDateTo)
+                    ? 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100'
+                    : 'bg-gray-50 text-gray-300 border-gray-200 cursor-default'
+                }`} title="Clear all filters">
+                <X className="h-3.5 w-3.5" /> Clear
+              </button>
+            </div>
+            {/* Date range row */}
+            <div className="px-5 pb-3 flex items-center gap-2 flex-wrap border-b border-gray-100 bg-gray-50/50">
+              <Calendar className="h-3.5 w-3.5 text-gray-400 flex-shrink-0" />
+              <span className="text-xs font-semibold text-gray-500">Date:</span>
+              {[
+                { l: 'Today',      f: localDateStr(),   t: localDateStr() },
+                { l: 'This Week',  f: localDateStr(6),  t: localDateStr() },
+                { l: 'This Month', f: `${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,'0')}-01`, t: localDateStr() },
+              ].map(p => (
+                <button key={p.l}
+                  onClick={() => { setWebDateFrom(p.f); setWebDateTo(p.t); webDateFromRef.current=p.f; webDateToRef.current=p.t; fetchWebLeads(1); }}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${webDateFrom===p.f && webDateTo===p.t ? 'bg-teal-600 text-white border-teal-600' : 'bg-white text-gray-600 border-gray-200 hover:border-teal-400'}`}>
+                  {p.l}
                 </button>
+              ))}
+              <input type="date" value={webDateFrom}
+                onChange={e => { setWebDateFrom(e.target.value); webDateFromRef.current=e.target.value; if(e.target.value && webDateToRef.current) fetchWebLeads(1); }}
+                className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-teal-500" />
+              <span className="text-gray-400 text-xs">to</span>
+              <input type="date" value={webDateTo}
+                onChange={e => { setWebDateTo(e.target.value); webDateToRef.current=e.target.value; if(e.target.value && webDateFromRef.current) fetchWebLeads(1); }}
+                className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-teal-500" />
+              {(webDateFrom || webDateTo) && (
+                <button onClick={() => { setWebDateFrom(''); setWebDateTo(''); webDateFromRef.current=''; webDateToRef.current=''; fetchWebLeads(1); }}
+                  className="px-3 py-1.5 rounded-lg text-xs text-gray-500 border border-gray-200 hover:bg-gray-50 transition-colors">Clear</button>
+              )}
+              {(webStatusFilter || webProductFilter || webSearch || webAgentFilter || webDateFrom || webDateTo) && (
+                <span className="ml-auto text-xs text-gray-400">{webLeadsTotal} leads found</span>
               )}
             </div>
-
             {/* Stats bar */}
             <div className="flex items-center gap-4 px-6 py-2 bg-white border-b border-gray-100 text-xs text-gray-500">
               <span>Total: <strong className="text-gray-800">{webLeadsTotal}</strong></span>
               {webProductFilter && <span className="bg-[#E8FFF5] text-[#065F36] px-2 py-0.5 rounded-full font-semibold capitalize">{webProductFilter.replace(/_/g,' ')}</span>}
               {webStatusFilter  && <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full font-semibold capitalize">{webStatusFilter}</span>}
+              {webAgentFilter && <span className="bg-violet-50 text-violet-700 px-2 py-0.5 rounded-full font-semibold">{webAgents.find(a=>a._id===webAgentFilter)?.name || 'Agent'}</span>}
             </div>
 
             {/* Table */}
@@ -2701,10 +2777,20 @@ const DomSuperAdminDashboard = () => {
                   <p className="text-xs text-gray-400">Select a batch and share with admins</p>
                 </div>
               </div>
-              <button onClick={fetchBatches}
-                className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-[#065F36] border border-gray-200 rounded-xl px-3 py-2">
-                <RefreshCw className="h-4 w-4" /> Refresh
-              </button>
+              <div className="flex items-center gap-2">
+                {/* Batch search */}
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 pointer-events-none" />
+                  <input type="text" placeholder="Search batch name…" value={batchSearch}
+                    onChange={e => setBatchSearch(e.target.value)}
+                    className="pl-9 pr-8 py-2 text-sm border border-gray-200 rounded-xl bg-white w-44 focus:outline-none focus:ring-2 focus:ring-[#065F36]/20 focus:border-[#065F36]" />
+                  {batchSearch && <button onClick={() => setBatchSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500"><X className="h-3.5 w-3.5" /></button>}
+                </div>
+                <button onClick={fetchBatches}
+                  className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-[#065F36] border border-gray-200 rounded-xl px-3 py-2">
+                  <RefreshCw className="h-4 w-4" /> Refresh
+                </button>
+              </div>
             </div>
 
             {batchesLoading ? (
@@ -2719,7 +2805,7 @@ const DomSuperAdminDashboard = () => {
               </div>
             ) : (
               <div className="divide-y divide-gray-50">
-                {batches.map((b) => (
+                {batches.filter(b => !batchSearch || (b.batchName || b._id)?.toLowerCase().includes(batchSearch.toLowerCase())).map((b) => (
                   <div key={b._id} className="px-6 py-4 flex items-center justify-between hover:bg-[#E8FFF5]/30 transition-colors">
                     <div className="flex items-center gap-4 flex-1 min-w-0">
                       <div className="p-2.5 bg-gray-100 rounded-xl flex-shrink-0">
@@ -2928,10 +3014,15 @@ DOMESTIC_LMS_API_KEY=${apiKeyVisible ? apiKey : '<show key above>'}`}
 
     const CIBIL_LABEL = { below_600:'< 600 (Poor)', '600_699':'600–699 (Fair)', '700_749':'700–749 (Good)', '750_800':'750–800 (Very Good)', above_800:'> 800 (Excellent)', unknown:'Unknown' };
 
-    // Apply filter
+    // Apply disposition + search filters
     const marked    = manualLeads.filter(l => l.callOutcome && l.callOutcome !== '');
     const notMarked = manualLeads.filter(l => !l.callOutcome || l.callOutcome === '');
-    const filtered  = manualFilter === 'marked' ? marked : manualFilter === 'not_marked' ? notMarked : manualLeads;
+    const byDisp    = manualFilter === 'marked' ? marked : manualFilter === 'not_marked' ? notMarked : manualLeads;
+    const filtered  = !manualSearch ? byDisp : byDisp.filter(l =>
+      (l.name || '').toLowerCase().includes(manualSearch.toLowerCase()) ||
+      (l.mobile || '').includes(manualSearch) ||
+      (l.assignedTo?.name || '').toLowerCase().includes(manualSearch.toLowerCase())
+    );
 
     return (
       <div className="min-h-screen bg-gray-50">
@@ -2945,7 +3036,15 @@ DOMESTIC_LMS_API_KEY=${apiKeyVisible ? apiKey : '<show key above>'}`}
                 <p className="text-gray-400 text-xs">Leads filled manually by agents · click any row to see full details</p>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Search manual leads */}
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 pointer-events-none" />
+                <input type="text" placeholder="Search name, mobile or agent…" value={manualSearch}
+                  onChange={e => setManualSearch(e.target.value)}
+                  className="pl-9 pr-8 py-2 text-sm border border-gray-200 rounded-xl bg-white w-52 focus:outline-none focus:ring-2 focus:ring-[#065F36]/20 focus:border-[#065F36]" />
+                {manualSearch && <button onClick={() => setManualSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500"><X className="h-3.5 w-3.5" /></button>}
+              </div>
               <button onClick={fetchManualLeads} disabled={manualLeadsLoading}
                 className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-[#065F36] border border-gray-200 rounded-xl px-3 py-2 transition-all">
                 <RefreshCw className={`h-4 w-4 ${manualLeadsLoading ? 'animate-spin' : ''}`} />
