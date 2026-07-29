@@ -4,11 +4,12 @@ import {
   Eye, X, Hash, Globe, Briefcase, CheckCircle2, Clock,
   AlertCircle, UserCheck, Calendar, ChevronLeft, ChevronRight,
   Inbox, Award, Download, FileDown, ExternalLink, FileText,
-  Image as ImageIcon, File, Database, UserCheck2, Send, Menu,
+  Image as ImageIcon, File, Database, UserCheck2, Send, Menu, ShieldCheck, ArrowLeftRight,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import api   from '../utils/axios';
 import toast from 'react-hot-toast';
+import CibilCheckModal from '../components/CibilCheckModal';
 
 const IST_MS = 5.5 * 60 * 60 * 1000; // UTC+5:30 — India has no DST
 /** Returns today's date in IST as YYYY-MM-DD. offsetDays > 0 = days ago */
@@ -97,6 +98,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
   const { user, logout } = useAuth();
   const [tab, setTab] = useState(initialTab || 'overview');
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [cibilModalOpen, setCibilModalOpen] = useState(false);
 
   const [stats,    setStats]    = useState(null);
   const [pipeline, setPipeline] = useState([]);
@@ -171,6 +173,16 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
   // Reassign a single imported lead to a different agent
   const [reassignModal,   setReassignModal]   = useState(null); // the lead being reassigned
   const [reassigning,     setReassigning]     = useState(false);
+
+  // ── Bulk Transfer (reassign DomLeads by disposition) ──────────────────────
+  const [btSourceAgent,   setBtSourceAgent]   = useState('');
+  const [btOutcomeFilter, setBtOutcomeFilter] = useState('all');
+  const [btLeads,         setBtLeads]         = useState([]);
+  const [btLeadsLoading,  setBtLeadsLoading]  = useState(false);
+  const [btSelected,      setBtSelected]      = useState(new Set());
+  const [btTargetAgent,   setBtTargetAgent]   = useState('');
+  const [btReassigning,   setBtReassigning]   = useState(false);
+  const [btShowConfirm,   setBtShowConfirm]   = useState(false);
 
   // Drag & drop state
   const [dragItem,  setDragItem]  = useState(null); // { id, type: 'website' | 'pool', name }
@@ -497,6 +509,37 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
     finally { setAssignedLeadsLoading(false); }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Bulk Transfer helpers ──────────────────────────────────────────────
+  const fetchBtLeads = useCallback(async () => {
+    if (!btSourceAgent) return;
+    setBtLeadsLoading(true);
+    setBtSelected(new Set());
+    try {
+      const res = await api.get(`/domestic-api/admin/agent-dom-leads?agentId=${btSourceAgent}&callOutcome=${btOutcomeFilter}`);
+      setBtLeads(res.data?.data || []);
+    } catch { toast.error('Failed to load leads.'); }
+    finally { setBtLeadsLoading(false); }
+  }, [btSourceAgent, btOutcomeFilter]);
+
+  const handleBulkReassign = useCallback(async () => {
+    if (!btSelected.size || !btTargetAgent) return;
+    setBtReassigning(true);
+    setBtShowConfirm(false);
+    try {
+      const res = await api.post('/domestic-api/admin/bulk-reassign-leads', {
+        leadIds: [...btSelected],
+        toAgentId: btTargetAgent,
+      });
+      toast.success(res.data.message);
+      setBtSelected(new Set());
+      fetchBtLeads();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Reassignment failed.');
+    } finally {
+      setBtReassigning(false);
+    }
+  }, [btSelected, btTargetAgent, fetchBtLeads]);
+
   // Load tab data only on tab switch — not on filter changes
   useEffect(() => {
     if (tab === 'website_leads') { fetchLeads(1); fetchProductTypes(); fetchAgents(); }
@@ -504,6 +547,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
     if (tab === 'agents')        fetchAgents();
     if (tab === 'lead_pool')     { fetchPoolStats(); fetchPoolLeads(1); fetchAgents(); }
     if (tab === 'assigned_leads') { fetchAssignedLeadsData(1); fetchAgents(); }
+    if (tab === 'bulk_transfer')  fetchAgents();
   }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Agent Leads Explorer: re-initialise when a different agent is selected
@@ -833,11 +877,12 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
 
           {sidebarOpen && <p className="text-gray-400 text-[9px] font-extrabold uppercase tracking-[0.14em] px-2 mt-3 mb-1.5">ALLOCATIONS</p>}
           {[
-            { key: 'website_leads', Icon: Globe,     label: 'Meta Allocation',        sub: 'Website + meta leads'   },
-            { key: 'dom_leads',     Icon: Briefcase, label: 'Disposition Allocation', sub: 'Agent submitted leads'  },
-            { key: 'agents',        Icon: Users,     label: 'Agent Allocation',        sub: 'Performance & tracking' },
-            { key: 'lead_pool',     Icon: Database,  label: 'Data Pool',               sub: 'Import & assign leads'  },
-            { key: 'assigned_leads',Icon: UserCheck, label: 'Assigned Leads',          sub: 'Leads assigned to agents'},
+            { key: 'website_leads', Icon: Globe,          label: 'Meta Allocation',        sub: 'Website + meta leads'    },
+            { key: 'dom_leads',     Icon: Briefcase,       label: 'Disposition Allocation', sub: 'Agent submitted leads'   },
+            { key: 'agents',        Icon: Users,           label: 'Agent Allocation',        sub: 'Performance & tracking'  },
+            { key: 'lead_pool',     Icon: Database,        label: 'Data Pool',               sub: 'Import & assign leads'   },
+            { key: 'assigned_leads',Icon: UserCheck,       label: 'Assigned Leads',          sub: 'Leads assigned to agents'},
+            { key: 'bulk_transfer', Icon: ArrowLeftRight,  label: 'Bulk Transfer',           sub: 'Reassign by disposition' },
           ].map(({ key, Icon, label, sub }) => {
             const isActive = tab === key;
             return (
@@ -860,6 +905,15 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
 
         {/* Sign out */}
         <div className="flex-shrink-0 px-2 pb-3 pt-2 border-t border-gray-100">
+          {/* CIBIL Check */}
+          <button
+            type="button"
+            onClick={() => setCibilModalOpen(true)}
+            title={!sidebarOpen ? 'CIBIL Check' : undefined}
+            className={`w-full flex items-center ${sidebarOpen ? 'gap-2.5 px-3' : 'justify-center px-0'} py-2 rounded-lg mb-1 text-indigo-600 hover:bg-indigo-50 transition-all text-left`}>
+            <ShieldCheck className="h-[14px] w-[14px] flex-shrink-0" />
+            {sidebarOpen && <span className="text-[12px] font-semibold">CIBIL Check</span>}
+          </button>
           <button onClick={logout} title={!sidebarOpen ? 'Sign out' : undefined}
             className={`w-full flex items-center ${sidebarOpen ? 'gap-2.5 px-3' : 'justify-center px-0'} py-2 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-all text-left`}>
             <LogOut className="h-[14px] w-[14px] flex-shrink-0" />
@@ -3508,6 +3562,258 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
             </div>
           </div>
         </Modal>
+      )}
+
+      {cibilModalOpen && (
+        <CibilCheckModal onClose={() => setCibilModalOpen(false)} />
+      )}
+
+      {/* ══ BULK TRANSFER tab ══════════════════════════════════════════════ */}
+      {tab === 'bulk_transfer' && (
+        <div className="space-y-4 px-6 py-6">
+
+          {/* Header */}
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-violet-100 rounded-xl flex-shrink-0">
+                <ArrowLeftRight className="h-5 w-5 text-violet-600" />
+              </div>
+              <div>
+                <h2 className="font-bold text-gray-800 text-base">Bulk Lead Reassignment</h2>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  Select leads from one agent (filtered by disposition) and reassign them in bulk to another agent
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-[290px_1fr] gap-4 items-start">
+
+            {/* ── Left: Controls ── */}
+            <div className="space-y-4">
+
+              {/* Step 1: Source + filter */}
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 space-y-3">
+                <p className="text-[11px] font-extrabold text-violet-500 uppercase tracking-wider">
+                  Step 1 — Source Agent &amp; Filter
+                </p>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Source Agent</label>
+                  <select
+                    value={btSourceAgent}
+                    onChange={e => { setBtSourceAgent(e.target.value); setBtLeads([]); setBtSelected(new Set()); setBtShowConfirm(false); }}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white">
+                    <option value="">— Select agent —</option>
+                    {agents.map(a => (
+                      <option key={a._id} value={a._id}>{a.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Disposition Filter</label>
+                  <select
+                    value={btOutcomeFilter}
+                    onChange={e => setBtOutcomeFilter(e.target.value)}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white">
+                    <option value="all">All Dispositions</option>
+                    <option value="not_interested">❌ Not Interested</option>
+                    <option value="not_reachable">📵 Not Reachable</option>
+                    <option value="callback">📞 Callback</option>
+                    <option value="not_answering">🔕 Not Answering</option>
+                    <option value="wrong_number">❓ Wrong Number</option>
+                    <option value="interested">✅ Interested</option>
+                    <option value="other">✏️ Other</option>
+                  </select>
+                </div>
+
+                <button
+                  onClick={fetchBtLeads}
+                  disabled={!btSourceAgent || btLeadsLoading}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 text-sm font-bold text-white bg-violet-600 hover:bg-violet-700 disabled:bg-violet-300 rounded-xl transition-colors">
+                  {btLeadsLoading
+                    ? <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                    : <Search className="h-4 w-4" />}
+                  {btLeadsLoading ? 'Loading…' : 'Load Leads'}
+                </button>
+              </div>
+
+              {/* Step 2: Target agent + reassign */}
+              {btLeads.length > 0 && (
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 space-y-3">
+                  <p className="text-[11px] font-extrabold text-emerald-600 uppercase tracking-wider">
+                    Step 2 — Target Agent
+                  </p>
+
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Reassign To</label>
+                    <select
+                      value={btTargetAgent}
+                      onChange={e => setBtTargetAgent(e.target.value)}
+                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white">
+                      <option value="">— Select agent —</option>
+                      {agents.filter(a => a._id !== btSourceAgent).map(a => (
+                        <option key={a._id} value={a._id}>{a.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {btSelected.size > 0 && btTargetAgent && (
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
+                      <p className="text-sm font-semibold text-emerald-800">
+                        {btSelected.size} lead{btSelected.size !== 1 ? 's' : ''} → <strong>{agents.find(a => a._id === btTargetAgent)?.name}</strong>
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Inline confirmation */}
+                  {btShowConfirm ? (
+                    <div className="space-y-2">
+                      <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800 font-medium">
+                        ⚠️ This will permanently reassign {btSelected.size} lead{btSelected.size !== 1 ? 's' : ''} to{' '}
+                        <strong>{agents.find(a => a._id === btTargetAgent)?.name}</strong>. Are you sure?
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={handleBulkReassign}
+                          disabled={btReassigning}
+                          className="flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 rounded-xl transition-colors">
+                          {btReassigning
+                            ? <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                            : <ArrowLeftRight className="h-4 w-4" />}
+                          {btReassigning ? 'Reassigning…' : 'Yes, Reassign'}
+                        </button>
+                        <button
+                          onClick={() => setBtShowConfirm(false)}
+                          className="px-4 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors">
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => { if (btSelected.size && btTargetAgent) setBtShowConfirm(true); }}
+                      disabled={!btSelected.size || !btTargetAgent || btReassigning}
+                      className="w-full flex items-center justify-center gap-2 py-2.5 text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-200 disabled:text-gray-400 rounded-xl transition-colors">
+                      <ArrowLeftRight className="h-4 w-4" />
+                      {`Reassign ${btSelected.size || 0} Lead${btSelected.size !== 1 ? 's' : ''}`}
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* ── Right: Leads table ── */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+              {btLeadsLoading ? (
+                <div className="flex flex-col items-center justify-center py-20 gap-3">
+                  <span className="w-8 h-8 border-2 border-gray-200 border-t-violet-500 rounded-full animate-spin" />
+                  <span className="text-sm text-gray-400">Loading leads…</span>
+                </div>
+              ) : btLeads.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-20 gap-3 text-gray-400">
+                  <ArrowLeftRight className="h-12 w-12 text-gray-200" />
+                  <p className="font-semibold text-gray-500">No leads loaded</p>
+                  <p className="text-sm">Select a source agent and click Load Leads</p>
+                </div>
+              ) : (
+                <>
+                  {/* Table toolbar */}
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-gray-50">
+                    <label className="flex items-center gap-2 cursor-pointer select-none">
+                      <input type="checkbox"
+                        checked={btLeads.length > 0 && btSelected.size === btLeads.length}
+                        onChange={e => setBtSelected(e.target.checked ? new Set(btLeads.map(l => l._id)) : new Set())}
+                        className="w-4 h-4 rounded accent-violet-600 cursor-pointer" />
+                      <span className="text-sm font-semibold text-gray-700">
+                        {btSelected.size === btLeads.length ? 'Deselect All' : 'Select All'}
+                      </span>
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-400">{btLeads.length} leads</span>
+                      {btSelected.size > 0 && (
+                        <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-violet-100 text-violet-700 border border-violet-200">
+                          {btSelected.size} selected
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Table */}
+                  <div className="overflow-y-auto max-h-[65vh]">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50 sticky top-0 z-10">
+                        <tr className="text-left text-xs font-bold text-gray-500 uppercase tracking-wider border-b border-gray-100">
+                          <th className="pl-4 pr-2 py-3 w-8">✓</th>
+                          <th className="px-3 py-3">Lead ID</th>
+                          <th className="px-3 py-3">Customer</th>
+                          <th className="px-3 py-3">Mobile</th>
+                          <th className="px-3 py-3">Disposition</th>
+                          <th className="px-3 py-3">Product</th>
+                          <th className="px-3 py-3">Updated</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-50">
+                        {btLeads.map(lead => {
+                          const isSel = btSelected.has(lead._id);
+                          const OC = {
+                            not_interested: { cls: 'bg-red-100 text-red-700',     lbl: 'Not Interested' },
+                            not_reachable:  { cls: 'bg-orange-100 text-orange-700', lbl: 'Not Reachable' },
+                            callback:       { cls: 'bg-amber-100 text-amber-700',  lbl: 'Callback' },
+                            not_answering:  { cls: 'bg-slate-100 text-slate-700',  lbl: 'Not Answering' },
+                            wrong_number:   { cls: 'bg-gray-100 text-gray-600',    lbl: 'Wrong Number' },
+                            interested:     { cls: 'bg-emerald-100 text-emerald-700', lbl: 'Interested' },
+                            other:          { cls: 'bg-purple-100 text-purple-700', lbl: 'Other' },
+                          };
+                          const oc = OC[lead.callOutcome];
+                          return (
+                            <tr key={lead._id}
+                              onClick={() => {
+                                const next = new Set(btSelected);
+                                isSel ? next.delete(lead._id) : next.add(lead._id);
+                                setBtSelected(next);
+                              }}
+                              className={`cursor-pointer transition-colors ${isSel ? 'bg-violet-50' : 'hover:bg-gray-50'}`}>
+                              <td className="pl-4 pr-2 py-3">
+                                <input type="checkbox" checked={isSel} readOnly
+                                  className="w-4 h-4 rounded accent-violet-600 pointer-events-none" />
+                              </td>
+                              <td className="px-3 py-3">
+                                {lead.leadRef
+                                  ? <span className="font-mono text-xs font-bold bg-gray-900 text-emerald-400 px-1.5 py-0.5 rounded">{lead.leadRef}</span>
+                                  : <span className="text-gray-300 text-xs">—</span>}
+                              </td>
+                              <td className="px-3 py-3 font-semibold text-gray-800">{lead.name || '—'}</td>
+                              <td className="px-3 py-3 font-mono text-xs text-gray-600">{lead.mobile || '—'}</td>
+                              <td className="px-3 py-3">
+                                {oc
+                                  ? <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${oc.cls}`}>{oc.lbl}</span>
+                                  : <span className="text-gray-300 text-xs">—</span>}
+                              </td>
+                              <td className="px-3 py-3">
+                                {lead.productType
+                                  ? <span className="text-xs bg-[#E8FFF5] text-[#065F36] border border-[#D1FAE5] px-2 py-0.5 rounded-full capitalize">
+                                      {lead.productType.replace(/_/g, ' ')}
+                                    </span>
+                                  : <span className="text-gray-300 text-xs">—</span>}
+                              </td>
+                              <td className="px-3 py-3 text-gray-400 text-xs whitespace-nowrap">
+                                {lead.updatedAt
+                                  ? new Date(lead.updatedAt).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short' })
+                                  : '—'}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
       )}
       </div>
     </div>

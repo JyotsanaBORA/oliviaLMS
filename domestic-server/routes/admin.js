@@ -617,4 +617,103 @@ router.post('/agents/transfer-leads', async (req, res) => {
   }
 });
 
+// ── GET /domestic-api/admin/agent-dom-leads ────────────────────────────────
+// Fetch DomLeads for a specific agent, optionally filtered by callOutcome
+router.get('/agent-dom-leads', async (req, res) => {
+  try {
+    const { agentId, callOutcome } = req.query;
+    if (!agentId) return res.status(400).json({ success: false, message: 'agentId is required.' });
+    const filter = { assignedTo: agentId };
+    if (callOutcome && callOutcome !== 'all') filter.callOutcome = callOutcome;
+    const leads = await DomLead.find(filter)
+      .select('name mobile callOutcome status createdAt updatedAt leadRef productType')
+      .sort({ updatedAt: -1 })
+      .limit(500)
+      .lean();
+    return res.json({ success: true, data: leads, total: leads.length });
+  } catch (err) {
+    console.error('[Admin] Agent dom-leads error:', err.message);
+    return res.status(500).json({ success: false, message: 'Failed to fetch leads.' });
+  }
+});
+
+// ── POST /domestic-api/admin/bulk-reassign-leads ───────────────────────────
+// Bulk reassign DomLeads AND their source (website/imported) leads to another agent
+router.post('/bulk-reassign-leads', async (req, res) => {
+  try {
+    const { leadIds, toAgentId } = req.body;
+    if (!Array.isArray(leadIds) || leadIds.length === 0)
+      return res.status(400).json({ success: false, message: 'leadIds array is required.' });
+    if (!toAgentId)
+      return res.status(400).json({ success: false, message: 'toAgentId is required.' });
+    if (leadIds.length > 500)
+      return res.status(400).json({ success: false, message: 'Maximum 500 leads per batch.' });
+
+    const targetAgent = await DomUser.findById(toAgentId).select('name role').lean();
+    if (!targetAgent || targetAgent.role !== 'domagent')
+      return res.status(404).json({ success: false, message: 'Target agent not found.' });
+
+    // Fetch source IDs so we can reassign all 3 layers
+    const domLeadDocs = await DomLead.find({ _id: { $in: leadIds } })
+      .select('sourceWebsiteLead sourceImportedLead')
+      .lean();
+
+    const websiteLeadIds  = domLeadDocs.map(l => l.sourceWebsiteLead).filter(Boolean);
+    const importedLeadIds = domLeadDocs.map(l => l.sourceImportedLead).filter(Boolean);
+
+    // 1. Update DomLead.assignedTo for all leads
+    await DomLead.updateMany(
+      { _id: { $in: leadIds } },
+      { $set: { assignedTo: toAgentId, lastUpdatedBy: req.user._id } }
+    );
+
+    // 2. Update DomWebsiteLead:
+    //    • loadedBy  → agent dashboard uses loadedBy to find "my leads"
+    //    • assignedTo → for consistency
+    //    • status = 'loaded' → must be 'loaded' for agent to see it
+    // ALSO clear sourceWebsiteLead on the DomLead so isWorked=false for the new agent
+    // (isWorked is computed: DomLead.find({ assignedTo:newAgent, sourceWebsiteLead:{$ne:null} }))
+    if (websiteLeadIds.length > 0) {
+      await DomWebsiteLead.updateMany(
+        { _id: { $in: websiteLeadIds } },
+        { $set: { assignedTo: toAgentId, loadedBy: toAgentId, status: 'loaded' } }
+      );
+      // Unlink website source from DomLead so isWorked=false for new agent
+      // (the DomLead is kept as historical record with assignedTo=newAgent)
+      await DomLead.updateMany(
+        { sourceWebsiteLead: { $in: websiteLeadIds } },
+        { $set: { sourceWebsiteLead: null } }
+      );
+    }
+
+    // 3. Update DomImportedLead:
+    //    • assignedTo → agent dashboard filters by assignedTo
+    //    • status = 'assigned' → must be 'assigned' for agent to see it
+    //    • workStatus = 'new' → makes it appear in "Assigned to Work" tab
+    if (importedLeadIds.length > 0) {
+      await DomImportedLead.updateMany(
+        { _id: { $in: importedLeadIds } },
+        { $set: { assignedTo: toAgentId, status: 'assigned', workStatus: 'new' } }
+      );
+    }
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to('domagents').emit('leads_bulk_reassigned', {
+        toAgentId, toAgentName: targetAgent.name,
+        count: leadIds.length, by: req.user.name,
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: `${leadIds.length} lead(s) reassigned to ${targetAgent.name}.`,
+      reassigned: leadIds.length,
+    });
+  } catch (err) {
+    console.error('[Admin] Bulk reassign error:', err.message);
+    return res.status(500).json({ success: false, message: 'Failed to reassign leads.' });
+  }
+});
+
 module.exports = router;

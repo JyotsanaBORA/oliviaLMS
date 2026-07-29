@@ -129,6 +129,7 @@ const notificationRoutes  = require('./routes/notifications');
 const uploadRoutes        = require('./routes/uploads');
 const adminRoutes         = require('./routes/admin');
 const importLeadsRoutes   = require('./routes/importLeads');
+const cibilRoutes         = require('./routes/cibil');
 
 app.use('/domestic-api/auth',           authLimiter, authRoutes);
 app.use('/domestic-api/intake',         intakeLimiter, intakeRoutes);
@@ -138,6 +139,7 @@ app.use('/domestic-api/notifications',  notificationRoutes);
 app.use('/domestic-api/uploads',        uploadRoutes);
 app.use('/domestic-api/admin',          adminRoutes);
 app.use('/domestic-api/import-leads',   importLeadsRoutes);
+app.use('/domestic-api/cibil',          cibilRoutes);
 
 // Health check
 app.get('/domestic-api/health', (req, res) => {

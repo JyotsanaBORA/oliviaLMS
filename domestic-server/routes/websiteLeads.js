@@ -137,9 +137,22 @@ router.get('/my', protect, authorize('domagent', 'dom_admin', 'dom_superadmin'),
   try {
     const agentId = req.user._id;
 
-    const leads = await DomWebsiteLead.find({ loadedBy: agentId })
+    // Find website leads for this agent — match by EITHER loadedBy OR assignedTo
+    // (reassigned leads may have assignedTo updated without loadedBy being updated)
+    const leads = await DomWebsiteLead.find({
+      $or: [{ loadedBy: agentId }, { assignedTo: agentId }],
+      status: { $in: ['loaded', 'completed', 'rejected'] },
+    })
       .sort({ loadedAt: -1 })
       .lean();
+    // Deduplicate in case a lead matches both conditions
+    const seenIds = new Set();
+    const uniqueLeads = leads.filter(l => {
+      const key = l._id.toString();
+      if (seenIds.has(key)) return false;
+      seenIds.add(key);
+      return true;
+    });
 
     // Find all DomLeads created by this agent — include full doc so documents
     // array is available when the modal opens without a second fetch.
@@ -149,7 +162,7 @@ router.get('/my', protect, authorize('domagent', 'dom_admin', 'dom_superadmin'),
       if (dl.sourceWebsiteLead) workedMap[dl.sourceWebsiteLead.toString()] = dl;
     });
 
-    const websiteLeadData = leads.map((l) => {
+    const websiteLeadData = uniqueLeads.map((l) => {
       const worked = workedMap[l._id.toString()];
       return {
         ...l,

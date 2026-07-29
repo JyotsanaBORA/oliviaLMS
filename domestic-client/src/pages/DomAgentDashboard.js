@@ -4,11 +4,12 @@ import {
   LogOut, RefreshCw, FileText, CheckCircle,
   Clock, PlusCircle, ChevronRight, Database,
   CheckCircle2, Phone, AlertCircle, Calendar,
-  Search, Menu, ChevronLeft, X,
+  Search, Menu, ChevronLeft, X, ShieldCheck,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import LeadFormModal           from '../components/LeadFormModal';
 import ImportedLeadDetailModal from '../components/ImportedLeadDetailModal';
+import CibilCheckModal         from '../components/CibilCheckModal';
 import api   from '../utils/axios';
 import toast from 'react-hot-toast';
 
@@ -63,6 +64,7 @@ const DomAgentDashboard = () => {
   const [assignedLeadsLoading, setAssignedLeadsLoading] = useState(false);
   const [importedModalOpen,    setImportedModalOpen]    = useState(false);
   const [detailModalOpen,      setDetailModalOpen]      = useState(false); // shows all imported data first
+  const [cibilModalOpen,       setCibilModalOpen]       = useState(false);
 
   // Follow-up queue
   const [followups,        setFollowups]        = useState([]);
@@ -385,6 +387,23 @@ const DomAgentDashboard = () => {
               </button>
             );
           })}
+
+          {/* CIBIL Check tool */}
+          {sidebarOpen && <p className="text-gray-400 text-[9px] font-extrabold uppercase tracking-[0.14em] px-2 mt-3 mb-1.5">TOOLS</p>}
+          {!sidebarOpen && <div className="border-t border-gray-100 my-2 mx-1" />}
+          <button
+            type="button"
+            onClick={() => setCibilModalOpen(true)}
+            title={!sidebarOpen ? 'CIBIL Check' : undefined}
+            className={`w-full flex items-center ${sidebarOpen ? 'gap-2.5 px-3' : 'justify-center px-0 py-2.5'} py-2 rounded-lg transition-all text-left mb-2 text-indigo-600 hover:bg-indigo-50`}>
+            <ShieldCheck className="h-[15px] w-[15px] flex-shrink-0" />
+            {sidebarOpen && (
+              <div className="flex-1 min-w-0">
+                <p className="text-[12px] font-semibold leading-none">CIBIL Check</p>
+                <p className="text-[10px] mt-1 text-indigo-400">Live credit score</p>
+              </div>
+            )}
+          </button>
 
           {/* Status toggle */}
           {sidebarOpen && <p className="text-gray-400 text-[9px] font-extrabold uppercase tracking-[0.14em] px-2 mt-3 mb-1.5">MY STATUS</p>}
@@ -906,6 +925,10 @@ const DomAgentDashboard = () => {
           }}
           onSaved={() => { fetchAssignedLeads(); }}
         />
+      )}
+
+      {cibilModalOpen && (
+        <CibilCheckModal onClose={() => setCibilModalOpen(false)} />
       )}
       </main>
       </div>

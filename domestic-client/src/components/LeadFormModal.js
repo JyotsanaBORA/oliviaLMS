@@ -1,17 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save, User, Briefcase, CreditCard, FileText, MessageSquare, ChevronDown, ChevronUp, Eye, Phone, MapPin, BarChart2, Users } from 'lucide-react';
+import { X, Save, User, Briefcase, CreditCard, FileText, MessageSquare, ChevronDown, ChevronUp, Eye, Phone, MapPin, BarChart2, Users, ShieldCheck, CheckCircle, AlertCircle } from 'lucide-react';
 import api from '../utils/axios';
 import toast from 'react-hot-toast';
 import DocumentUpload from './DocumentUpload';
 
 const TABS = [
-  { key: 'personal',    label: 'Personal',    icon: User },
-  { key: 'employment',  label: 'Employment',  icon: Briefcase },
-  { key: 'loan',        label: 'Loan',        icon: CreditCard },
-  { key: 'credit',      label: 'Credit',      icon: FileText },
-  { key: 'references',  label: 'References',  icon: Users },
-  { key: 'documents',   label: 'Documents',   icon: FileText },
-  { key: 'disposition', label: 'Disposition', icon: MessageSquare },
+  { key: 'personal',     label: 'Personal',     icon: User },
+  { key: 'employment',   label: 'Employment',   icon: Briefcase },
+  { key: 'loan',         label: 'Loan',         icon: CreditCard },
+  { key: 'credit',       label: 'Credit',       icon: FileText },
+  { key: 'cibil_check',  label: 'CIBIL Check',  icon: ShieldCheck },
+  { key: 'references',   label: 'References',   icon: Users },
+  { key: 'documents',    label: 'Documents',    icon: FileText },
+  { key: 'disposition',  label: 'Disposition',  icon: MessageSquare },
 ];
 
 const EMPTY_FORM = {
@@ -74,6 +75,16 @@ const LeadFormModal = ({ websiteLead, importedLead, existingDomLead, onClose, on
   const [leadRef,   setLeadRef]   = useState(null);
   const [saving, setSaving]       = useState(false);
   const [refPanelOpen, setRefPanelOpen] = useState(false); // collapsible imported data panel
+
+  // CIBIL check
+  const [cibilForm,      setCibilForm]      = useState({
+    firstName: '', lastName: '', gender: '',
+    phoneNumber: '', panNumber: '', dateOfBirth: '', pincode: '', address: '',
+  });
+  const [cibilChecking, setCibilChecking] = useState(false);
+  const [cibilResult,   setCibilResult]   = useState(null);
+  const [cibilError,    setCibilError]    = useState('');
+
   const isEdit = !!domLeadId;
 
   // Pre-fill from website lead / imported lead / existing DomLead
@@ -161,7 +172,51 @@ const LeadFormModal = ({ websiteLead, importedLead, existingDomLead, onClose, on
     }
   }, [websiteLead, importedLead, existingDomLead]);
 
-  const set = (k) => (e) => setForm((prev) => ({ ...prev, [k]: e.target.value }));
+  const set  = (k) => (e) => setForm((prev) => ({ ...prev, [k]: e.target.value }));
+  const setCF = (k) => (e) => setCibilForm((prev) => ({ ...prev, [k]: e.target.value }));
+
+  const mapScoreToRange = (scoreStr) => {
+    const n = parseInt(scoreStr, 10);
+    if (isNaN(n) || n <= 0) return 'unknown';
+    if (n < 600) return 'below_600';
+    if (n < 700) return '600_699';
+    if (n < 750) return '700_749';
+    if (n <= 800) return '750_800';
+    return 'above_800';
+  };
+
+  const handleCibilCheck = async () => {
+    const REQUIRED = ['firstName', 'lastName', 'gender', 'phoneNumber', 'panNumber', 'dateOfBirth', 'pincode', 'address'];
+    const missing  = REQUIRED.filter(k => !cibilForm[k]?.trim());
+    if (missing.length) {
+      setCibilError(`Please fill in: ${missing.join(', ')}`);
+      return;
+    }
+    setCibilChecking(true);
+    setCibilError('');
+    try {
+      const res            = await api.post('/domestic-api/cibil/check', cibilForm);
+      const signzyResponse = res.data?.data;   // Signzy's full response object
+      setCibilResult(signzyResponse);
+      const scores = signzyResponse?.data?.CIBILReport?.consumerCreditData?.[0]?.scores;
+      if (scores?.length) {
+        const range = mapScoreToRange(scores[0]?.score);
+        setForm(prev => ({ ...prev, cibilScoreRange: range }));
+        toast.success(`CIBIL Score: ${parseInt(scores[0].score, 10)} — score range updated.`);
+      }
+    } catch (err) {
+      // Always coerce to a plain string — Signzy can return objects in error fields
+      const raw = err.response?.data?.message;
+      const msg = typeof raw === 'string'
+        ? raw
+        : raw
+          ? JSON.stringify(raw)
+          : (err.message || 'CIBIL check failed. Please try again.');
+      setCibilError(msg);
+    } finally {
+      setCibilChecking(false);
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -271,10 +326,29 @@ const LeadFormModal = ({ websiteLead, importedLead, existingDomLead, onClose, on
           {TABS.map(({ key, label, icon: Icon }) => (
             <button
               key={key}
-              onClick={() => setActiveTab(key)}
+              onClick={() => {
+                setActiveTab(key);
+                if (key === 'cibil_check' && !cibilResult) {
+                  const trimmed   = form.name.trim();
+                  const lastSpace = trimmed.lastIndexOf(' ');
+                  setCibilForm(prev => ({
+                    firstName:   lastSpace > 0 ? trimmed.slice(0, lastSpace) : trimmed,
+                    lastName:    lastSpace > 0 ? trimmed.slice(lastSpace + 1) : '',
+                    gender:      prev.gender || '',
+                    phoneNumber: form.mobile  || prev.phoneNumber,
+                    panNumber:   form.pan     || prev.panNumber,
+                    dateOfBirth: form.dob     || prev.dateOfBirth,
+                    pincode:     form.pincode || prev.pincode,
+                    address:     form.address || prev.address,
+                  }));
+                  setCibilError('');
+                }
+              }}
               className={`flex items-center gap-1.5 px-4 py-3 text-xs font-semibold whitespace-nowrap transition-colors border-b-2 ${
                 activeTab === key
-                  ? 'border-blue-600 text-blue-700 bg-white'
+                  ? key === 'cibil_check'
+                    ? 'border-indigo-600 text-indigo-700 bg-indigo-50'
+                    : 'border-blue-600 text-blue-700 bg-white'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-white'
               }`}
             >
@@ -695,6 +769,192 @@ const LeadFormModal = ({ websiteLead, importedLead, existingDomLead, onClose, on
                     />
                   </Field>
                 </div>
+              </div>
+            )}
+
+            {/* ── CIBIL CHECK ───────────────────────────────────────────── */}
+            {activeTab === 'cibil_check' && (
+              <div className="space-y-5">
+
+                {/* Header banner */}
+                <div className="flex items-center gap-3 bg-indigo-50 border border-indigo-200 rounded-xl px-4 py-3">
+                  <div className="p-2 bg-indigo-100 rounded-lg flex-shrink-0">
+                    <ShieldCheck className="h-5 w-5 text-indigo-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-indigo-800">Live CIBIL Score Check</p>
+                    <p className="text-xs text-indigo-500 mt-0.5">Powered by Signzy — verify customer's credit score in real time</p>
+                  </div>
+                  {cibilResult && (
+                    <button type="button" onClick={() => { setCibilResult(null); setCibilError(''); }}
+                      className="text-xs text-indigo-500 hover:text-indigo-700 border border-indigo-200 px-3 py-1.5 rounded-lg bg-white transition-colors flex-shrink-0">
+                      Run Again
+                    </button>
+                  )}
+                </div>
+
+                {/* ── Input form ── */}
+                {!cibilResult && (
+                  <>
+                    <p className="text-xs text-gray-500">Details are pre-filled from the lead form. Select gender and click <strong>Run CIBIL Check</strong>.</p>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <Field label="First Name">
+                        <Input value={cibilForm.firstName} onChange={setCF('firstName')} placeholder="e.g. RAHUL KUMAR" />
+                      </Field>
+                      <Field label="Last Name">
+                        <Input value={cibilForm.lastName}  onChange={setCF('lastName')}  placeholder="e.g. SHARMA" />
+                      </Field>
+                      <Field label="Gender" required>
+                        <Select value={cibilForm.gender} onChange={setCF('gender')}>
+                          <option value="">Select gender</option>
+                          <option value="Male">Male</option>
+                          <option value="Female">Female</option>
+                          <option value="Transgender">Transgender</option>
+                        </Select>
+                      </Field>
+                      <Field label="Mobile Number">
+                        <Input value={cibilForm.phoneNumber} onChange={setCF('phoneNumber')} placeholder="9876543210" />
+                      </Field>
+                      <Field label="PAN Number">
+                        <Input value={cibilForm.panNumber} onChange={setCF('panNumber')} placeholder="ABCDE1234F"
+                          style={{ textTransform: 'uppercase' }} />
+                      </Field>
+                      <Field label="Date of Birth">
+                        <Input type="date" value={cibilForm.dateOfBirth} onChange={setCF('dateOfBirth')} />
+                      </Field>
+                      <Field label="Pincode">
+                        <Input value={cibilForm.pincode} onChange={setCF('pincode')} placeholder="400001" />
+                      </Field>
+                      <div className="sm:col-span-2">
+                        <Field label="Address">
+                          <textarea
+                            value={cibilForm.address}
+                            onChange={setCF('address')}
+                            rows={2}
+                            placeholder="Full residential address"
+                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+                          />
+                        </Field>
+                      </div>
+                    </div>
+
+                    {/* Consent notice */}
+                    <div className="flex items-start gap-2 bg-green-50 border border-green-200 rounded-lg px-3 py-2.5">
+                      <CheckCircle className="h-3.5 w-3.5 text-green-600 flex-shrink-0 mt-0.5" />
+                      <p className="text-xs text-green-700">
+                        By running this check you confirm the customer has given explicit written/verbal consent for a credit bureau inquiry.
+                      </p>
+                    </div>
+
+                    {cibilError && (
+                      <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2.5">
+                        <AlertCircle className="h-3.5 w-3.5 text-red-600 flex-shrink-0" />
+                        <p className="text-xs text-red-700">{cibilError}</p>
+                      </div>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={handleCibilCheck}
+                      disabled={cibilChecking}
+                      className="flex items-center gap-2 px-5 py-2.5 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 rounded-xl transition-colors shadow-sm"
+                    >
+                      {cibilChecking
+                        ? <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                        : <ShieldCheck className="h-4 w-4" />}
+                      {cibilChecking ? 'Checking…' : 'Run CIBIL Check'}
+                    </button>
+                  </>
+                )}
+
+                {/* ── Result panel ── */}
+                {cibilResult && (() => {
+                  const cibilData  = cibilResult?.data;
+                  const report     = cibilData?.CIBILReport;
+                  const creditData = report?.consumerCreditData?.[0];
+                  const scores     = creditData?.scores || [];
+                  const acctSumm   = report?.consumerSummaryData?.accountSummary || {};
+                  const inqSumm    = report?.consumerSummaryData?.inquirySummary  || {};
+                  const pdfUrl     = cibilData?.CIBILPDF;
+                  const scoreObj   = scores[0];
+                  const scoreVal   = scoreObj ? parseInt(scoreObj.score, 10) : null;
+                  const reportName = creditData?.names?.[0]?.name || '';
+
+                  const scoreBand = scoreVal === null ? null
+                    : scoreVal >= 800 ? { label: 'Excellent', cls: 'bg-emerald-100 text-emerald-700 border-emerald-200' }
+                    : scoreVal >= 750 ? { label: 'Very Good', cls: 'bg-emerald-100 text-emerald-700 border-emerald-200' }
+                    : scoreVal >= 700 ? { label: 'Good',      cls: 'bg-teal-100   text-teal-700   border-teal-200'    }
+                    : scoreVal >= 650 ? { label: 'Fair',      cls: 'bg-amber-100  text-amber-700  border-amber-200'   }
+                    :                  { label: 'Poor',       cls: 'bg-red-100    text-red-700    border-red-200'     };
+
+                  return (
+                    <div className="space-y-4">
+
+                      {/* Score banner */}
+                      <div className="flex items-center justify-between bg-white border-2 border-indigo-200 rounded-2xl px-6 py-5 shadow-sm">
+                        <div>
+                          <p className="text-xs text-gray-500 font-semibold uppercase tracking-wider">CIBIL Score</p>
+                          <p className={`text-5xl font-black mt-1 ${
+                            scoreVal === null ? 'text-gray-400'
+                              : scoreVal >= 700 ? 'text-emerald-600'
+                              : scoreVal >= 600 ? 'text-amber-600'
+                              : 'text-red-600'
+                          }`}>
+                            {scoreVal !== null ? scoreVal : '—'}
+                          </p>
+                          {reportName && <p className="text-xs text-gray-400 mt-1">{reportName}</p>}
+                        </div>
+                        <div className="text-right space-y-2">
+                          {scoreBand && (
+                            <span className={`inline-block text-sm font-bold px-4 py-2 rounded-full border ${scoreBand.cls}`}>
+                              {scoreBand.label}
+                            </span>
+                          )}
+                          {scoreObj?.scoreName && (
+                            <p className="text-xs text-gray-400">{scoreObj.scoreName}</p>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Summary grid */}
+                      {(Object.keys(acctSumm).length > 0 || Object.keys(inqSumm).length > 0) && (
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                          {[
+                            { label: 'Total Accounts',   val: acctSumm.totalAccounts },
+                            { label: 'Overdue Accounts', val: acctSumm.overdueAccounts, warn: acctSumm.overdueAccounts > 0 },
+                            { label: 'Current Balance',  val: acctSumm.currentBalance  != null ? `₹${acctSumm.currentBalance.toLocaleString('en-IN')}` : null },
+                            { label: 'Overdue Balance',  val: acctSumm.overdueBalance  != null ? `₹${acctSumm.overdueBalance.toLocaleString('en-IN')}` : null, warn: acctSumm.overdueBalance > 0 },
+                            { label: 'Enquiries (30d)',  val: inqSumm.inquiryPast30Days },
+                            { label: 'Enquiries (12m)',  val: inqSumm.inquiryPast12Months },
+                            { label: 'Total Enquiries',  val: inqSumm.totalInquiry },
+                            { label: 'Oldest Account',   val: acctSumm.oldestDateOpened },
+                          ].filter(x => x.val != null).map(({ label, val, warn }) => (
+                            <div key={label} className={`rounded-xl p-3 border ${
+                              warn ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-gray-100'
+                            }`}>
+                              <p className="text-xs text-gray-400">{label}</p>
+                              <p className={`text-sm font-bold mt-0.5 ${warn ? 'text-red-700' : 'text-gray-700'}`}>{val}</p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* PDF download */}
+                      {pdfUrl && (
+                        <a
+                          href={pdfUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-xl hover:bg-indigo-100 transition-colors"
+                        >
+                          <FileText className="h-4 w-4" /> Download Full PDF Report
+                        </a>
+                      )}
+                    </div>
+                  );
+                })()}
+
               </div>
             )}
 
