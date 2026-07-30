@@ -152,9 +152,12 @@ const NotificationPanel = ({ socket, onLeadLoaded }) => {
                 {lead.name?.charAt(0)?.toUpperCase() || '?'}
               </div>
               <div className="min-w-0">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <p className="font-bold text-gray-800 truncate">{lead.name || '—'}</p>
                   <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse flex-shrink-0" />
+                  {lead.source === 'meta' && (
+                    <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-[#1877F2] text-white leading-none">f Meta Ads</span>
+                  )}
                 </div>
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-0.5">
                   <span className="text-xs text-gray-500 font-mono">{lead.mobile}</span>

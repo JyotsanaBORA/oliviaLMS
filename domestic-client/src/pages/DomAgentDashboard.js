@@ -532,9 +532,14 @@ const DomAgentDashboard = () => {
                             className={`cursor-pointer transition-colors group border-l-4 ${isWebsite ? 'border-l-teal-400 hover:bg-teal-50/30' : 'border-l-violet-400 hover:bg-violet-50/30'}`}
                             onClick={() => isWebsite ? handleOpenLead(lead) : handleOpenImportedLead(lead)}>
                             <td className="pl-6 pr-3 py-3.5">
-                              {isWebsite
-                                ? <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-teal-500 text-white">🌐 Meta</span>
-                                : <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-violet-100 text-violet-700 border border-violet-200">📊 Imported</span>}
+                              <div className="flex flex-col items-start gap-1">
+                                {isWebsite
+                                  ? <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-teal-500 text-white">🌐 Meta</span>
+                                  : <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-violet-100 text-violet-700 border border-violet-200">📊 Imported</span>}
+                                {isWebsite && lead.source === 'meta' && (
+                                  <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-[#1877F2] text-white">f Meta Ads</span>
+                                )}
+                              </div>
                             </td>
                             <td className="px-3 py-3.5">
                               <div className="flex items-center gap-2">
@@ -670,9 +675,14 @@ const DomAgentDashboard = () => {
                           className={`cursor-pointer transition-colors group border-l-4 ${isWebsite ? 'border-l-teal-400 hover:bg-teal-50/30' : 'border-l-violet-400 hover:bg-violet-50/30'}`}
                           onClick={() => isWebsite ? handleOpenLead(lead) : handleOpenImportedLead(lead)}>
                           <td className="pl-6 pr-3 py-3.5">
-                            {isWebsite
-                              ? <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-teal-500 text-white">🌐 Meta</span>
-                              : <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-violet-100 text-violet-700 border border-violet-200">📊 Imported</span>}
+                            <div className="flex flex-col items-start gap-1">
+                              {isWebsite
+                                ? <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-teal-500 text-white">🌐 Meta</span>
+                                : <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-violet-100 text-violet-700 border border-violet-200">📊 Imported</span>}
+                              {isWebsite && lead.source === 'meta' && (
+                                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-[#1877F2] text-white">f Meta Ads</span>
+                              )}
+                            </div>
                           </td>
                           <td className="px-3 py-3.5">
                             {isWebsite && lead.domLead?.leadRef

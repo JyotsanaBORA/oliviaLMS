@@ -2,12 +2,20 @@
 const mongoose = require('mongoose');
 
 /**
- * DomWebsiteLead — raw lead that arrives from the mycashbridge website.
+ * DomWebsiteLead — raw lead from website form or Meta Lead Ads.
  * An agent loads it, then fills a full DomLead while on the call.
  */
 const domWebsiteLeadSchema = new mongoose.Schema(
   {
-    // Data from website form
+    // Lead origin: 'website' | 'meta' | 'manual'
+    source: {
+      type: String,
+      enum: ['website', 'meta', 'manual'],
+      default: 'website',
+      index: true,
+    },
+
+    // Data from website form or Meta Lead Ads
     name:           { type: String, trim: true, maxlength: 100 },
     mobile:         { type: String, trim: true, maxlength: 20, index: true },
     city:           { type: String, trim: true, maxlength: 100 },
@@ -20,6 +28,19 @@ const domWebsiteLeadSchema = new mongoose.Schema(
     utmMedium:      { type: String, trim: true, maxlength: 100 },
     utmCampaign:    { type: String, trim: true, maxlength: 100 },
     ip:             { type: String, trim: true, maxlength: 50 },
+
+    // Custom / unrecognised Meta form fields appended here
+    customNotes:    { type: String, trim: true, maxlength: 2000 },
+
+    // ── Meta Lead Ads specific ────────────────────────────────────────────
+    // Unique Meta leadgen_id — prevents duplicate saves
+    metaLeadgenId:  { type: String, trim: true, maxlength: 30, default: null, index: true, sparse: true },
+
+    // Every raw field Meta sent, verbatim — never lose custom form questions
+    parsedFields:   { type: mongoose.Schema.Types.Mixed, default: null },
+
+    // Full Meta audit trail (page, form, ad, campaign info)
+    metaRawPayload: { type: mongoose.Schema.Types.Mixed, default: null },
 
     // Processing state
     // new       → lead arrived, no agent has loaded it

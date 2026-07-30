@@ -1263,7 +1263,12 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                               : <span className="text-gray-300 text-xs">—</span>}
                           </td>
                           <td className="px-3 py-3.5">
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-teal-100 text-teal-700 border border-teal-200">🌐 Website</span>
+                            <div className="flex flex-col items-start gap-1">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-teal-100 text-teal-700 border border-teal-200">🌐 Website</span>
+                              {lead.source === 'meta' && (
+                                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-[#1877F2] text-white">f Meta Ads</span>
+                              )}
+                            </div>
                           </td>
                           <td className="px-3 py-3.5"><StatusBadge status={lead.status} /></td>
                           <td className="px-3 py-3.5 text-gray-600 text-sm">{lead.loadedBy?.name || <span className="text-orange-500 text-xs font-medium">Unclaimed</span>}</td>
@@ -3049,9 +3054,14 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                         return (
                           <tr key={l._id} className={`transition-colors border-l-4 ${isWebsite ? 'hover:bg-teal-50/30 border-l-teal-400' : 'hover:bg-violet-50/30 border-l-violet-400'}`}>
                             <td className="pl-6 pr-3 py-3.5">
-                              {isWebsite
-                                ? <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-teal-500 text-white">🌐 Meta</span>
-                                : <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-violet-100 text-violet-700 border border-violet-200">📊 Imported</span>}
+                              <div className="flex flex-col items-start gap-1">
+                                {isWebsite
+                                  ? <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-teal-500 text-white">🌐 Meta</span>
+                                  : <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-violet-100 text-violet-700 border border-violet-200">📊 Imported</span>}
+                                {isWebsite && l.source === 'meta' && (
+                                  <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-[#1877F2] text-white">f Meta Ads</span>
+                                )}
+                              </div>
                             </td>
                             <td className="px-3 py-3.5">
                               <p className="font-semibold text-gray-800">{l.name || '—'}</p>

@@ -91,7 +91,11 @@ const intakeLimiter = rateLimit({
 });
 
 // ── Body parsing ───────────────────────────────────────────────────────────
-app.use(express.json({ limit: '1mb' }));
+// Capture raw body buffer so the Meta signature middleware can validate HMAC
+app.use(express.json({
+  limit: '1mb',
+  verify: (req, _res, buf) => { req.rawBody = buf; },
+}));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 app.use(mongoSanitize()); // prevent NoSQL injection
 
@@ -130,6 +134,15 @@ const uploadRoutes        = require('./routes/uploads');
 const adminRoutes         = require('./routes/admin');
 const importLeadsRoutes   = require('./routes/importLeads');
 const cibilRoutes         = require('./routes/cibil');
+const domMetaWebhookRoutes = require('./routes/domMetaWebhook');
+
+// Generous rate limit for Meta webhook (Meta sends batch events)
+const metaWebhookLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 app.use('/domestic-api/auth',           authLimiter, authRoutes);
 app.use('/domestic-api/intake',         intakeLimiter, intakeRoutes);
@@ -140,6 +153,7 @@ app.use('/domestic-api/uploads',        uploadRoutes);
 app.use('/domestic-api/admin',          adminRoutes);
 app.use('/domestic-api/import-leads',   importLeadsRoutes);
 app.use('/domestic-api/cibil',          cibilRoutes);
+app.use('/domestic-api/webhook/meta',   metaWebhookLimiter, domMetaWebhookRoutes);
 
 // Health check
 app.get('/domestic-api/health', (req, res) => {
