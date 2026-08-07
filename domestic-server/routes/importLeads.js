@@ -360,8 +360,8 @@ router.get('/', protect, async (req, res) => {
     const [data, total] = await Promise.all([
       DomImportedLead.find(filter)
         .populate('assignedTo', 'name email')
-        // Populate the worked DomLead to expose documents + callOutcome for doc-status badges
-        .populate('domLeadId', 'documents callOutcome status name')
+        // Populate the worked DomLead to expose documents + callOutcome + cibilScoreRange for badges/filters
+        .populate('domLeadId', 'documents callOutcome status name cibilScoreRange')
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)

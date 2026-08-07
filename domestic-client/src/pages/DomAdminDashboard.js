@@ -36,6 +36,17 @@ const getDocStatus = (docs = []) => {
   return                                    { status: 'partial', count: docs.length, label: `Partial (${docs.length})`, cls: 'bg-amber-100  text-amber-700  border-amber-200'  };
 };
 
+/** Maps a numeric cibilScore string (e.g. "745") to a cibilScoreRange enum key */
+const cibilScoreToRange = (score) => {
+  const n = parseInt(score, 10);
+  if (!n || isNaN(n)) return 'unknown';
+  if (n < 600) return 'below_600';
+  if (n < 700) return '600_699';
+  if (n < 750) return '700_749';
+  if (n <= 800) return '750_800';
+  return 'above_800';
+};
+
 // ── Lead Source colour system ── applied consistently everywhere
 const SOURCE_META = {
   website:  { label: 'Website',  emoji: '🌐', badge: 'bg-teal-100 text-teal-700 border border-teal-300',     dot: 'bg-teal-500',   borderL: 'border-l-4 border-l-teal-500',   rowHover: 'hover:bg-teal-50/40'   },
@@ -67,6 +78,7 @@ const STATUS_META = {
 const OUTCOME_META = {
   interested:     { label: 'Interested',     cls: 'bg-emerald-100 text-emerald-700' },
   not_interested: { label: 'Not Interested', cls: 'bg-red-100 text-red-700' },
+  not_eligible:   { label: 'Not Eligible',   cls: 'bg-rose-100 text-rose-700' },
   callback:       { label: 'Callback',       cls: 'bg-amber-100 text-amber-700' },
   not_reachable:  { label: 'Not Reachable',  cls: 'bg-orange-100 text-orange-700' },
   wrong_number:   { label: 'Wrong Number',   cls: 'bg-gray-100 text-gray-600' },
@@ -152,6 +164,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
   const [assignedSourceType,      setAssignedSourceType]      = useState('all');
   const [assignedDocFilter,       setAssignedDocFilter]       = useState('all'); // 'all'|'none'|'partial'|'full'
   const [assignedAgentFilter,     setAssignedAgentFilter]     = useState(''); // '' = all agents
+  const [assignedCibilFilter,     setAssignedCibilFilter]     = useState(''); // '' = all CIBIL ranges
 
   // Date filters for Disposition Allocation tab
   const [domDateFrom,  setDomDateFrom]  = useState('');
@@ -159,6 +172,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
   const [domDocFilter, setDomDocFilter] = useState('all'); // 'all'|'none'|'partial'|'full'
   const [domOutcomeFilter, setDomOutcomeFilter] = useState(''); // '' = all outcomes
   const [domAgentFilter,  setDomAgentFilter]  = useState(''); // '' = all agents
+  const [domCibilFilter,  setDomCibilFilter]  = useState(''); // '' = all CIBIL ranges
 
   // Bulk select — website leads
   const [webSelectedIds,  setWebSelectedIds]  = useState(new Set());
@@ -193,7 +207,6 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
   const [agentActivity,         setAgentActivity]         = useState({ workedLeads: [], poolLeads: [] });
   const [agentActivityLoading,  setAgentActivityLoading]  = useState(false);
   const [agentLeadDetail,       setAgentLeadDetail]       = useState(null);
-  const [agentSearch,           setAgentSearch]           = useState('');
   const [agentsDateFrom,        setAgentsDateFrom]        = useState('');
   const [agentsDateTo,          setAgentsDateTo]          = useState('');
   // Agent Leads Explorer — per-agent filterable leads panel
@@ -225,8 +238,10 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
   const domDocFilterRef    = useRef('all');
   const domOutcomeRef      = useRef('');
   const domAgentRef        = useRef('');
+  const domCibilRef        = useRef('');
   const assignedDocFilterRef  = useRef('all');
   const assignedAgentRef     = useRef('');
+  const assignedCibilRef     = useRef('');
   const agentsDateFromRef    = useRef('');
   const agentsDateToRef      = useRef('');
 
@@ -281,16 +296,17 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
     setDomLeadsLoading(true);
     try {
       // When any filter is active, fetch all results so pagination doesn't hide matches
-      const anyFilter = domSearchRef.current.trim() || domStatusRef.current || domProductRef.current || domDateFromRef.current || domDateToRef.current || domDocFilterRef.current !== 'all' || domOutcomeRef.current || domAgentRef.current;
+      const anyFilter = domSearchRef.current.trim() || domStatusRef.current || domProductRef.current || domDateFromRef.current || domDateToRef.current || domDocFilterRef.current !== 'all' || domOutcomeRef.current || domAgentRef.current || domCibilRef.current;
       const limit = anyFilter ? 500 : 30;
       const q = new URLSearchParams({ page, limit });
-      if (domSearchRef.current.trim())   q.set('search',      domSearchRef.current.trim());
-      if (domStatusRef.current)          q.set('status',      domStatusRef.current);
-      if (domProductRef.current)         q.set('productType', domProductRef.current);
-      if (domDateFromRef.current)        q.set('dateFrom',    domDateFromRef.current);
-      if (domDateToRef.current)          q.set('dateTo',      domDateToRef.current);
-      if (domOutcomeRef.current)         q.set('callOutcome', domOutcomeRef.current);
-      if (domAgentRef.current)           q.set('agentId',     domAgentRef.current);
+      if (domSearchRef.current.trim())   q.set('search',           domSearchRef.current.trim());
+      if (domStatusRef.current)          q.set('status',           domStatusRef.current);
+      if (domProductRef.current)         q.set('productType',      domProductRef.current);
+      if (domDateFromRef.current)        q.set('dateFrom',         domDateFromRef.current);
+      if (domDateToRef.current)          q.set('dateTo',           domDateToRef.current);
+      if (domOutcomeRef.current)         q.set('callOutcome',      domOutcomeRef.current);
+      if (domAgentRef.current)           q.set('agentId',          domAgentRef.current);
+      if (domCibilRef.current)           q.set('cibilScoreRange',  domCibilRef.current);
       const res = await api.get(`/domestic-api/leads?${q}`);
       setDomLeads(res.data?.data || []);
       setDomLeadsTotal(res.data?.pagination?.total || 0);
@@ -923,8 +939,8 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
       </aside>
 
       {/* ════ CONTENT ════ */}
-      <div className="flex-1 overflow-y-auto min-w-0">
-        <main className="px-6 py-6 space-y-6">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden min-w-0 scrollbar-app">
+        <main className="px-4 sm:px-6 xl:px-8 py-4 xl:py-6 space-y-4 xl:space-y-6 min-w-0">
 
         {/* OVERVIEW */}
         {tab === 'overview' && stats && (
@@ -997,13 +1013,13 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
               </div>
             )}
 
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 xl:gap-4">
               <KpiCard icon={<Globe className="h-5 w-5" />}      label="Total Website Leads"  value={stats.websiteLeads.total}     color="blue"   />
               <KpiCard icon={<AlertCircle className="h-5 w-5"/>} label="New (Unclaimed)"       value={stats.websiteLeads.new}       color="orange" />
               <KpiCard icon={<CheckCircle2 className="h-5 w-5"/>}label="Completed"             value={stats.websiteLeads.completed} color="green"  />
               <KpiCard icon={<TrendingUp className="h-5 w-5" />} label="Conversion Rate"       value={`${stats.conversionRate}%`}  color="violet" />
             </div>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 xl:gap-4">
               <KpiCard icon={<Calendar className="h-5 w-5" />}  label="Today's Leads"    value={stats.websiteLeads.today}   color="sky"    />
               <KpiCard icon={<Clock className="h-5 w-5" />}     label="Loaded by Agents" value={stats.websiteLeads.loaded}  color="amber"  />
               <KpiCard icon={<Briefcase className="h-5 w-5" />} label="Worked Leads"     value={stats.domLeads.total}       color="indigo" />
@@ -1354,6 +1370,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                 <option value="none">— Not Called Yet</option>
                 <option value="interested">✅ Interested</option>
                 <option value="not_interested">❌ Not Interested</option>
+                <option value="not_eligible">🚫 Not Eligible</option>
                 <option value="callback">📞 Callback</option>
                 <option value="not_reachable">📵 Not Reachable</option>
                 <option value="not_answering">🔕 Not Answering</option>
@@ -1395,15 +1412,26 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                   <option value="demat">Demat Account</option>
                 </optgroup>
               </select>
+              {/* CIBIL Score Range filter */}
+              <select value={domCibilFilter} onChange={(e) => { setDomCibilFilter(e.target.value); domCibilRef.current = e.target.value; fetchDomLeads(1); }}
+                className="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white text-gray-700">
+                <option value="">📊 All CIBIL</option>
+                <option value="below_600">{'< 600 (Poor)'}</option>
+                <option value="600_699">600–699 (Fair)</option>
+                <option value="700_749">700–749 (Good)</option>
+                <option value="750_800">750–800 (Very Good)</option>
+                <option value="above_800">{'>  800 (Excellent)'}</option>
+                <option value="unknown">Unknown</option>
+              </select>
               <button onClick={() => fetchDomLeads(1)}
                 className="flex items-center gap-2 text-sm bg-[#065F36] text-white px-4 py-2 rounded-xl hover:bg-[#054A2E] font-semibold">
                 <Search className="h-4 w-4" /> Search
               </button>
               {/* Clear all filters */}
               <button
-                onClick={() => { setDomSearch(''); domSearchRef.current=''; setDomStatusFilter(''); domStatusRef.current=''; setDomProductFilter(''); domProductRef.current=''; setDomDateFrom(''); domDateFromRef.current=''; setDomDateTo(''); domDateToRef.current=''; setDomOutcomeFilter(''); domOutcomeRef.current=''; setDomDocFilter('all'); domDocFilterRef.current='all'; setDomAgentFilter(''); domAgentRef.current=''; fetchDomLeads(1); }}
+                onClick={() => { setDomSearch(''); domSearchRef.current=''; setDomStatusFilter(''); domStatusRef.current=''; setDomProductFilter(''); domProductRef.current=''; setDomDateFrom(''); domDateFromRef.current=''; setDomDateTo(''); domDateToRef.current=''; setDomOutcomeFilter(''); domOutcomeRef.current=''; setDomDocFilter('all'); domDocFilterRef.current='all'; setDomAgentFilter(''); domAgentRef.current=''; setDomCibilFilter(''); domCibilRef.current=''; fetchDomLeads(1); }}
                 className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border transition-all ${
-                  (domSearch || domStatusFilter || domProductFilter || domDateFrom || domDateTo || domOutcomeFilter || domDocFilter !== 'all' || domAgentFilter)
+                  (domSearch || domStatusFilter || domProductFilter || domDateFrom || domDateTo || domOutcomeFilter || domDocFilter !== 'all' || domAgentFilter || domCibilFilter)
                     ? 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100'
                     : 'bg-gray-50 text-gray-300 border-gray-200 cursor-default'
                 }`}
@@ -1466,7 +1494,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
             </div>
 
             {/* Results count bar */}
-            {(domSearch || domStatusFilter || domProductFilter || domDateFrom || domDateTo || domOutcomeFilter || domAgentFilter || domDocFilter !== 'all') && !domLeadsLoading && (() => {
+            {(domSearch || domStatusFilter || domProductFilter || domDateFrom || domDateTo || domOutcomeFilter || domAgentFilter || domDocFilter !== 'all' || domCibilFilter) && !domLeadsLoading && (() => {
               const c = domLeads.filter(dl => domDocFilter === 'all' || getDocStatus(dl.documents).status === domDocFilter).length;
               return c > 0 ? (
                 <div className="px-5 py-2.5 bg-[#E8FFF5] border-b border-[#D1FAE5] flex items-center gap-2">
@@ -1610,10 +1638,11 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
 
         {/* AGENTS */}
         {tab === 'agents' && (
-          <div className={selectedAgent ? 'flex gap-5 h-[calc(100vh-170px)]' : 'space-y-5'}>
+          <div className="space-y-5">
 
-            {/* ── LEFT: Rankings list ── */}
-            <div className={`flex flex-col gap-5 overflow-y-auto ${selectedAgent ? 'w-80 flex-shrink-0' : 'flex-1'}`}>
+            {/* ── When no agent is selected: show rankings list ── */}
+            {!selectedAgent && (
+              <div className="flex flex-col gap-5">
 
               {/* Top 3 hero cards — only when no agent selected */}
               {!selectedAgent && !agentsLoading && agents.filter(a => a.isActive).length > 0 && (() => {
@@ -1687,32 +1716,14 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                       <p className="text-xs text-gray-400">
                         {(agentsDateFrom || agentsDateTo)
                           ? `Stats for ${agentsDateFrom || '…'} – ${agentsDateTo || '…'}`
-                          : 'Search, inspect, and export agent activity'}
+                          : 'Filter by date or search by name / email'}
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {/* Search agents */}
-                    <div className="relative">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 pointer-events-none" />
-                      <input
-                        type="text"
-                        placeholder="Search agent name or email…"
-                        value={agentSearch}
-                        onChange={e => setAgentSearch(e.target.value)}
-                        className="pl-9 pr-8 py-2 text-sm border border-gray-200 rounded-xl bg-white w-52 focus:outline-none focus:ring-2 focus:ring-[#065F36]/20 focus:border-[#065F36]"
-                      />
-                      {agentSearch && (
-                        <button onClick={() => setAgentSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500">
-                          <X className="h-3.5 w-3.5" />
-                        </button>
-                      )}
-                    </div>
-                    {/* Export agents CSV */}
+                  <div className="flex items-center gap-2">
                     <button
                       onClick={() => {
                         const filtered = [...agents]
-                          .filter(a => !agentSearch || a.name?.toLowerCase().includes(agentSearch.toLowerCase()) || a.email?.toLowerCase().includes(agentSearch.toLowerCase()))
                           .sort((a, b) => getAgentTier(b).score - getAgentTier(a).score);
                         const headers = ['Rank', 'Name', 'Email', 'Status', 'Active', 'Last Login',
                           'Website Leads Loaded', 'Website Leads Completed',
@@ -1746,7 +1757,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                   </div>
                 </div>
 
-                {/* Disposition date filter row */}
+                {/* Date filter — single filter bar */}
                 <div className="px-5 py-3 bg-gray-50 border-b border-gray-100 flex items-center gap-2 flex-wrap">
                   <Calendar className="h-3.5 w-3.5 text-gray-400 flex-shrink-0" />
                   <span className="text-xs font-semibold text-gray-500">Disposition date:</span>
@@ -1782,13 +1793,11 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                   <div className="divide-y divide-gray-50">
                     {(() => {
                       const filtered = [...agents]
-                        .filter(a => !agentSearch || a.name?.toLowerCase().includes(agentSearch.toLowerCase()) || a.email?.toLowerCase().includes(agentSearch.toLowerCase()))
                         .sort((a, b) => getAgentTier(b).score - getAgentTier(a).score);
                       if (filtered.length === 0) return (
                         <div className="flex flex-col items-center justify-center py-12 gap-2 text-gray-400">
                           <Search className="h-8 w-8 text-gray-200" />
-                          <p className="text-sm font-medium">No agents match "{agentSearch}"</p>
-                          <button onClick={() => setAgentSearch('')} className="text-xs text-[#065F36] hover:underline">Clear search</button>
+                          <p className="text-sm font-medium">No agents found</p>
                         </div>
                       );
                       return filtered.map((a, idx) => {
@@ -1852,27 +1861,24 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                                 )}
                               </div>
                               <p className="text-xs text-gray-400 mt-0.5 truncate">{a.email}</p>
-                              {!selectedAgent && (
-                                <div className="flex items-center gap-2 mt-2">
-                                  <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
-                                    <div className={`h-full rounded-full transition-all duration-1000 ${
-                                      conv >= 65 ? 'bg-gradient-to-r from-amber-400 to-orange-500' :
-                                      conv >= 45 ? 'bg-gradient-to-r from-violet-500 to-purple-500' :
-                                      conv >= 25 ? 'bg-gradient-to-r from-emerald-500 to-teal-500' :
-                                      'bg-gradient-to-r from-gray-300 to-gray-400'
-                                    }`} style={{ width: `${conv}%` }} />
-                                  </div>
-                                  <span className={`text-xs font-black w-9 text-right ${
-                                    conv >= 65 ? 'text-amber-600' : conv >= 45 ? 'text-violet-600' : conv >= 25 ? 'text-emerald-600' : 'text-gray-400'
-                                  }`}>{conv}%</span>
-                                  <span className="text-xs text-gray-400">conv.</span>
+                              <div className="flex items-center gap-2 mt-2">
+                                <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                                  <div className={`h-full rounded-full transition-all duration-1000 ${
+                                    conv >= 65 ? 'bg-gradient-to-r from-amber-400 to-orange-500' :
+                                    conv >= 45 ? 'bg-gradient-to-r from-violet-500 to-purple-500' :
+                                    conv >= 25 ? 'bg-gradient-to-r from-emerald-500 to-teal-500' :
+                                    'bg-gradient-to-r from-gray-300 to-gray-400'
+                                  }`} style={{ width: `${conv}%` }} />
                                 </div>
-                              )}
+                                <span className={`text-xs font-black w-9 text-right ${
+                                  conv >= 65 ? 'text-amber-600' : conv >= 45 ? 'text-violet-600' : conv >= 25 ? 'text-emerald-600' : 'text-gray-400'
+                                }`}>{conv}%</span>
+                                <span className="text-xs text-gray-400">conv.</span>
+                              </div>
                             </div>
 
-                            {/* Stats row — full when not selected */}
-                            {!selectedAgent && (
-                              <div className="hidden sm:flex items-center gap-2 flex-shrink-0 flex-wrap">
+                            {/* Stats row */}
+                            <div className="hidden sm:flex items-center gap-2 flex-shrink-0 flex-wrap">
                                 <div className="text-center bg-blue-50 border border-blue-100 rounded-xl px-3 py-2">
                                   <p className="text-lg font-black text-blue-600">{a.leadsLoaded}</p>
                                   <p className="text-[10px] text-gray-400">Website</p>
@@ -1894,7 +1900,6 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                                   <p className="text-[10px] text-gray-400">Conv.</p>
                                 </div>
                               </div>
-                            )}
                           </div>
                         </div>
                       );
@@ -1903,12 +1908,17 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                 </div>
               )}
             </div>
-          </div>
+              </div>
+            )}
 
-            {/* ── RIGHT: Agent Activity Panel ── */}
+            {/* ── Agent full-page detail (replaces list when agent selected) ── */}
             {selectedAgent && (
-              <div className="flex-1 overflow-y-auto space-y-5">
-                {/* Agent header card */}
+              <div className="space-y-5">
+                {/* Back button — top left breadcrumb */}
+                <button onClick={() => { setSelectedAgent(null); setAgentActivity({ workedLeads: [], poolLeads: [] }); }}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 text-xs font-bold transition-colors shadow-sm">
+                  <ChevronLeft className="h-4 w-4" /> Back to Agents
+                </button>
                 <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-4">
@@ -1948,10 +1958,6 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                         className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold shadow-sm transition-colors">
                         <Send className="h-3.5 w-3.5" /> Transfer Leads
                       </button>
-                      <button onClick={() => { setSelectedAgent(null); setAgentActivity({ workedLeads: [], poolLeads: [] }); }}
-                        className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100 transition-colors">
-                        <X className="h-5 w-5" />
-                      </button>
                     </div>
                   </div>
 
@@ -1985,6 +1991,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                       const OUTCOME_CFG2 = {
                         interested:     { label: 'Interested',     cls: 'bg-emerald-100 text-emerald-700 border-emerald-200', dot: 'bg-emerald-500' },
                         not_interested: { label: 'Not Interested', cls: 'bg-red-100 text-red-700 border-red-200',             dot: 'bg-red-500' },
+                        not_eligible:   { label: 'Not Eligible',   cls: 'bg-rose-100 text-rose-700 border-rose-200',           dot: 'bg-rose-500' },
                         callback:       { label: 'Callback',       cls: 'bg-amber-100 text-amber-700 border-amber-200',       dot: 'bg-amber-500' },
                         not_reachable:  { label: 'Not Reachable',  cls: 'bg-orange-100 text-orange-700 border-orange-200',    dot: 'bg-orange-500' },
                         not_answering:  { label: 'Not Answering',  cls: 'bg-slate-100 text-slate-700 border-slate-200',       dot: 'bg-slate-400' },
@@ -2087,6 +2094,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                       const OUTCOME_CLR = {
                         interested:     'bg-emerald-100 text-emerald-700 border-emerald-200',
                         not_interested: 'bg-red-100 text-red-700 border-red-200',
+                        not_eligible:   'bg-rose-100 text-rose-700 border-rose-200',
                         callback:       'bg-amber-100 text-amber-700 border-amber-200',
                         not_reachable:  'bg-orange-100 text-orange-700 border-orange-200',
                         not_answering:  'bg-slate-100 text-slate-700 border-slate-200',
@@ -2094,7 +2102,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                         other:          'bg-purple-100 text-purple-700 border-purple-200',
                       };
                       const OUTCOME_LBL = {
-                        interested:'Interested', not_interested:'Not Interested', callback:'Callback',
+                        interested:'Interested', not_interested:'Not Interested', not_eligible:'Not Eligible', callback:'Callback',
                         not_reachable:'Not Reachable', not_answering:'Not Answering',
                         wrong_number:'Wrong Number', other:'Other',
                       };
@@ -2161,6 +2169,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                               <option value="">🎯 All Dispositions</option>
                               <option value="interested">✅ Interested</option>
                               <option value="not_interested">❌ Not Interested</option>
+                              <option value="not_eligible">🚫 Not Eligible</option>
                               <option value="callback">📞 Callback</option>
                               <option value="not_reachable">📵 Not Reachable</option>
                               <option value="not_answering">🔕 Not Answering</option>
@@ -2355,6 +2364,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
               const OUTCOME_CFG = {
                 interested:     { label: 'Interested',     cls: 'bg-emerald-100 text-emerald-700 border-emerald-300', icon: '✅' },
                 not_interested: { label: 'Not Interested', cls: 'bg-red-100 text-red-700 border-red-300',             icon: '❌' },
+                not_eligible:   { label: 'Not Eligible',   cls: 'bg-rose-100 text-rose-700 border-rose-300',           icon: '🚫' },
                 callback:       { label: 'Callback',       cls: 'bg-amber-100 text-amber-700 border-amber-300',       icon: '📞' },
                 not_reachable:  { label: 'Not Reachable',  cls: 'bg-orange-100 text-orange-700 border-orange-300',    icon: '📵' },
                 not_answering:  { label: 'Not Answering',  cls: 'bg-slate-100 text-slate-700 border-slate-300',       icon: '🔕' },
@@ -2777,6 +2787,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                           in_progress:    { label: 'In Progress',    cls: 'bg-blue-100 text-blue-700 border-blue-200' },
                           interested:     { label: 'Interested',     cls: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
                           not_interested: { label: 'Not Interested', cls: 'bg-red-100 text-red-700 border-red-200' },
+                          not_eligible:   { label: 'Not Eligible',   cls: 'bg-rose-100 text-rose-700 border-rose-200' },
                           closed:         { label: 'Closed',         cls: 'bg-gray-100 text-gray-600 border-gray-200' },
                         };
                         const wsInfo = WS_META[l.workStatus || 'new'] || WS_META.new;
@@ -2835,6 +2846,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                               }`}>
                                 {l.callOutcome === 'interested'     ? '✅ Interested' :
                                  l.callOutcome === 'not_interested' ? '❌ Not Interested' :
+                                 l.callOutcome === 'not_eligible'   ? '🚫 Not Eligible' :
                                  l.callOutcome === 'callback'       ? '📞 Callback' :
                                  l.callOutcome === 'not_reachable'  ? '📵 Not Reachable' :
                                  l.callOutcome === 'not_answering'  ? '🔕 Not Answering' :
@@ -3629,6 +3641,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                     className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white">
                     <option value="all">All Dispositions</option>
                     <option value="not_interested">❌ Not Interested</option>
+                    <option value="not_eligible">🚫 Not Eligible</option>
                     <option value="not_reachable">📵 Not Reachable</option>
                     <option value="callback">📞 Callback</option>
                     <option value="not_answering">🔕 Not Answering</option>
@@ -3769,6 +3782,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                           const isSel = btSelected.has(lead._id);
                           const OC = {
                             not_interested: { cls: 'bg-red-100 text-red-700',     lbl: 'Not Interested' },
+                            not_eligible:   { cls: 'bg-rose-100 text-rose-700',    lbl: 'Not Eligible' },
                             not_reachable:  { cls: 'bg-orange-100 text-orange-700', lbl: 'Not Reachable' },
                             callback:       { cls: 'bg-amber-100 text-amber-700',  lbl: 'Callback' },
                             not_answering:  { cls: 'bg-slate-100 text-slate-700',  lbl: 'Not Answering' },

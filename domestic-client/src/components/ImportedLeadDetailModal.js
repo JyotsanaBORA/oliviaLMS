@@ -6,6 +6,7 @@ const WORK_STATUS_META = {
   in_progress:    { label: 'In Progress',    cls: 'bg-blue-100 text-blue-700 border border-blue-200' },
   interested:     { label: 'Interested',     cls: 'bg-emerald-100 text-emerald-700 border border-emerald-200' },
   not_interested: { label: 'Not Interested', cls: 'bg-red-100 text-red-700 border border-red-200' },
+  not_eligible:   { label: 'Not Eligible',   cls: 'bg-rose-100 text-rose-700 border border-rose-200' },
   closed:         { label: 'Closed',         cls: 'bg-gray-100 text-gray-600 border border-gray-200' },
 };
 

@@ -16,6 +16,7 @@ import toast from 'react-hot-toast';
 const OUTCOME_MAP = {
   interested:     { label: 'Interested',     cls: 'bg-emerald-100 text-emerald-700' },
   not_interested: { label: 'Not Interested', cls: 'bg-red-100 text-red-700' },
+  not_eligible:   { label: 'Not Eligible',   cls: 'bg-rose-100 text-rose-700' },
   callback:       { label: 'Callback',       cls: 'bg-amber-100 text-amber-700' },
   not_reachable:  { label: 'Not Reachable',  cls: 'bg-orange-100 text-orange-700' },
   not_answering:  { label: 'Not Answering',  cls: 'bg-slate-100 text-slate-700' },
@@ -45,6 +46,17 @@ const toISTDateStr = (d) => {
   if (!d) return '';
   const ist = new Date(new Date(d).getTime() + IST_MS);
   return ist.toISOString().slice(0, 10);
+};
+
+/** Maps a numeric cibilScore string (e.g. "745") to a range key */
+const cibilScoreToRange = (score) => {
+  const n = parseInt(score, 10);
+  if (!n || isNaN(n)) return 'unknown';
+  if (n < 600) return 'below_600';
+  if (n < 700) return '600_699';
+  if (n < 750) return '700_749';
+  if (n <= 800) return '750_800';
+  return 'above_800';
 };
 
 const DomAgentDashboard = () => {
@@ -84,6 +96,8 @@ const DomAgentDashboard = () => {
   const [dateFilter,         setDateFilter]         = useState(''); // '' = show all dates by default
   const [followupDateFilter, setFollowupDateFilter] = useState(todayIST); // default = today in IST
   const [docFilter,          setDocFilter]          = useState('all'); // 'all'|'none'|'partial'|'full'
+  const [cibilFilter,        setCibilFilter]        = useState(''); // '' = all CIBIL ranges (Assigned to Work + Worked tabs)
+  const [followupCibilFilter,setFollowupCibilFilter]= useState(''); // '' = all CIBIL ranges (Follow-ups tab only)
 
   useEffect(() => {
     const serverUrl = process.env.REACT_APP_DOM_API_URL || 'http://localhost:5009';
@@ -240,15 +254,17 @@ const DomAgentDashboard = () => {
   const filteredToWork = useMemo(() => {
     const q = searchQuery.toLowerCase();
     return toWorkLeads.filter(l => {
-      // Use the date most relevant to when the agent received/loaded the lead
       const d = l._src === 'website'
         ? (l.loadedAt   || l.createdAt)
         : (l.assignedAt || l.createdAt);
-      const dateOk = !dateFilter || (d && toISTDateStr(d) === dateFilter);
+      const dateOk   = !dateFilter  || (d && toISTDateStr(d) === dateFilter);
       const searchOk = !q || (l.name||'').toLowerCase().includes(q) || (l.mobile||'').includes(q) || (l.city||'').toLowerCase().includes(q);
-      return dateOk && searchOk;
+      // CIBIL filter: pool leads use cibilScore (text); website leads have no score — pass through
+      const cibilOk  = !cibilFilter || l._src === 'website' ||
+        cibilScoreToRange(l.cibilScore) === cibilFilter;
+      return dateOk && searchOk && cibilOk;
     });
-  }, [toWorkLeads, dateFilter, searchQuery]);
+  }, [toWorkLeads, dateFilter, searchQuery, cibilFilter]);
 
   const filteredWorked = useMemo(() => {
     const q = searchQuery.toLowerCase();
@@ -262,18 +278,21 @@ const DomAgentDashboard = () => {
       const docList = l._src === 'website' ? (l.domLead?.documents || []) : (l.domLeadId?.documents || []);
       const ds = getDocStatusA(docList);
       const docOk = docFilter === 'all' || ds.status === docFilter;
-      return dateOk && searchOk && docOk;
+      const leadCibil = l._src === 'website' ? (l.domLead?.cibilScoreRange || '') : (l.domLeadId?.cibilScoreRange || '');
+      const cibilOk = !cibilFilter || leadCibil === cibilFilter;
+      return dateOk && searchOk && docOk && cibilOk;
     });
-  }, [workedLeads, dateFilter, searchQuery, docFilter]);
+  }, [workedLeads, dateFilter, searchQuery, docFilter, cibilFilter]);
 
   const filteredFollowups = useMemo(() => {
     const q = searchQuery.toLowerCase();
     return followups.filter(f => {
-      const dateOk = !followupDateFilter || (f.callbackDate && toISTDateStr(f.callbackDate) === followupDateFilter);
+      const dateOk   = !followupDateFilter || (f.callbackDate && toISTDateStr(f.callbackDate) === followupDateFilter);
       const searchOk = !q || (f.name||'').toLowerCase().includes(q) || (f.mobile||'').includes(q);
-      return dateOk && searchOk;
+      const cibilOk  = !followupCibilFilter || (f.cibilScoreRange || 'unknown') === followupCibilFilter;
+      return dateOk && searchOk && cibilOk;
     });
-  }, [followups, followupDateFilter, searchQuery]);
+  }, [followups, followupDateFilter, searchQuery, followupCibilFilter]);
 
   const STATUS_CONFIG = {
     available:   { label: 'Available',   dot: 'bg-emerald-500', activeBg: 'bg-emerald-500 text-white', badge: 'bg-emerald-100 text-emerald-700 border border-emerald-300' },
@@ -433,8 +452,8 @@ const DomAgentDashboard = () => {
       </aside>
 
       {/* CONTENT */}
-      <div className="flex-1 overflow-y-auto min-w-0">
-      <main className="px-5 py-5 space-y-5">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden min-w-0 scrollbar-app">
+      <main className="px-4 sm:px-5 xl:px-7 py-4 xl:py-5 space-y-4 xl:space-y-5 min-w-0">
 
         {/* ── ASSIGNED TO WORK ── */}
         {tab === 'assigned' && (
@@ -477,20 +496,30 @@ const DomAgentDashboard = () => {
                     </button>
                   )}
                 </div>
+                <select value={cibilFilter} onChange={e => setCibilFilter(e.target.value)}
+                  className="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-[#065F36]/20 focus:border-[#065F36]">
+                  <option value="">📊 All CIBIL</option>
+                  <option value="below_600">&lt; 600 (Poor)</option>
+                  <option value="600_699">600–699 (Fair)</option>
+                  <option value="700_749">700–749 (Good)</option>
+                  <option value="750_800">750–800 (Very Good)</option>
+                  <option value="above_800">&gt; 800 (Excellent)</option>
+                  <option value="unknown">Unknown</option>
+                </select>
                 <button
-                  onClick={() => { setSearchQuery(''); setDateFilter(''); }}
+                  onClick={() => { setSearchQuery(''); setDateFilter(''); setCibilFilter(''); }}
                   className={`flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-bold border transition-all ${
-                    (searchQuery || dateFilter) ? 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100' : 'bg-gray-50 text-gray-300 border-gray-200 cursor-default'
+                    (searchQuery || dateFilter || cibilFilter) ? 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100' : 'bg-gray-50 text-gray-300 border-gray-200 cursor-default'
                   }`} title="Clear all filters">
                   <X className="h-3.5 w-3.5" /> Clear
                 </button>
-                {(searchQuery || dateFilter) && (
+                {(searchQuery || dateFilter || cibilFilter) && (
                   <span className="text-xs text-gray-400">{filteredToWork.length} of {toWorkLeads.length} shown</span>
                 )}
               </div>
 
               {/* Results count bar */}
-              {(searchQuery || dateFilter) && !(loading || assignedLeadsLoading) && filteredToWork.length > 0 && (
+              {(searchQuery || dateFilter || cibilFilter) && !(loading || assignedLeadsLoading) && filteredToWork.length > 0 && (
                 <div className="px-5 py-2.5 bg-orange-50 border-b border-orange-100 flex items-center gap-2">
                   <Search className="h-3.5 w-3.5 text-orange-500 flex-shrink-0" />
                   <span className="text-sm font-bold text-orange-700">{filteredToWork.length} lead{filteredToWork.length !== 1 ? 's' : ''} found</span>
@@ -621,20 +650,30 @@ const DomAgentDashboard = () => {
                 <option value="partial">📎 Partial Docs</option>
                 <option value="full">✅ Full Docs</option>
               </select>
+              <select value={cibilFilter} onChange={e => setCibilFilter(e.target.value)}
+                className="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-[#065F36]/20 focus:border-[#065F36]">
+                <option value="">📊 All CIBIL</option>
+                <option value="below_600">&lt; 600 (Poor)</option>
+                <option value="600_699">600–699 (Fair)</option>
+                <option value="700_749">700–749 (Good)</option>
+                <option value="750_800">750–800 (Very Good)</option>
+                <option value="above_800">&gt; 800 (Excellent)</option>
+                <option value="unknown">Unknown</option>
+              </select>
               <button
-                onClick={() => { setSearchQuery(''); setDateFilter(''); setDocFilter('all'); }}
+                onClick={() => { setSearchQuery(''); setDateFilter(''); setDocFilter('all'); setCibilFilter(''); }}
                 className={`flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-bold border transition-all ${
-                  (searchQuery || dateFilter || docFilter !== 'all') ? 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100' : 'bg-gray-50 text-gray-300 border-gray-200 cursor-default'
+                  (searchQuery || dateFilter || docFilter !== 'all' || cibilFilter) ? 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100' : 'bg-gray-50 text-gray-300 border-gray-200 cursor-default'
                 }`} title="Clear all filters">
                 <X className="h-3.5 w-3.5" /> Clear
               </button>
-              {(searchQuery || dateFilter || docFilter !== 'all') && (
+              {(searchQuery || dateFilter || docFilter !== 'all' || cibilFilter) && (
                 <span className="text-xs text-gray-400">{filteredWorked.length} of {workedLeads.length} shown</span>
               )}
             </div>
 
             {/* Results count bar */}
-            {(searchQuery || dateFilter || docFilter !== 'all') && filteredWorked.length > 0 && (
+            {(searchQuery || dateFilter || docFilter !== 'all' || cibilFilter) && filteredWorked.length > 0 && (
               <div className="px-5 py-2.5 bg-emerald-50 border-b border-emerald-100 flex items-center gap-2">
                 <Search className="h-3.5 w-3.5 text-emerald-500 flex-shrink-0" />
                 <span className="text-sm font-bold text-emerald-700">{filteredWorked.length} lead{filteredWorked.length !== 1 ? 's' : ''} found</span>
@@ -751,6 +790,7 @@ const DomAgentDashboard = () => {
             callback:      '📞 Callback',
             not_reachable: '📵 Not Reachable',
             wrong_number:  '? Wrong Number',
+            not_eligible:  '🚫 Not Eligible',
           };
           const callbackD = parseDate(f.callbackDate);
           const isOverdue = callbackD && callbackD < today;
@@ -814,7 +854,7 @@ const DomAgentDashboard = () => {
         );
 
         return (
-          <div className="px-5 py-5 space-y-4">
+          <div className="px-4 sm:px-5 xl:px-7 py-4 xl:py-5 space-y-4 min-w-0">
             {/* Header */}
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
               <div className="flex items-center justify-between">
@@ -855,13 +895,23 @@ const DomAgentDashboard = () => {
                     </button>
                   )}
                 </div>
-                {(searchQuery || followupDateFilter) && (
+                {(searchQuery || followupDateFilter || followupCibilFilter) && (
                   <span className="text-xs text-gray-400">{filteredFollowups.length} of {followups.length} shown</span>
                 )}
+                <select value={followupCibilFilter} onChange={e => setFollowupCibilFilter(e.target.value)}
+                  className="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400">
+                  <option value="">📊 All CIBIL</option>
+                  <option value="below_600">&lt; 600 (Poor)</option>
+                  <option value="600_699">600–699 (Fair)</option>
+                  <option value="700_749">700–749 (Good)</option>
+                  <option value="750_800">750–800 (Very Good)</option>
+                  <option value="above_800">&gt; 800 (Excellent)</option>
+                  <option value="unknown">Unknown</option>
+                </select>
                 <button
-                  onClick={() => { setSearchQuery(''); setFollowupDateFilter(''); }}
+                  onClick={() => { setSearchQuery(''); setFollowupDateFilter(''); setFollowupCibilFilter(''); }}
                   className={`flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-bold border transition-all ${
-                    (searchQuery || followupDateFilter) ? 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100' : 'bg-gray-50 text-gray-300 border-gray-200 cursor-default'
+                    (searchQuery || followupDateFilter || followupCibilFilter) ? 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100' : 'bg-gray-50 text-gray-300 border-gray-200 cursor-default'
                   }`} title="Clear all filters">
                   <X className="h-3.5 w-3.5" /> Clear
                 </button>
@@ -884,7 +934,7 @@ const DomAgentDashboard = () => {
             ) : (
               <div className="space-y-6">
                 {/* Results count bar */}
-                {(searchQuery || followupDateFilter) && filteredFollowups.length > 0 && (
+                {(searchQuery || followupDateFilter || followupCibilFilter) && filteredFollowups.length > 0 && (
                   <div className="px-5 py-2.5 bg-amber-50 border border-amber-100 rounded-xl flex items-center gap-2">
                     <Search className="h-3.5 w-3.5 text-amber-500 flex-shrink-0" />
                     <span className="text-sm font-bold text-amber-700">{filteredFollowups.length} follow-up{filteredFollowups.length !== 1 ? 's' : ''} found</span>

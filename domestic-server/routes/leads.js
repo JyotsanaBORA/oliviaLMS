@@ -17,6 +17,7 @@ const UPLOAD_DIR = path.join(__dirname, '..', process.env.UPLOAD_PATH || 'upload
 const OUTCOME_TO_WORK_STATUS = {
   interested:     'interested',
   not_interested: 'not_interested',
+  not_eligible:   'not_interested',
   wrong_number:   'closed',
   callback:       'in_progress',
   not_reachable:  'in_progress',
@@ -102,7 +103,7 @@ router.post('/', protect, authorize('domagent', 'dom_admin', 'dom_superadmin'), 
 
       const sanitized = sanitizeLeadFields(fields);
       // Auto-status on create
-      if (['not_interested', 'wrong_number'].includes(sanitized.callOutcome)) {
+      if (['not_interested', 'wrong_number', 'not_eligible'].includes(sanitized.callOutcome)) {
         sanitized.status = 'rejected';
       }
       const domLead = await DomLead.create({
@@ -168,7 +169,7 @@ router.patch('/:id', protect, authorize('domagent', 'dom_admin', 'dom_superadmin
     // Agents/admins set callOutcome; we auto-drive the status field so the
     // admin table always reflects the true state without manual intervention.
     if (updates.callOutcome) {
-      if (['not_interested', 'wrong_number'].includes(updates.callOutcome)) {
+      if (['not_interested', 'wrong_number', 'not_eligible'].includes(updates.callOutcome)) {
         // Customer closed — mark as rejected (no further work needed)
         updates.status = 'rejected';
       } else if (['interested', 'callback', 'not_reachable', 'not_answering', 'other'].includes(updates.callOutcome)) {
@@ -276,9 +277,15 @@ router.get('/', protect, async (req, res) => {
     if (status && ['pending', 'completed', 'rejected'].includes(status)) {
       filter.status = status;
     }
+    if (req.query.productType) filter.productType = req.query.productType;
+    // Filter by CIBIL score range
+    if (req.query.cibilScoreRange) {
+      const validRanges = ['below_600', '600_699', '700_749', '750_800', 'above_800', 'unknown'];
+      if (validRanges.includes(req.query.cibilScoreRange)) filter.cibilScoreRange = req.query.cibilScoreRange;
+    }
     // Filter by specific call outcome / disposition
     if (req.query.callOutcome) {
-      const validOutcomes = ['interested', 'not_interested', 'callback', 'not_reachable', 'not_answering', 'wrong_number', 'other', 'none'];
+      const validOutcomes = ['interested', 'not_interested', 'not_eligible', 'callback', 'not_reachable', 'not_answering', 'wrong_number', 'other', 'none'];
       if (req.query.callOutcome === 'none') {
         filter.$or = [{ callOutcome: '' }, { callOutcome: { $exists: false } }];
       } else if (validOutcomes.includes(req.query.callOutcome)) {

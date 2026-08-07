@@ -628,7 +628,7 @@ const DomSuperAdminDashboard = () => {
       </aside>
 
       {/* ════ CONTENT ════ */}
-      <div className="flex-1 overflow-y-auto min-w-0">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden min-w-0 scrollbar-app">
         {/* Dashboard */}
         {superTab === 'main' && <DomAdminDashboard />}
 
@@ -661,12 +661,12 @@ const DomSuperAdminDashboard = () => {
     };
 
     const OUTCOME_LABEL = {
-      interested: 'Interested', not_interested: 'Not Interested', callback: 'Callback',
+      interested: 'Interested', not_interested: 'Not Interested', not_eligible: 'Not Eligible', callback: 'Callback',
       not_reachable: 'Not Reachable', not_answering: 'Not Answering',
       wrong_number: 'Wrong Number', other: 'Other', none: 'No Outcome', '': 'No Outcome',
     };
     const OUTCOME_COLOR = {
-      interested: 'bg-emerald-500', not_interested: 'bg-red-400', callback: 'bg-amber-400',
+      interested: 'bg-emerald-500', not_interested: 'bg-red-400', not_eligible: 'bg-rose-500', callback: 'bg-amber-400',
       not_reachable: 'bg-orange-400', not_answering: 'bg-slate-400',
       wrong_number: 'bg-gray-400', other: 'bg-purple-400', none: 'bg-gray-300', '': 'bg-gray-300',
     };
@@ -761,7 +761,7 @@ const DomSuperAdminDashboard = () => {
           </div>
         </header>
 
-        <main className="px-6 py-5 space-y-6">
+        <main className="px-4 sm:px-6 xl:px-8 py-4 xl:py-5 space-y-4 xl:space-y-6 min-w-0">
 
           {/* ── Date Range Controls ── */}
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
@@ -1896,6 +1896,7 @@ const DomSuperAdminDashboard = () => {
                                 <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
                                   l.callOutcome === 'interested'     ? 'bg-emerald-100 text-emerald-700' :
                                   l.callOutcome === 'not_interested' ? 'bg-red-100 text-red-700' :
+                                  l.callOutcome === 'not_eligible'   ? 'bg-rose-100 text-rose-700' :
                                   l.callOutcome === 'callback'       ? 'bg-amber-100 text-amber-700' :
                                   l.callOutcome === 'not_reachable'  ? 'bg-orange-100 text-orange-700' :
                                   l.callOutcome === 'wrong_number'   ? 'bg-gray-100 text-gray-500' :
@@ -1960,6 +1961,7 @@ const DomSuperAdminDashboard = () => {
           const OUTCOME_CFG = {
             interested:     { label: 'Interested',     cls: 'bg-emerald-100 text-emerald-700 border-emerald-300', icon: '✅', bar: 'bg-emerald-500' },
             not_interested: { label: 'Not Interested', cls: 'bg-red-100 text-red-700 border-red-300',             icon: '❌', bar: 'bg-red-500' },
+            not_eligible:   { label: 'Not Eligible',   cls: 'bg-rose-100 text-rose-700 border-rose-300',           icon: '🚫', bar: 'bg-rose-500' },
             callback:       { label: 'Callback',       cls: 'bg-amber-100 text-amber-700 border-amber-300',       icon: '📞', bar: 'bg-amber-400' },
             not_reachable:  { label: 'Not Reachable',  cls: 'bg-orange-100 text-orange-700 border-orange-300',    icon: '📵', bar: 'bg-orange-400' },
             wrong_number:   { label: 'Wrong Number',   cls: 'bg-gray-100 text-gray-600 border-gray-300',          icon: '❓', bar: 'bg-gray-400' },
@@ -1978,6 +1980,7 @@ const DomSuperAdminDashboard = () => {
                 <div className={`px-6 py-5 rounded-t-3xl ${
                   l.callOutcome === 'interested'     ? 'bg-gradient-to-r from-emerald-500 to-teal-600' :
                   l.callOutcome === 'not_interested' ? 'bg-gradient-to-r from-red-500 to-rose-600' :
+                  l.callOutcome === 'not_eligible'   ? 'bg-gradient-to-r from-rose-500 to-rose-700' :
                   l.callOutcome === 'callback'       ? 'bg-gradient-to-r from-amber-400 to-orange-500' :
                   l.callOutcome === 'not_reachable'  ? 'bg-gradient-to-r from-orange-400 to-amber-500' :
                   l.callOutcome === 'wrong_number'   ? 'bg-gradient-to-r from-gray-500 to-gray-600' :
@@ -2012,7 +2015,7 @@ const DomSuperAdminDashboard = () => {
 
                   {/* Disposition section — the key info */}
                   <div className={`rounded-2xl border-2 p-5 ${
-                    l.callOutcome === 'not_interested' || l.status === 'rejected' ? 'border-red-200 bg-red-50' :
+                    l.callOutcome === 'not_interested' || l.callOutcome === 'not_eligible' || l.status === 'rejected' ? 'border-red-200 bg-red-50' :
                     l.callOutcome === 'interested'     ? 'border-emerald-200 bg-emerald-50' :
                     l.callOutcome === 'callback'       ? 'border-amber-200 bg-amber-50' :
                     l.callOutcome === 'not_reachable'  ? 'border-orange-200 bg-orange-50' :
@@ -2943,7 +2946,7 @@ const DomSuperAdminDashboard = () => {
         </div>
       </header>
 
-      <main className="px-6 py-8 max-w-2xl">
+      <main className="px-4 sm:px-6 xl:px-8 py-6 xl:py-8 max-w-3xl">
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
           <div className="px-6 py-5 border-b border-gray-100 flex items-center gap-3">
             <div className="p-2.5 bg-[#E8FFF5] rounded-xl">
@@ -3007,6 +3010,7 @@ DOMESTIC_LMS_API_KEY=${apiKeyVisible ? apiKey : '<show key above>'}`}
     const OUTCOME_CFG = {
       interested:     { label: 'Interested',     cls: 'bg-emerald-100 text-emerald-700 border-emerald-200', icon: '✅', hdr: 'from-emerald-500 to-teal-600' },
       not_interested: { label: 'Not Interested', cls: 'bg-red-100 text-red-700 border-red-200',             icon: '❌', hdr: 'from-red-500 to-rose-600' },
+      not_eligible:   { label: 'Not Eligible',   cls: 'bg-rose-100 text-rose-700 border-rose-200',           icon: '🚫', hdr: 'from-rose-500 to-rose-700' },
       callback:       { label: 'Callback',       cls: 'bg-amber-100 text-amber-700 border-amber-200',       icon: '📞', hdr: 'from-amber-400 to-orange-500' },
       not_reachable:  { label: 'Not Reachable',  cls: 'bg-orange-100 text-orange-700 border-orange-200',    icon: '📵', hdr: 'from-orange-400 to-amber-500' },
       wrong_number:   { label: 'Wrong Number',   cls: 'bg-gray-100 text-gray-500 border-gray-200',          icon: '❓', hdr: 'from-gray-500 to-gray-600' },
@@ -3053,7 +3057,7 @@ DOMESTIC_LMS_API_KEY=${apiKeyVisible ? apiKey : '<show key above>'}`}
           </div>
         </header>
 
-        <main className="px-6 py-5 space-y-4">
+        <main className="px-4 sm:px-6 xl:px-8 py-4 xl:py-5 space-y-4 min-w-0">
 
           {/* ── Filter tabs + stats ── */}
           <div className="flex items-center gap-3 flex-wrap">
@@ -3230,6 +3234,7 @@ DOMESTIC_LMS_API_KEY=${apiKeyVisible ? apiKey : '<show key above>'}`}
                   <div className={`rounded-2xl border-2 p-4 ${
                     !isMarked                            ? 'border-orange-200 bg-orange-50' :
                     l.callOutcome === 'not_interested'   ? 'border-red-200 bg-red-50' :
+                    l.callOutcome === 'not_eligible'     ? 'border-rose-200 bg-rose-50' :
                     l.callOutcome === 'interested'       ? 'border-emerald-200 bg-emerald-50' :
                     l.callOutcome === 'callback'         ? 'border-amber-200 bg-amber-50' :
                     l.callOutcome === 'not_reachable'    ? 'border-orange-200 bg-orange-50' :

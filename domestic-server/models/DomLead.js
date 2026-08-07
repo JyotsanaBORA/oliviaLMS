@@ -174,7 +174,7 @@ const domLeadSchema = new mongoose.Schema(
     // ── Call disposition ───────────────────────────────────────────────────
     callOutcome: {
       type: String,
-      enum: ['interested', 'not_interested', 'callback', 'not_reachable', 'wrong_number', 'not_answering', 'other', ''],
+      enum: ['interested', 'not_interested', 'not_eligible', 'callback', 'not_reachable', 'wrong_number', 'not_answering', 'other', ''],
       default: '',
     },
     callbackDate:        { type: String, trim: true, maxlength: 30 },

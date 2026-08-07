@@ -1035,6 +1035,7 @@ const LeadFormModal = ({ websiteLead, importedLead, existingDomLead, onClose, on
                     <option value="">Select</option>
                     <option value="interested">✅ Interested</option>
                     <option value="not_interested">❌ Not Interested</option>
+                    <option value="not_eligible">🚫 Not Eligible</option>
                     <option value="callback">📞 Callback Requested</option>
                     <option value="not_reachable">📵 Not Reachable</option>
                     <option value="not_answering">🔕 Not Answering</option>
