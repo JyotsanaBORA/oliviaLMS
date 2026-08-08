@@ -13,11 +13,13 @@ const router = express.Router();
 router.get('/', protect, authorize('dom_admin', 'dom_superadmin'), async (req, res) => {
   try {
     const page        = Math.max(1, parseInt(req.query.page)  || 1);
-    const limit       = Math.min(100, parseInt(req.query.limit) || 50);
+    const limit       = Math.min(200, parseInt(req.query.limit) || 50);
     const skip        = (page - 1) * limit;
     const status      = req.query.status;
     const search      = (req.query.search || '').trim();
     const productType = req.query.productType;
+    const source      = req.query.source; // 'meta' | 'website' | 'manual'
+    const agentId     = req.query.agentId;
 
     const filter = {};
     if (status && ['new', 'loaded', 'completed', 'rejected'].includes(status)) {
@@ -25,6 +27,12 @@ router.get('/', protect, authorize('dom_admin', 'dom_superadmin'), async (req, r
     }
     if (productType) {
       filter.productType = productType;
+    }
+    if (source && ['meta', 'website', 'manual'].includes(source)) {
+      filter.source = source;
+    }
+    if (agentId) {
+      filter.loadedBy = agentId;
     }
     if (search) {
       filter.$or = [

@@ -98,6 +98,7 @@ const DomSuperAdminDashboard = () => {
   const [webDateFrom,        setWebDateFrom]         = useState('');
   const [webDateTo,          setWebDateTo]           = useState('');
   const [webAgentFilter,     setWebAgentFilter]      = useState('');
+  const [webSourceFilter,    setWebSourceFilter]     = useState('');
   const [webProductTypes,    setWebProductTypes]     = useState([]);
   const [webAgents,          setWebAgents]           = useState([]);
   const [webAssignModal,     setWebAssignModal]      = useState(null);
@@ -111,6 +112,7 @@ const DomSuperAdminDashboard = () => {
   const webDateFromRef    = useRef('');
   const webDateToRef      = useRef('');
   const webAgentRef       = useRef('');
+  const webSourceRef      = useRef('');
 
   // Agent Tracker state
   const [trackerAgents,       setTrackerAgents]       = useState([]);
@@ -223,6 +225,7 @@ const DomSuperAdminDashboard = () => {
       if (webDateFromRef.current)            q.set('dateFrom',    webDateFromRef.current);
       if (webDateToRef.current)              q.set('dateTo',      webDateToRef.current);
       if (webAgentRef.current)               q.set('agentId',     webAgentRef.current);
+      if (webSourceRef.current)              q.set('source',      webSourceRef.current);
       const res = await api.get(`/domestic-api/website-leads?${q}`);
       setWebLeads(res.data?.data || []);
       setWebLeadsTotal(res.data?.pagination?.total || 0);
@@ -637,70 +640,80 @@ const DomSuperAdminDashboard = () => {
 
   {superTab === 'reports' && (() => {
     const PRESETS = [
-      { key: 'today',  label: 'Today'     },
-      { key: 'week',   label: 'This Week' },
-      { key: 'month',  label: 'This Month'},
-      { key: '3month', label: '3 Months'  },
-      { key: 'year',   label: 'This Year' },
-      { key: 'custom', label: 'Custom'    },
+      { key: 'today',  label: 'Today'      },
+      { key: 'week',   label: 'This Week'  },
+      { key: 'month',  label: 'This Month' },
+      { key: '3month', label: '3 Months'   },
+      { key: 'year',   label: 'This Year'  },
+      { key: 'custom', label: 'Custom'     },
     ];
 
     const s   = reportData?.summary;
     const brk = reportData?.breakdown;
-    const trend        = reportData?.trend?.domLeads || [];
-    const hourlyTrend  = reportData?.trend?.hourly   || [];
-
-    const maxTrend  = trend.length       ? Math.max(...trend.map(d => d.total), 1)        : 1;
-    const maxHourly = hourlyTrend.length ? Math.max(...hourlyTrend.map(d => d.total), 1)  : 1;
-
-    const fmtHour = (h) => {
-      if (h === 0)  return '12am';
-      if (h < 12)   return `${h}am`;
-      if (h === 12) return '12pm';
-      return `${h - 12}pm`;
-    };
+    const trend     = reportData?.trend?.domLeads    || [];
+    const webTrend  = reportData?.trend?.websiteLeads || [];
 
     const OUTCOME_LABEL = {
-      interested: 'Interested', not_interested: 'Not Interested', not_eligible: 'Not Eligible', callback: 'Callback',
-      not_reachable: 'Not Reachable', not_answering: 'Not Answering',
+      interested: 'Interested', not_interested: 'Not Interested', not_eligible: 'Not Eligible',
+      callback: 'Callback', not_reachable: 'Not Reachable', not_answering: 'Not Answering',
       wrong_number: 'Wrong Number', other: 'Other', none: 'No Outcome', '': 'No Outcome',
     };
     const OUTCOME_COLOR = {
-      interested: 'bg-emerald-500', not_interested: 'bg-red-400', not_eligible: 'bg-rose-500', callback: 'bg-amber-400',
-      not_reachable: 'bg-orange-400', not_answering: 'bg-slate-400',
+      interested: 'bg-emerald-500', not_interested: 'bg-red-400', not_eligible: 'bg-rose-500',
+      callback: 'bg-amber-400', not_reachable: 'bg-orange-400', not_answering: 'bg-slate-400',
       wrong_number: 'bg-gray-400', other: 'bg-purple-400', none: 'bg-gray-300', '': 'bg-gray-300',
     };
+    const OUTCOME_EMOJI = {
+      interested: '✅', not_interested: '❌', not_eligible: '🚫',
+      callback: '📞', not_reachable: '📵', not_answering: '🔕',
+      wrong_number: '❓', other: '📋', none: '—', '': '—',
+    };
 
-    const maxOutcome = brk?.outcome?.length ? Math.max(...brk.outcome.map(o => o.count), 1) : 1;
-    const maxProduct = brk?.product?.length ? Math.max(...brk.product.map(p => p.count), 1) : 1;
+    const maxOutcome    = brk?.outcome?.length ? Math.max(...brk.outcome.map(o => o.count), 1) : 1;
+    const maxProduct    = brk?.product?.length ? Math.max(...brk.product.map(p => p.count), 1) : 1;
+    // Use max of worked+web assigned so both bars scale together
+    const maxTrendTotal = Math.max(
+      trend.length    ? Math.max(...trend.map(d => d.total), 1) : 1,
+      webTrend.length ? Math.max(...webTrend.map(d => d.count), 1) : 1,
+    );
 
-    const fmtProd = (s) => (s || 'other').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    const fmtProd = (v) => (v || 'Other').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
     const exportCSV = () => {
       if (!reportData) return;
       const rows = [
-        ['Report', 'Reports & Analytics Export'],
-        ['Range', `${reportData.range?.from?.split('T')[0] || ''} to ${reportData.range?.to?.split('T')[0] || ''}`],
+        ['Report Period', `${reportData.range?.from?.split('T')[0] || ''} to ${reportData.range?.to?.split('T')[0] || ''}`],
         [],
         ['Metric', 'Value'],
-        ['Meta Allocation (Website)', s?.websiteLeads?.total],
-        ['Disposition Allocation', s?.workedLeads?.total],
-        ['Completed', s?.workedLeads?.completed],
-        ['Pending', s?.workedLeads?.pending],
-        ['Rejected', s?.workedLeads?.rejected],
-        ['Interested', s?.workedLeads?.interested],
-        ['Callback', s?.workedLeads?.callback],
-        ['Pool Imported', s?.poolLeads?.total],
-        ['Conversion Rate', `${s?.conversionRate}%`],
-        ['Interest Rate', `${s?.interestRate}%`],
+        ['Meta Allocation — Received',  s?.websiteLeads?.total],
+        ['Meta Allocation — Assigned',  s?.websiteLeads?.assigned],
+        ['Meta Allocation — Meta Leads',s?.websiteLeads?.assignedMeta],
+        ['Disposition Allocation',      s?.workedLeads?.total],
+        ['Completed',                   s?.workedLeads?.completed],
+        ['Interested',                  s?.workedLeads?.interested],
+        ['Callback',                    s?.workedLeads?.callback],
+        ['Not Reachable',               s?.workedLeads?.notReachable],
+        ['Not Answering',               s?.workedLeads?.notAnswering],
+        ['Wrong Number',                s?.workedLeads?.wrongNumber],
+        ['Rejected',                    s?.workedLeads?.rejected],
+        ['Pending',                     s?.workedLeads?.pending],
+        ['Data Pool Imported',          s?.poolLeads?.total],
+        ['Completion Rate',             `${s?.conversionRate}%`],
+        ['Interest Rate',               `${s?.interestRate}%`],
         [],
-        ['Date', 'Disposition Allocation', 'Completed'],
-        ...trend.map(d => [d.date, d.total, d.completed]),
+        ['Date', 'Disposition Allocation', 'Completed', 'Meta Assigned'],
+        ...trend.map(d => {
+          const w = webTrend.find(x => x.date === d.date);
+          return [d.date, d.total, d.completed, w?.count || 0];
+        }),
         [],
-        ['Agent', 'Cases', 'Completed', 'Interested'],
-        ...(reportData.agents || []).map(a => [a.agent?.name || '—', a.total, a.completed, a.interested]),
+        ['Agent', 'Cases', 'Completed', 'Interested', 'Completion %'],
+        ...(reportData.agents || []).map(a => {
+          const pct = a.total > 0 ? Math.round((a.completed / a.total) * 100) : 0;
+          return [a.agent?.name || '—', a.total, a.completed, a.interested, `${pct}%`];
+        }),
       ];
-      const csv = rows.map(r => r.join(',')).join('\n');
+      const csv  = rows.map(r => r.join(',')).join('\n');
       const blob = new Blob([csv], { type: 'text/csv' });
       const url  = URL.createObjectURL(blob);
       const a    = document.createElement('a'); a.href = url; a.download = 'lms-report.csv'; a.click();
@@ -709,20 +722,21 @@ const DomSuperAdminDashboard = () => {
 
     return (
       <div className="min-h-screen bg-gray-50">
-        {/* Green breadcrumb bar */}
+
+        {/* ── Top nav bar ── */}
         <div className="bg-[#065F36] text-white px-6 py-2 flex items-center justify-between border-b border-[#054A2E]">
           <div className="flex items-center gap-1.5 text-xs">
             <Shield className="h-3 w-3 text-white/60" />
             <button onClick={() => setSuperTab('main')} className="text-white/60 hover:text-white transition-colors">Super Admin Portal</button>
             <span className="text-white/30">›</span>
-            <span className="text-white font-semibold flex items-center gap-1"><TrendingUp className="h-3 w-3" /> Reports & Analytics</span>
+            <span className="text-white font-semibold flex items-center gap-1"><TrendingUp className="h-3 w-3" /> Reports & Analysis</span>
           </div>
           <button onClick={logout} className="flex items-center gap-1 text-xs text-white/60 hover:text-white transition-colors">
             <LogOut className="h-3 w-3" /> Logout
           </button>
         </div>
 
-        {/* White sticky header */}
+        {/* ── Sticky page header ── */}
         <header className="bg-white shadow-sm sticky top-0 z-30 border-b border-gray-100">
           <div className="px-6 flex items-center justify-between h-14">
             <div className="flex items-center gap-3">
@@ -733,8 +747,8 @@ const DomSuperAdminDashboard = () => {
               <div className="border-l border-gray-200 pl-3 flex items-center gap-2">
                 <div className="p-1.5 bg-emerald-100 rounded-lg"><TrendingUp className="h-4 w-4 text-emerald-600" /></div>
                 <div>
-                  <h1 className="text-gray-800 font-bold text-sm">Reports & Analytics</h1>
-                  <p className="text-gray-400 text-xs">Daily · Monthly · Yearly performance insights</p>
+                  <h1 className="text-gray-800 font-bold text-sm">Reports & Analysis</h1>
+                  <p className="text-gray-400 text-xs">How many leads came in, how many were worked, and how agents performed</p>
                 </div>
               </div>
             </div>
@@ -747,13 +761,12 @@ const DomSuperAdminDashboard = () => {
                 className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-[#065F36] border border-gray-200 rounded-xl px-3 py-2 transition-all">
                 <RefreshCw className={`h-4 w-4 ${reportLoading ? 'animate-spin' : ''}`} />
               </button>
-              {/* Live indicator */}
               {reportLastUpdated && (
                 <div className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border ${
                   reportRange === 'today' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-gray-50 text-gray-500 border-gray-200'
                 }`}>
                   <span className={`w-2 h-2 rounded-full ${reportRange === 'today' ? 'bg-emerald-500 animate-pulse' : 'bg-gray-400'}`} />
-                  {reportRange === 'today' ? '🔴 LIVE · ' : ''}
+                  {reportRange === 'today' ? 'LIVE · ' : ''}
                   Updated {Math.round((new Date() - reportLastUpdated) / 60000) < 1 ? 'just now' : `${Math.round((new Date() - reportLastUpdated) / 60000)}m ago`}
                 </div>
               )}
@@ -761,13 +774,12 @@ const DomSuperAdminDashboard = () => {
           </div>
         </header>
 
-        <main className="px-4 sm:px-6 xl:px-8 py-4 xl:py-5 space-y-4 xl:space-y-6 min-w-0">
+        <main className="px-4 sm:px-6 xl:px-8 py-5 space-y-5 min-w-0">
 
-          {/* ── Date Range Controls ── */}
+          {/* ── Step 1: Pick a time period ── */}
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+            <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Step 1 — Choose a time period to view</p>
             <div className="flex items-center gap-2 flex-wrap">
-              <Calendar className="h-4 w-4 text-gray-400" />
-              <span className="text-sm font-semibold text-gray-600 mr-1">Period:</span>
               {PRESETS.map(p => (
                 <button key={p.key}
                   onClick={() => { setReportRange(p.key); if (p.key !== 'custom') fetchReport(p.key, '', ''); }}
@@ -809,428 +821,423 @@ const DomSuperAdminDashboard = () => {
           {reportLoading ? (
             <div className="flex flex-col items-center justify-center py-24 gap-4">
               <div className="w-12 h-12 border-4 border-gray-100 border-t-[#065F36] rounded-full animate-spin" />
-              <p className="text-gray-400 text-sm font-medium">Crunching numbers…</p>
+              <p className="text-gray-400 text-sm font-medium">Loading report…</p>
             </div>
           ) : !reportData ? null : (
             <>
-              {/* ── KPI Cards ── */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-                {[
-                  { label: 'Meta Allocation',  val: s?.websiteLeads?.total,    icon: Globe,       bg: 'from-teal-500 to-cyan-600',      sub: `${s?.websiteLeads?.new} new` },
-                  { label: 'Disposition Allocation', val: s?.workedLeads?.total,     icon: Briefcase,   bg: 'from-[#065F36] to-[#00A651]',   sub: `${s?.workedLeads?.pending} pending` },
-                  { label: 'Completed',         val: s?.workedLeads?.completed, icon: CheckCircle2,bg: 'from-emerald-500 to-green-600',  sub: `${s?.conversionRate}% conv.` },
-                  { label: 'Interested',        val: s?.workedLeads?.interested,icon: Zap,         bg: 'from-amber-400 to-orange-500',   sub: `${s?.interestRate}% interest` },
-                  { label: 'Callbacks',         val: s?.workedLeads?.callback,  icon: Activity,    bg: 'from-orange-400 to-amber-500',   sub: 'follow-ups' },
-                  { label: 'Pool Imported',     val: s?.poolLeads?.total,       icon: Database,    bg: 'from-violet-500 to-purple-600',  sub: 'data pool' },
-                ].map(({ label, val, icon: Icon, bg, sub }) => (
-                  <div key={label} className={`relative overflow-hidden rounded-2xl p-5 bg-gradient-to-br ${bg} text-white shadow-lg`}>
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="p-2 bg-white/20 rounded-xl"><Icon className="h-5 w-5" /></div>
-                    </div>
-                    <p className="text-3xl font-black">{val ?? '—'}</p>
-                    <p className="text-white/80 text-xs font-semibold mt-1">{label}</p>
-                    <p className="text-white/60 text-xs mt-0.5">{sub}</p>
-                    <div className="absolute -bottom-4 -right-4 w-20 h-20 rounded-full bg-white/10" />
-                  </div>
-                ))}
-              </div>
 
-              {/* ── Conversion gauges ── */}
-              <div className="grid grid-cols-2 gap-4">
-                {[
-                  { label: 'Conversion Rate',  val: s?.conversionRate,  color: 'bg-emerald-500', text: 'text-emerald-600',  desc: 'Completed / Total Worked' },
-                  { label: 'Interest Rate',     val: s?.interestRate,    color: 'bg-amber-400',   text: 'text-amber-600',    desc: 'Interested / Total Worked' },
-                ].map(g => (
-                  <div key={g.label} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-                    <div className="flex items-center justify-between mb-4">
-                      <div>
-                        <p className="font-bold text-gray-800">{g.label}</p>
-                        <p className="text-xs text-gray-400">{g.desc}</p>
-                      </div>
-                      <span className={`text-4xl font-black ${g.text}`}>{g.val}%</span>
-                    </div>
-                    <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
-                      <div className={`h-full rounded-full transition-all duration-1000 ${g.color}`}
-                        style={{ width: `${Math.min(g.val, 100)}%` }} />
-                    </div>
-                    <div className="flex justify-between text-xs text-gray-400 mt-1.5">
-                      <span>0%</span><span>50%</span><span>100%</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
+              {/* ── Section 1: Key Numbers ── */}
+              <div>
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 px-1">Key Numbers — What happened in this period</p>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
 
-              {/* ── Quick Insights ── */}
-              {(() => {
-                const insights = [];
-                if (s?.workedLeads?.total > 0) {
-                  if (s.conversionRate >= 60) insights.push({ icon: '🚀', color: 'bg-emerald-50 border-emerald-200 text-emerald-800', text: `Excellent! ${s.conversionRate}% conversion rate — well above average.` });
-                  else if (s.conversionRate >= 30) insights.push({ icon: '👍', color: 'bg-blue-50 border-blue-200 text-blue-800', text: `Good conversion rate of ${s.conversionRate}%. Keep pushing to hit 50%+.` });
-                  else insights.push({ icon: '⚠️', color: 'bg-amber-50 border-amber-200 text-amber-800', text: `Low conversion rate (${s.conversionRate}%). Review agent scripts and follow-ups.` });
-                }
-                if (s?.workedLeads?.callback > 0) insights.push({ icon: '📞', color: 'bg-amber-50 border-amber-200 text-amber-800', text: `${s.workedLeads.callback} callback${s.workedLeads.callback > 1 ? 's' : ''} pending — ensure agents follow up today.` });
-                if (s?.workedLeads?.notAnswering > 0) insights.push({ icon: '🔕', color: 'bg-slate-50 border-slate-200 text-slate-700', text: `${s.workedLeads.notAnswering} leads not answering — retry during peak hours.` });
-                if (hourlyTrend.length) {
-                  const workHours = hourlyTrend.filter(h => h.hour >= 9 && h.hour < 18);
-                  const peak = workHours.length ? workHours.reduce((a, b) => b.total > a.total ? b : a, workHours[0]) : null;
-                  if (peak && peak.total > 0) insights.push({ icon: '⏰', color: 'bg-violet-50 border-violet-200 text-violet-800', text: `Peak productivity within working hours: ${fmtHour(peak.hour)} (${peak.total} cases). Schedule important calls then.` });
-                  const offHoursTotal = hourlyTrend.filter(h => (h.hour < 9 || h.hour >= 18) && h.total > 0).reduce((s, h) => s + h.total, 0);
-                  if (offHoursTotal > 0) insights.push({ icon: '🌙', color: 'bg-orange-50 border-orange-200 text-orange-800', text: `${offHoursTotal} cases recorded outside 9am–6pm IST working hours.` });
-                }
-                if (s?.websiteLeads?.new > 0) insights.push({ icon: '🌐', color: 'bg-teal-50 border-teal-200 text-teal-800', text: `${s.websiteLeads.new} unclaimed website lead${s.websiteLeads.new > 1 ? 's' : ''} waiting — assign to agents now.` });
-                if (insights.length === 0) return null;
-                return (
+                  {/* Meta Allocation */}
                   <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-                    <div className="flex items-center gap-2 mb-4">
-                      <span className="text-lg">💡</span>
-                      <h2 className="font-bold text-gray-800">Smart Insights</h2>
-                      <span className="text-xs text-gray-400 ml-1">— Auto-generated from your data</span>
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="p-2 bg-teal-100 rounded-xl"><Globe className="h-5 w-5 text-teal-600" /></div>
+                      <span className="text-xs font-semibold text-teal-600 bg-teal-50 border border-teal-100 px-2 py-0.5 rounded-full">
+                        {s?.websiteLeads?.new > 0 ? `${s.websiteLeads.new} unassigned` : 'From Meta / Website'}
+                      </span>
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {insights.map((ins, i) => (
-                        <div key={i} className={`flex items-start gap-3 px-4 py-3 rounded-xl border ${ins.color}`}>
-                          <span className="text-xl flex-shrink-0 mt-0.5">{ins.icon}</span>
-                          <p className="text-sm font-medium leading-snug">{ins.text}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })()}
-
-              {/* ── Trend Chart ── */}
-              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-                <div className="flex items-center justify-between mb-5">
-                  <div>
-                    <h2 className="font-bold text-gray-800">{trendView === 'daily' ? 'Daily Activity Trend' : 'Hourly Activity Breakdown'}</h2>
-                    <p className="text-xs text-gray-400">
-                      {trendView === 'daily' ? 'Worked cases per day in selected period' : 'Cases by hour of day (0–23h) · best calling windows'}
+                    {/* Show assigned count first — reflects today's work even if leads arrived earlier */}
+                    <p className="text-4xl font-black text-teal-700">{s?.websiteLeads?.assigned ?? s?.websiteLeads?.total ?? '—'}</p>
+                    <p className="text-sm font-bold text-gray-700 mt-1">Meta Allocation</p>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      Assigned in period · {s?.websiteLeads?.total ?? 0} received
                     </p>
+                    {(s?.websiteLeads?.assignedMeta ?? 0) > 0 && (
+                      <p className="text-xs text-teal-600 font-semibold mt-1.5">
+                        🌐 {s.websiteLeads.assignedMeta} from Meta · {(s.websiteLeads.assigned ?? 0) - s.websiteLeads.assignedMeta} from Website
+                      </p>
+                    )}
                   </div>
-                  <div className="flex items-center gap-3">
-                    <div className="flex items-center gap-3 text-xs text-gray-500 mr-2">
-                      <div className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm bg-[#065F36]" /> Worked Cases</div>
-                      <div className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm bg-emerald-400" /> Completed</div>
-                      <div className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm bg-teal-300 border border-teal-400" /> Meta Leads</div>
-                      {trendView === 'hourly' && <div className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm bg-amber-400" /> Interested</div>}
+
+                  {/* Disposition Allocation */}
+                  <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="p-2 bg-[#E8FFF5] rounded-xl"><Briefcase className="h-5 w-5 text-[#065F36]" /></div>
+                      <span className="text-xs font-semibold text-gray-500 bg-gray-50 border border-gray-200 px-2 py-0.5 rounded-full">
+                        {s?.workedLeads?.pending > 0 ? `${s.workedLeads.pending} pending` : 'All worked'}
+                      </span>
                     </div>
-                    {/* Toggle */}
-                    <div className="flex items-center bg-gray-100 rounded-xl p-1 gap-1">
-                      <button onClick={() => setTrendView('daily')}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${trendView === 'daily' ? 'bg-white text-[#065F36] shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
-                        Daily
-                      </button>
-                      <button onClick={() => setTrendView('hourly')}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${trendView === 'hourly' ? 'bg-white text-[#065F36] shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
-                        Hourly
-                      </button>
+                    <p className="text-4xl font-black text-gray-800">{s?.workedLeads?.total ?? '—'}</p>
+                    <p className="text-sm font-bold text-gray-700 mt-1">Disposition Allocation</p>
+                    <p className="text-xs text-gray-400 mt-0.5">Total cases submitted by agents</p>
+                  </div>
+
+                  {/* Completed */}
+                  <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="p-2 bg-emerald-100 rounded-xl"><CheckCircle2 className="h-5 w-5 text-emerald-600" /></div>
+                      <span className="text-xs font-semibold text-emerald-600 bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded-full">
+                        {s?.conversionRate}% rate
+                      </span>
+                    </div>
+                    <p className="text-4xl font-black text-emerald-600">{s?.workedLeads?.completed ?? '—'}</p>
+                    <p className="text-sm font-bold text-gray-700 mt-1">Completed Cases</p>
+                    <p className="text-xs text-gray-400 mt-0.5">Cases fully closed / processed by agents</p>
+                  </div>
+
+                  {/* Interested */}
+                  <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="p-2 bg-amber-100 rounded-xl"><Zap className="h-5 w-5 text-amber-600" /></div>
+                      <span className="text-xs font-semibold text-amber-600 bg-amber-50 border border-amber-100 px-2 py-0.5 rounded-full">
+                        {s?.interestRate}% rate
+                      </span>
+                    </div>
+                    <p className="text-4xl font-black text-amber-600">{s?.workedLeads?.interested ?? '—'}</p>
+                    <p className="text-sm font-bold text-gray-700 mt-1">Interested Customers</p>
+                    <p className="text-xs text-gray-400 mt-0.5">Customers who showed interest in a loan</p>
+                  </div>
+
+                </div>
+
+                {/* ── Secondary stats row ── */}
+                <div className="grid grid-cols-3 gap-4 mt-4">
+                  <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-5 py-4 flex items-center gap-4">
+                    <div className="p-2 bg-orange-100 rounded-xl flex-shrink-0"><Activity className="h-4 w-4 text-orange-500" /></div>
+                    <div>
+                      <p className="text-2xl font-black text-orange-500">{s?.workedLeads?.callback ?? 0}</p>
+                      <p className="text-xs font-bold text-gray-700">Callbacks Pending</p>
+                      <p className="text-xs text-gray-400">Customers who asked to be called back</p>
+                    </div>
+                  </div>
+                  <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-5 py-4 flex items-center gap-4">
+                    <div className="p-2 bg-slate-100 rounded-xl flex-shrink-0"><XCircle className="h-4 w-4 text-slate-500" /></div>
+                    <div>
+                      <p className="text-2xl font-black text-slate-500">{s?.workedLeads?.pending ?? 0}</p>
+                      <p className="text-xs font-bold text-gray-700">Still Pending</p>
+                      <p className="text-xs text-gray-400">Cases not yet fully processed</p>
+                    </div>
+                  </div>
+                  <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-5 py-4 flex items-center gap-4">
+                    <div className="p-2 bg-violet-100 rounded-xl flex-shrink-0"><Database className="h-4 w-4 text-violet-500" /></div>
+                    <div>
+                      <p className="text-2xl font-black text-violet-600">{s?.poolLeads?.total ?? 0}</p>
+                      <p className="text-xs font-bold text-gray-700">Pool Leads Imported</p>
+                      <p className="text-xs text-gray-400">Leads loaded from external data files</p>
                     </div>
                   </div>
                 </div>
+              </div>
 
-                {trendView === 'daily' ? (
-                  trend.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-16 gap-3 text-gray-300">
-                      <BarChart2 className="h-16 w-16" />
-                      <p className="text-sm text-gray-400">No activity in this period</p>
-                    </div>
-                  ) : (
-                    <div className="overflow-x-auto">
-                      <div className="flex items-end gap-1.5 pb-6 pt-2" style={{ minWidth: trend.length > 20 ? `${trend.length * 32}px` : '100%', height: '200px' }}>
-                        {(() => {
-                          const webTrend = reportData?.trend?.websiteLeads || [];
-                          const maxCombined = Math.max(
-                            trend.length ? Math.max(...trend.map(d => d.total), 1) : 1,
-                            1
-                          );
-                          return trend.map((d, i) => {
-                            const webDay = webTrend.find(w => w.date === d.date);
-                            const barH = Math.max((d.total / maxCombined) * 140, 4);
-                            const compH = d.total > 0 ? Math.round((d.completed / d.total) * barH) : 0;
-                            const label = new Date(d.date + 'T12:00:00+05:30').toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short' });
-                            return (
-                              <div key={i} className="flex flex-col items-center gap-1 flex-1 group min-w-[28px]">
-                                <div className="flex items-center gap-0.5 mb-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                                  <span className="text-[10px] font-bold text-[#065F36]">{d.total}</span>
-                                  {webDay?.count > 0 && <span className="text-[9px] text-teal-600 font-bold">+{webDay.count}</span>}
-                                </div>
-                                <div className="w-full flex flex-col justify-end rounded-t-md overflow-hidden cursor-pointer" style={{ height: `${barH}px`, background: '#E8FFF5' }}>
-                                  <div style={{ height: `${compH}px`, background: '#10B981' }} />
-                                  <div style={{ flex: 1, background: '#065F36' }} />
-                                </div>
-                                {webDay?.count > 0 && (
-                                  <div className="w-full h-1.5 rounded-full bg-teal-300 opacity-70" title={`${webDay.count} website leads`} />
-                                )}
-                                <span className="text-gray-400 whitespace-nowrap" style={{ fontSize: '9px', transform: 'rotate(-35deg)', transformOrigin: 'top left', marginLeft: '8px', marginTop: '2px' }}>{label}</span>
-                              </div>
-                            );
-                          });
-                        })()}
+              {/* ── Section 2: Performance Rates ── */}
+              <div>
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 px-1">Performance — How well did we do?</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
+                  {/* Completion Rate */}
+                  <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+                    <div className="flex items-center justify-between mb-2">
+                      <div>
+                        <p className="font-bold text-gray-800 text-base">Completion Rate</p>
+                        <p className="text-xs text-gray-400 mt-0.5">Out of every 100 cases worked, how many were fully completed?</p>
                       </div>
+                      <span className={`text-5xl font-black ${
+                        s?.conversionRate >= 50 ? 'text-emerald-600' : s?.conversionRate >= 25 ? 'text-amber-500' : 'text-red-500'
+                      }`}>{s?.conversionRate}%</span>
                     </div>
-                  )
-                ) : (
-                  /* Hourly chart — all 24 hours with working-hours (9am–6pm) highlight */
+                    <div className="h-4 bg-gray-100 rounded-full overflow-hidden mt-4">
+                      <div className={`h-full rounded-full transition-all duration-700 ${
+                        s?.conversionRate >= 50 ? 'bg-emerald-500' : s?.conversionRate >= 25 ? 'bg-amber-400' : 'bg-red-400'
+                      }`} style={{ width: `${Math.min(s?.conversionRate, 100)}%` }} />
+                    </div>
+                    <div className="flex justify-between text-xs text-gray-400 mt-1.5">
+                      <span>0% (none)</span><span>50% (good)</span><span>100% (all)</span>
+                    </div>
+                    <p className={`text-xs mt-3 font-semibold px-3 py-2 rounded-xl ${
+                      s?.conversionRate >= 50 ? 'bg-emerald-50 text-emerald-700' :
+                      s?.conversionRate >= 25 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700'
+                    }`}>
+                      {s?.conversionRate >= 50 ? '✅ Great performance — keep it up!'
+                        : s?.conversionRate >= 25 ? '👍 Decent — push agents to close more cases'
+                        : '⚠️ Low — review agent scripts and follow-up process'}
+                    </p>
+                  </div>
+
+                  {/* Interest Rate */}
+                  <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+                    <div className="flex items-center justify-between mb-2">
+                      <div>
+                        <p className="font-bold text-gray-800 text-base">Interest Rate</p>
+                        <p className="text-xs text-gray-400 mt-0.5">Out of every 100 customers called, how many were interested in a loan?</p>
+                      </div>
+                      <span className={`text-5xl font-black ${
+                        s?.interestRate >= 40 ? 'text-emerald-600' : s?.interestRate >= 20 ? 'text-amber-500' : 'text-slate-500'
+                      }`}>{s?.interestRate}%</span>
+                    </div>
+                    <div className="h-4 bg-gray-100 rounded-full overflow-hidden mt-4">
+                      <div className={`h-full rounded-full transition-all duration-700 ${
+                        s?.interestRate >= 40 ? 'bg-emerald-500' : s?.interestRate >= 20 ? 'bg-amber-400' : 'bg-slate-400'
+                      }`} style={{ width: `${Math.min(s?.interestRate, 100)}%` }} />
+                    </div>
+                    <div className="flex justify-between text-xs text-gray-400 mt-1.5">
+                      <span>0% (none)</span><span>40% (good)</span><span>100% (all)</span>
+                    </div>
+                    <p className={`text-xs mt-3 font-semibold px-3 py-2 rounded-xl ${
+                      s?.interestRate >= 40 ? 'bg-emerald-50 text-emerald-700' :
+                      s?.interestRate >= 20 ? 'bg-amber-50 text-amber-700' : 'bg-slate-50 text-slate-600'
+                    }`}>
+                      {s?.interestRate >= 40 ? '🔥 High interest — leads quality is strong'
+                        : s?.interestRate >= 20 ? '📊 Moderate interest — try better qualifying questions'
+                        : '📉 Low interest — check lead source quality'}
+                    </p>
+                  </div>
+
+                </div>
+              </div>
+
+              {/* ── Section 3: Daily Activity Chart ── */}
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+                <div className="flex items-center justify-between mb-1">
                   <div>
-                    {/* Working hours legend */}
-                    <div className="flex items-center gap-3 mb-3 px-1">
-                      <div className="flex items-center gap-1.5 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-xl font-semibold">
-                        <span className="w-2.5 h-2.5 rounded-sm bg-emerald-200 border border-emerald-400" />
-                        Working hours: 9 AM – 6 PM IST
-                      </div>
-                      <div className="flex items-center gap-1.5 text-xs text-gray-500 bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-xl font-semibold">
-                        <span className="w-2.5 h-2.5 rounded-sm bg-gray-200" />
-                        Off hours
-                      </div>
-                    </div>
-                    <div className="relative flex items-end gap-1 pb-6 pt-2" style={{ height: '200px' }}>
-                      {/* Working hours background band */}
-                      <div className="absolute inset-y-0 pointer-events-none rounded-lg"
-                        style={{
-                          left: `calc(${(9/24)*100}% + ${9*2}px)`,
-                          width: `calc(${(9/24)*100}% - ${9*2}px)`,
-                          background: 'rgba(16,185,129,0.06)',
-                          border: '1px dashed rgba(16,185,129,0.3)',
-                          top: '4px',
-                          bottom: '22px',
-                        }} />
-                      {hourlyTrend.map((d) => {
-                        const isWorkHour = d.hour >= 9 && d.hour < 18;
-                        const barH  = Math.max((d.total / maxHourly) * 150, d.total > 0 ? 4 : 0);
+                    <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Day-by-Day Activity</p>
+                    <h2 className="font-bold text-gray-800">Disposition Allocation — Cases worked each day</h2>
+                    <p className="text-xs text-gray-400 mt-0.5">Each bar = one day. Dark green = total worked. Light green = completed. Teal dot = Meta Allocation assigned that day.</p>
+                  </div>
+                  <div className="flex items-center gap-4 text-xs text-gray-500">
+                    <div className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm bg-[#065F36]" /> Disposition Allocation</div>
+                    <div className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm bg-emerald-400" /> Completed</div>
+                    <div className="flex items-center gap-1.5"><span className="inline-block w-2 h-2 rounded-full bg-teal-400" /> Meta Assigned</div>
+                  </div>
+                </div>
+
+                {trend.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-16 gap-3 text-gray-300">
+                    <BarChart2 className="h-16 w-16" />
+                    <p className="text-sm text-gray-400">No activity recorded in this period</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto mt-4">
+                    <div className="flex items-end gap-1.5 pb-6 pt-4"
+                      style={{ minWidth: trend.length > 20 ? `${trend.length * 34}px` : '100%', height: '180px' }}>
+                      {trend.map((d, i) => {
+                        const barH  = Math.max((d.total / maxTrendTotal) * 130, d.total > 0 ? 6 : 2);
                         const compH = d.total > 0 ? Math.round((d.completed / d.total) * barH) : 0;
-                        const intH  = d.total > 0 ? Math.round((d.interested / d.total) * barH) : 0;
-                        const isPeak = d.total === maxHourly && maxHourly > 0;
+                        const label = new Date(d.date + 'T12:00:00+05:30').toLocaleDateString('en-IN',
+                          { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short' });
                         return (
-                          <div key={d.hour} className="relative flex flex-col items-center gap-1 flex-1 group min-w-0 z-10">
-                            <span className="text-xs font-bold text-[#065F36] opacity-0 group-hover:opacity-100 transition-opacity mb-0.5 absolute -top-5 whitespace-nowrap">{d.total || ''}</span>
-                            <div className={`w-full flex flex-col justify-end rounded-t-md overflow-hidden cursor-pointer transition-all ${isPeak ? 'ring-2 ring-amber-400 ring-offset-1' : ''}`}
-                              style={{
-                                height: `${barH}px`,
-                                minHeight: d.total > 0 ? '4px' : '2px',
-                                background: isWorkHour ? (d.total > 0 ? '#D1FAE5' : '#ECFDF5') : (d.total > 0 ? '#E8FFF5' : '#F9FAFB'),
-                              }}>
-                              <div style={{ height: `${intH}px`,  background: '#F59E0B' }} />
-                              <div style={{ height: `${compH}px`, background: '#10B981' }} />
-                              <div style={{ flex: 1, background: isWorkHour ? (d.total > 0 ? '#059669' : '#D1FAE5') : (d.total > 0 ? '#065F36' : '#E5E7EB') }} />
+                          <div key={i} className="flex flex-col items-center gap-1 flex-1 group min-w-[28px]">
+                            {/* Hover tooltip */}
+                            <div className="opacity-0 group-hover:opacity-100 transition-opacity text-center mb-1 absolute -top-7 z-10">
+                              <span className="text-[10px] font-black text-[#065F36] bg-[#E8FFF5] border border-[#D1FAE5] px-1.5 py-0.5 rounded-lg whitespace-nowrap">
+                                {d.total} disp · {d.completed} done{(() => { const w = webTrend.find(x => x.date === d.date); return w?.count > 0 ? ` · ${w.count} meta` : ''; })()}
+                              </span>
                             </div>
-                            <span className={`font-medium ${isWorkHour ? 'text-emerald-600' : 'text-gray-400'}`} style={{ fontSize: '8px' }}>{fmtHour(d.hour)}</span>
+                            <div className="w-full flex flex-col justify-end rounded-t-lg overflow-hidden relative"
+                              style={{ height: `${barH}px`, background: '#E8FFF5' }}>
+                              <div style={{ height: `${compH}px`, background: '#10B981' }} />
+                              <div style={{ flex: 1, background: d.total > 0 ? '#065F36' : '#E8FFF5' }} />
+                            </div>
+                            {/* Teal dot if meta leads were assigned this day */}
+                            {(() => { const w = webTrend.find(x => x.date === d.date); return w?.count > 0 ? <span className="w-2 h-2 rounded-full bg-teal-400 flex-shrink-0" title={`${w.count} meta leads assigned`} /> : <span className="w-2 h-2" />; })()}
+                            <span className="text-gray-400 whitespace-nowrap"
+                              style={{ fontSize: '9px', transform: 'rotate(-35deg)', transformOrigin: 'top left', marginLeft: '8px', marginTop: '2px' }}>
+                              {label}
+                            </span>
                           </div>
                         );
                       })}
                     </div>
-                    {/* Peak hour highlight — only within working hours */}
-                    {maxHourly > 0 && (() => {
-                      const workHours = hourlyTrend.filter(h => h.hour >= 9 && h.hour < 18);
-                      const peak = workHours.length
-                        ? workHours.reduce((a, b) => b.total > a.total ? b : a, workHours[0])
-                        : hourlyTrend.reduce((a, b) => b.total > a.total ? b : a, { hour: 0, total: 0 });
-                      const offPeak = hourlyTrend.filter(h => (h.hour < 9 || h.hour >= 18) && h.total > 0);
-                      const offPeakTotal = offPeak.reduce((s, h) => s + h.total, 0);
-                      const workTotal = workHours.reduce((s, h) => s + h.total, 0);
-                      return (
-                        <div className="space-y-2 mt-2 pt-3 border-t border-gray-100">
-                          <div className="flex items-center gap-4 flex-wrap">
-                            <div className="flex items-center gap-2 text-sm">
-                              <span className="w-2.5 h-2.5 rounded-full bg-amber-400 ring-2 ring-amber-200 flex-shrink-0" />
-                              <span className="text-gray-600 font-semibold">Peak (work hrs):</span>
-                              <span className="font-black text-amber-600">{fmtHour(peak.hour)} — {peak.total} cases</span>
-                            </div>
-                            {offPeakTotal > 0 && (
-                              <div className="flex items-center gap-2 text-sm">
-                                <span className="w-2.5 h-2.5 rounded-full bg-orange-300 flex-shrink-0" />
-                                <span className="text-gray-500 font-semibold">Off-hours activity:</span>
-                                <span className="font-bold text-orange-600">{offPeakTotal} cases (outside 9am–6pm)</span>
-                              </div>
-                            )}
-                            <div className="ml-auto text-xs bg-emerald-50 border border-emerald-200 text-emerald-700 px-3 py-1.5 rounded-xl font-semibold">
-                              ✅ Work hrs: {workTotal} · Off hrs: {offPeakTotal}
-                            </div>
-                          </div>
-                          {peak.total > 0 && (
-                            <div className="text-xs text-gray-500 bg-amber-50 border border-amber-100 text-amber-700 px-4 py-2.5 rounded-xl font-medium">
-                              💡 Best calling window within working hours: <strong>{fmtHour(peak.hour)} – {fmtHour(Math.min(peak.hour + 2, 18))}</strong> IST — schedule high-priority calls then.
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })()}
                   </div>
                 )}
               </div>
 
-              {/* ── Breakdowns ── */}
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+              {/* ── Section 4: What happened on each call? + What products? ── */}
+              <div>
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 px-1">Breakdown — What happened on each call?</p>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
 
-                {/* Call Outcomes */}
-                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                  <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
-                    <div className="p-2 bg-amber-100 rounded-xl"><Activity className="h-4 w-4 text-amber-600" /></div>
-                    <div>
-                      <h3 className="font-bold text-gray-800 text-sm">Call Outcomes</h3>
-                      <p className="text-xs text-gray-400">How agents disposed calls</p>
-                    </div>
-                  </div>
-                  <div className="p-5 space-y-3">
-                    {(brk?.outcome || []).sort((a,b) => b.count - a.count).map(o => (
-                      <div key={o._id}>
-                        <div className="flex justify-between text-xs mb-1">
-                          <span className="font-semibold text-gray-700">{OUTCOME_LABEL[o._id] || o._id || 'No Outcome'}</span>
-                          <span className="font-bold text-gray-500">{o.count}</span>
-                        </div>
-                        <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden">
-                          <div className={`h-full rounded-full ${OUTCOME_COLOR[o._id] || 'bg-gray-400'}`}
-                            style={{ width: `${(o.count / maxOutcome) * 100}%` }} />
-                        </div>
+                  {/* Call Results */}
+                  <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                    <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
+                      <div className="p-2 bg-amber-100 rounded-xl"><Activity className="h-4 w-4 text-amber-600" /></div>
+                      <div>
+                        <h3 className="font-bold text-gray-800 text-sm">Call Results</h3>
+                        <p className="text-xs text-gray-400">What was the result of each customer call?</p>
                       </div>
-                    ))}
-                    {(!brk?.outcome?.length) && <p className="text-gray-400 text-sm text-center py-4">No data</p>}
-                  </div>
-                </div>
-
-                {/* Product Types */}
-                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                  <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
-                    <div className="p-2 bg-blue-100 rounded-xl"><Briefcase className="h-4 w-4 text-blue-600" /></div>
-                    <div>
-                      <h3 className="font-bold text-gray-800 text-sm">Product Mix</h3>
-                      <p className="text-xs text-gray-400">Cases by loan / product type</p>
                     </div>
-                  </div>
-                  <div className="p-5 space-y-3">
-                    {(brk?.product || []).map((p, i) => {
-                      const colors = ['bg-blue-500','bg-indigo-500','bg-violet-500','bg-purple-500','bg-cyan-500','bg-teal-500','bg-emerald-500','bg-amber-500','bg-orange-500','bg-red-400','bg-pink-500','bg-gray-400'];
-                      return (
-                        <div key={p._id}>
-                          <div className="flex justify-between text-xs mb-1">
-                            <span className="font-semibold text-gray-700">{fmtProd(p._id)}</span>
-                            <span className="font-bold text-gray-500">{p.count}</span>
-                          </div>
-                          <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden">
-                            <div className={`h-full rounded-full ${colors[i % colors.length]}`}
-                              style={{ width: `${(p.count / maxProduct) * 100}%` }} />
-                          </div>
-                        </div>
-                      );
-                    })}
-                    {(!brk?.product?.length) && <p className="text-gray-400 text-sm text-center py-4">No data</p>}
-                  </div>
-                </div>
-
-                {/* Lead Source */}
-                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                  <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
-                    <div className="p-2 bg-teal-100 rounded-xl"><Globe className="h-4 w-4 text-teal-600" /></div>
-                    <div>
-                      <h3 className="font-bold text-gray-800 text-sm">Lead Source</h3>
-                      <p className="text-xs text-gray-400">Website vs Imported vs Manual</p>
-                    </div>
-                  </div>
-                  <div className="p-5 space-y-4">
-                    {(brk?.source || []).map(src => {
-                      const total = (brk?.source || []).reduce((a, b) => a + b.count, 0) || 1;
-                      const pct   = Math.round((src.count / total) * 100);
-                      const cfg   = {
-                        Website:  { color: 'bg-teal-500',   icon: '🌐' },
-                        Imported: { color: 'bg-violet-500', icon: '📊' },
-                        Manual:   { color: 'bg-gray-400',   icon: '✍️' },
-                      }[src._id] || { color: 'bg-gray-300', icon: '📋' };
-                      return (
-                        <div key={src._id}>
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="text-sm font-bold text-gray-700">{cfg.icon} {src._id}</span>
-                            <div className="flex items-center gap-2">
-                              <span className="text-xl font-black text-gray-800">{src.count}</span>
-                              <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{pct}%</span>
+                    <div className="p-5 space-y-3">
+                      {(brk?.outcome || []).length === 0 && <p className="text-gray-400 text-sm text-center py-6">No call data yet</p>}
+                      {(brk?.outcome || []).sort((a, b) => b.count - a.count).map(o => {
+                        const pct = Math.round((o.count / maxOutcome) * 100);
+                        return (
+                          <div key={o._id}>
+                            <div className="flex justify-between items-center mb-1.5">
+                              <span className="text-sm font-semibold text-gray-700">
+                                {OUTCOME_EMOJI[o._id] || '📋'} {OUTCOME_LABEL[o._id] || o._id || 'No Outcome'}
+                              </span>
+                              <span className="text-sm font-black text-gray-700">{o.count}</span>
+                            </div>
+                            <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
+                              <div className={`h-full rounded-full ${OUTCOME_COLOR[o._id] || 'bg-gray-400'}`}
+                                style={{ width: `${pct}%` }} />
                             </div>
                           </div>
-                          <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
-                            <div className={`h-full rounded-full ${cfg.color}`} style={{ width: `${pct}%` }} />
-                          </div>
-                        </div>
-                      );
-                    })}
-                    {(!brk?.source?.length) && (
-                      <div className="py-8 text-center">
-                        <p className="text-gray-400 text-sm">No worked cases in this period.</p>
-                      </div>
-                    )}
-
-                    {/* Website leads funnel */}
-                    <div className="mt-4 pt-4 border-t border-gray-100">
-                      <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Website Funnel</p>
-                      {[
-                    { label: 'Meta Allocation',  val: s?.websiteLeads?.total,     color: 'bg-teal-200' },
-                        { label: 'Loaded',     val: s?.websiteLeads?.loaded,    color: 'bg-teal-400' },
-                        { label: 'Completed',  val: s?.websiteLeads?.completed, color: 'bg-teal-600' },
-                      ].map(f => (
-                        <div key={f.label} className="flex items-center gap-2 mb-2">
-                          <span className="text-xs text-gray-500 w-18">{f.label}</span>
-                          <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
-                            <div className={`h-full rounded-full ${f.color}`}
-                              style={{ width: s?.websiteLeads?.total > 0 ? `${(f.val / s.websiteLeads.total) * 100}%` : '0%' }} />
-                          </div>
-                          <span className="text-xs font-bold text-gray-600 w-6 text-right">{f.val}</span>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
+
+                  {/* Loan Products */}
+                  <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                    <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
+                      <div className="p-2 bg-blue-100 rounded-xl"><Briefcase className="h-4 w-4 text-blue-600" /></div>
+                      <div>
+                        <h3 className="font-bold text-gray-800 text-sm">Loan Products</h3>
+                        <p className="text-xs text-gray-400">Which loan types were applied for most?</p>
+                      </div>
+                    </div>
+                    <div className="p-5 space-y-3">
+                      {(brk?.product || []).length === 0 && <p className="text-gray-400 text-sm text-center py-6">No product data yet</p>}
+                      {(brk?.product || []).map((p, i) => {
+                        const pColors = ['bg-blue-500','bg-indigo-500','bg-violet-500','bg-purple-500','bg-cyan-500','bg-teal-500','bg-emerald-500','bg-amber-500','bg-orange-500','bg-red-400'];
+                        const pct = Math.round((p.count / maxProduct) * 100);
+                        return (
+                          <div key={p._id}>
+                            <div className="flex justify-between items-center mb-1.5">
+                              <span className="text-sm font-semibold text-gray-700">{fmtProd(p._id)}</span>
+                              <span className="text-sm font-black text-gray-700">{p.count}</span>
+                            </div>
+                            <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
+                              <div className={`h-full rounded-full ${pColors[i % pColors.length]}`}
+                                style={{ width: `${pct}%` }} />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
                 </div>
               </div>
 
-              {/* ── Agent Leaderboard ── */}
+              {/* ── Section 5: Where did the leads come from? ── */}
               <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-3">
-                  <div className="p-2 bg-gradient-to-br from-amber-400 to-orange-500 rounded-xl shadow-sm">
-                    <Users className="h-5 w-5 text-white" />
-                  </div>
+                <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
+                  <div className="p-2 bg-teal-100 rounded-xl"><Globe className="h-4 w-4 text-teal-600" /></div>
                   <div>
-                    <h2 className="font-bold text-gray-800">Agent Leaderboard — Selected Period</h2>
-                    <p className="text-xs text-gray-400">Ranked by cases worked in this date range</p>
+                    <h3 className="font-bold text-gray-800 text-sm">Where Did the Leads Come From?</h3>
+                    <p className="text-xs text-gray-400">Website form · Imported file · Manually added</p>
                   </div>
                 </div>
+                <div className="p-5">
+                  {(brk?.source || []).length === 0 ? (
+                    <p className="text-gray-400 text-sm text-center py-6">No lead source data in this period</p>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      {(brk?.source || []).map(src => {
+                        const total = (brk?.source || []).reduce((a, b) => a + b.count, 0) || 1;
+                        const pct   = Math.round((src.count / total) * 100);
+                        const cfg   = {
+                          Website:  { color: 'bg-teal-500',   ring: 'ring-teal-200',   text: 'text-teal-600',   bg: 'bg-teal-50',   icon: '🌐', desc: 'Leads from the website form' },
+                          Imported: { color: 'bg-violet-500', ring: 'ring-violet-200',  text: 'text-violet-600', bg: 'bg-violet-50', icon: '📂', desc: 'Leads uploaded via Excel/CSV file' },
+                          Manual:   { color: 'bg-gray-500',   ring: 'ring-gray-200',    text: 'text-gray-600',   bg: 'bg-gray-50',   icon: '✍️', desc: 'Leads added manually by admins' },
+                        }[src._id] || { color: 'bg-gray-400', ring: 'ring-gray-200', text: 'text-gray-600', bg: 'bg-gray-50', icon: '📋', desc: '' };
+                        return (
+                          <div key={src._id} className={`${cfg.bg} rounded-2xl border border-gray-100 p-5`}>
+                            <div className="flex items-center justify-between mb-3">
+                              <span className="text-2xl">{cfg.icon}</span>
+                              <span className={`text-xs font-bold ${cfg.text} bg-white border border-gray-200 px-2 py-0.5 rounded-full`}>{pct}%</span>
+                            </div>
+                            <p className={`text-4xl font-black ${cfg.text}`}>{src.count}</p>
+                            <p className="font-bold text-gray-800 text-sm mt-1">{src._id}</p>
+                            <p className="text-xs text-gray-400 mt-0.5">{cfg.desc}</p>
+                            <div className="h-2 bg-white rounded-full overflow-hidden mt-3">
+                              <div className={`h-full rounded-full ${cfg.color}`} style={{ width: `${pct}%` }} />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Website leads pipeline */}
+                  {s?.websiteLeads?.total > 0 && (
+                    <div className="mt-5 pt-5 border-t border-gray-100">
+                      <p className="text-xs font-bold text-gray-500 mb-3">Meta Allocation Pipeline — what happened after a lead was received?</p>
+                      <div className="flex items-center gap-3 flex-wrap">
+                        {[
+                          { label: 'Received', val: s.websiteLeads.total,     color: 'bg-teal-200 text-teal-700',   desc: 'Total from website' },
+                          { label: 'Assigned', val: s.websiteLeads.loaded,    color: 'bg-teal-400 text-white',       desc: 'Given to an agent' },
+                          { label: 'Completed',val: s.websiteLeads.completed, color: 'bg-teal-700 text-white',       desc: 'Fully processed' },
+                        ].map((f, i) => (
+                          <React.Fragment key={f.label}>
+                            <div className={`flex flex-col items-center px-5 py-3 rounded-xl ${f.color}`}>
+                              <span className="text-2xl font-black">{f.val ?? 0}</span>
+                              <span className="text-xs font-bold">{f.label}</span>
+                              <span className="text-xs opacity-70">{f.desc}</span>
+                            </div>
+                            {i < 2 && <span className="text-gray-400 font-bold text-lg">→</span>}
+                          </React.Fragment>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* ── Section 6: Agent Performance ── */}
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-3">
+                  <div className="p-2 bg-amber-100 rounded-xl">
+                    <Users className="h-5 w-5 text-amber-600" />
+                  </div>
+                  <div>
+                    <h2 className="font-bold text-gray-800">Agent Performance</h2>
+                    <p className="text-xs text-gray-400">Who worked the most cases and who completed the most — in this period</p>
+                  </div>
+                </div>
+
                 {!reportData.agents?.length ? (
-                  <p className="text-center text-gray-400 text-sm py-10">No agent activity in this period.</p>
+                  <div className="text-center py-12">
+                    <Users className="h-10 w-10 text-gray-200 mx-auto mb-3" />
+                    <p className="text-gray-400 text-sm">No agent activity recorded in this period.</p>
+                  </div>
                 ) : (
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="bg-gray-50 text-xs font-bold text-gray-500 uppercase tracking-wider border-b border-gray-100">
-                          <th className="pl-6 pr-3 py-3.5 text-left">Rank</th>
-                          <th className="px-3 py-3.5 text-left">Agent</th>
-                          <th className="px-3 py-3.5 text-center">Cases</th>
+                          <th className="pl-6 pr-3 py-3.5 text-left w-12">Rank</th>
+                          <th className="px-3 py-3.5 text-left">Agent Name</th>
+                          <th className="px-3 py-3.5 text-center">Cases Worked</th>
                           <th className="px-3 py-3.5 text-center">Completed</th>
                           <th className="px-3 py-3.5 text-center">Interested</th>
-                          <th className="px-3 pr-6 py-3.5 text-center">Conv. Rate</th>
+                          <th className="px-3 pr-6 py-3.5 text-left">Completion Rate</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-50">
                         {reportData.agents.map((a, i) => {
-                          const conv = a.total > 0 ? Math.round((a.completed / a.total) * 100) : 0;
+                          const conv  = a.total > 0 ? Math.round((a.completed / a.total) * 100) : 0;
                           const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : null;
                           const statusKey = a.agent?.agentStatus || 'available';
                           return (
-                            <tr key={a._id} className={`hover:bg-gray-50/70 transition-colors ${i < 3 ? 'bg-amber-50/30' : ''}`}>
-                              <td className="pl-6 pr-3 py-4">
-                                <span className="text-lg">{medal || <span className="text-xs font-bold text-gray-400">#{i+1}</span>}</span>
+                            <tr key={a._id} className={`hover:bg-gray-50/60 transition-colors ${i < 3 ? 'bg-amber-50/20' : ''}`}>
+                              <td className="pl-6 pr-3 py-4 text-center">
+                                {medal
+                                  ? <span className="text-xl">{medal}</span>
+                                  : <span className="text-xs font-bold text-gray-400">#{i + 1}</span>}
                               </td>
                               <td className="px-3 py-4">
                                 <div className="flex items-center gap-3">
-                                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-white font-black text-sm ${
-                                    i === 0 ? 'bg-gradient-to-br from-amber-400 to-orange-500' :
-                                    i === 1 ? 'bg-gradient-to-br from-slate-400 to-gray-500' :
-                                    i === 2 ? 'bg-gradient-to-br from-orange-600 to-amber-700' :
-                                    'bg-gradient-to-br from-[#065F36] to-[#00A651]'
+                                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-white font-black text-sm flex-shrink-0 ${
+                                    i === 0 ? 'bg-gradient-to-br from-amber-400 to-orange-500'   :
+                                    i === 1 ? 'bg-gradient-to-br from-slate-400 to-gray-500'     :
+                                    i === 2 ? 'bg-gradient-to-br from-orange-600 to-amber-700'   :
+                                              'bg-gradient-to-br from-[#065F36] to-[#00A651]'
                                   }`}>
                                     {a.agent?.name?.charAt(0)?.toUpperCase() || '?'}
                                   </div>
                                   <div>
-                                    <p className="font-bold text-gray-800">{a.agent?.name || 'Unknown'}</p>
+                                    <p className="font-bold text-gray-800">{a.agent?.name || 'Unknown Agent'}</p>
                                     <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
-                                      statusKey === 'break'       ? 'bg-amber-100 text-amber-700' :
-                                      statusKey === 'unavailable' ? 'bg-red-100 text-red-600' :
+                                      statusKey === 'break'       ? 'bg-amber-100 text-amber-700'   :
+                                      statusKey === 'unavailable' ? 'bg-red-100 text-red-600'       :
                                                                      'bg-emerald-100 text-emerald-700'
                                     }`}>
-                                      {statusKey === 'break' ? '☕ Break' : statusKey === 'unavailable' ? '🔴 Off' : '✅ Live'}
+                                      {statusKey === 'break' ? '☕ On Break' : statusKey === 'unavailable' ? '🔴 Offline' : '✅ Active'}
                                     </span>
                                   </div>
                                 </div>
@@ -1239,18 +1246,21 @@ const DomSuperAdminDashboard = () => {
                                 <span className="text-xl font-black text-gray-800">{a.total}</span>
                               </td>
                               <td className="px-3 py-4 text-center">
-                                <span className="inline-block bg-emerald-100 text-emerald-700 font-bold text-sm px-3 py-1 rounded-xl">{a.completed}</span>
+                                <span className="inline-block bg-emerald-100 text-emerald-700 font-black text-sm px-3 py-1 rounded-xl">{a.completed}</span>
                               </td>
                               <td className="px-3 py-4 text-center">
-                                <span className="inline-block bg-amber-100 text-amber-700 font-bold text-sm px-3 py-1 rounded-xl">{a.interested}</span>
+                                <span className="inline-block bg-amber-100 text-amber-700 font-black text-sm px-3 py-1 rounded-xl">{a.interested}</span>
                               </td>
                               <td className="px-3 pr-6 py-4">
                                 <div className="flex items-center gap-2">
-                                  <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden min-w-[60px]">
-                                    <div className={`h-full rounded-full ${conv >= 50 ? 'bg-gradient-to-r from-amber-400 to-orange-500' : conv >= 25 ? 'bg-gradient-to-r from-emerald-400 to-teal-500' : 'bg-gray-300'}`}
-                                      style={{ width: `${conv}%` }} />
+                                  <div className="flex-1 h-3 bg-gray-100 rounded-full overflow-hidden min-w-[80px]">
+                                    <div className={`h-full rounded-full ${
+                                      conv >= 50 ? 'bg-emerald-500' : conv >= 25 ? 'bg-amber-400' : 'bg-gray-300'
+                                    }`} style={{ width: `${conv}%` }} />
                                   </div>
-                                  <span className={`text-xs font-black w-9 text-right ${conv >= 50 ? 'text-amber-600' : conv >= 25 ? 'text-emerald-600' : 'text-gray-400'}`}>{conv}%</span>
+                                  <span className={`text-sm font-black w-10 text-right ${
+                                    conv >= 50 ? 'text-emerald-600' : conv >= 25 ? 'text-amber-600' : 'text-gray-400'
+                                  }`}>{conv}%</span>
                                 </div>
                               </td>
                             </tr>
@@ -2268,6 +2278,15 @@ const DomSuperAdminDashboard = () => {
                   className="flex-1 text-sm bg-transparent outline-none text-gray-700 placeholder-gray-400" />
                 {webSearch && <button onClick={() => { setWebSearch(''); webSearchRef.current=''; }} className="text-gray-300 hover:text-gray-500"><X className="h-3.5 w-3.5" /></button>}
               </div>
+              {/* Source filter — Meta vs Website vs All */}
+              <select value={webSourceFilter}
+                onChange={(e) => { setWebSourceFilter(e.target.value); webSourceRef.current = e.target.value; fetchWebLeads(1); }}
+                className="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white text-gray-700">
+                <option value="">🌐 All Sources</option>
+                <option value="meta">📘 Meta Ads only</option>
+                <option value="website">🌐 Website Form only</option>
+                <option value="manual">✍️ Manual only</option>
+              </select>
               {/* Status */}
               <select value={webStatusFilter}
                 onChange={(e) => { setWebStatusFilter(e.target.value); webStatusRef.current = e.target.value; fetchWebLeads(1); }}
@@ -2322,14 +2341,14 @@ const DomSuperAdminDashboard = () => {
               {/* Clear — always visible, red when active */}
               <button
                 onClick={() => {
-                  setWebStatusFilter(''); setWebProductFilter(''); setWebSearch(''); setWebAgentFilter('');
+                  setWebStatusFilter(''); setWebProductFilter(''); setWebSearch(''); setWebAgentFilter(''); setWebSourceFilter('');
                   setWebDateFrom(''); setWebDateTo('');
                   webStatusRef.current=''; webProductRef.current=''; webSearchRef.current='';
-                  webAgentRef.current=''; webDateFromRef.current=''; webDateToRef.current='';
+                  webAgentRef.current=''; webDateFromRef.current=''; webDateToRef.current=''; webSourceRef.current='';
                   fetchWebLeads(1);
                 }}
                 className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border transition-all ${
-                  (webStatusFilter || webProductFilter || webSearch || webAgentFilter || webDateFrom || webDateTo)
+                  (webStatusFilter || webProductFilter || webSearch || webAgentFilter || webSourceFilter || webDateFrom || webDateTo)
                     ? 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100'
                     : 'bg-gray-50 text-gray-300 border-gray-200 cursor-default'
                 }`} title="Clear all filters">
@@ -2362,7 +2381,7 @@ const DomSuperAdminDashboard = () => {
                 <button onClick={() => { setWebDateFrom(''); setWebDateTo(''); webDateFromRef.current=''; webDateToRef.current=''; fetchWebLeads(1); }}
                   className="px-3 py-1.5 rounded-lg text-xs text-gray-500 border border-gray-200 hover:bg-gray-50 transition-colors">Clear</button>
               )}
-              {(webStatusFilter || webProductFilter || webSearch || webAgentFilter || webDateFrom || webDateTo) && (
+              {(webStatusFilter || webProductFilter || webSearch || webAgentFilter || webSourceFilter || webDateFrom || webDateTo) && (
                 <span className="ml-auto text-xs text-gray-400">{webLeadsTotal} leads found</span>
               )}
             </div>
@@ -2371,6 +2390,7 @@ const DomSuperAdminDashboard = () => {
               <span>Total: <strong className="text-gray-800">{webLeadsTotal}</strong></span>
               {webProductFilter && <span className="bg-[#E8FFF5] text-[#065F36] px-2 py-0.5 rounded-full font-semibold capitalize">{webProductFilter.replace(/_/g,' ')}</span>}
               {webStatusFilter  && <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full font-semibold capitalize">{webStatusFilter}</span>}
+              {webSourceFilter  && <span className={`px-2 py-0.5 rounded-full font-semibold capitalize ${webSourceFilter === 'meta' ? 'bg-blue-100 text-blue-700' : webSourceFilter === 'website' ? 'bg-teal-50 text-teal-700' : 'bg-gray-100 text-gray-600'}`}>{webSourceFilter === 'meta' ? '📘 Meta Ads' : webSourceFilter === 'website' ? '🌐 Website Form' : '✍️ Manual'}</span>}
               {webAgentFilter && <span className="bg-violet-50 text-violet-700 px-2 py-0.5 rounded-full font-semibold">{webAgents.find(a=>a._id===webAgentFilter)?.name || 'Agent'}</span>}
             </div>
 
@@ -2448,9 +2468,12 @@ const DomSuperAdminDashboard = () => {
                               : <span className="text-gray-300 text-xs">—</span>}
                           </td>
                           <td className="px-3 py-3.5">
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-teal-100 text-teal-700 border border-teal-200">
-                              🌐 Website
-                            </span>
+                            {lead.source === 'meta'
+                              ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-700 border border-blue-200">📘 Meta Ads</span>
+                              : lead.source === 'manual'
+                              ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-gray-100 text-gray-600 border border-gray-200">✍️ Manual</span>
+                              : <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-teal-100 text-teal-700 border border-teal-200">🌐 Website</span>
+                            }
                           </td>
                           <td className="px-3 py-3.5">
                             <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold ${sm.cls || 'bg-gray-100 text-gray-600'}`}>

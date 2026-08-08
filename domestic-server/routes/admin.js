@@ -317,12 +317,17 @@ router.get('/reports', authorize('dom_superadmin'), async (req, res) => {
     const toDate = to ? new Date(to) : new Date();
     toDate.setHours(23, 59, 59, 999);
 
-    const df  = { createdAt: { $gte: fromDate, $lte: toDate } };
+    const df    = { createdAt: { $gte: fromDate, $lte: toDate } };
+    // Separate filter for leads assigned (loadedAt) in this period — catches leads
+    // that arrived before the window but were assigned to agents within it
+    const dfLoad = { loadedAt:  { $gte: fromDate, $lte: toDate } };
 
     const [
-      // Website leads
+      // Website / Meta leads — received (createdAt) in period
       webTotal, webNew, webLoaded, webCompleted, webRejected,
-      // Worked leads
+      // Website / Meta leads — assigned (loadedAt) in period
+      webAssigned, webAssignedMeta, webAssignedWebsite,
+      // Worked leads (DomLead)
       wkTotal, wkCompleted, wkPending, wkRejected, wkInterested, wkCallback, wkNotAnswering, wkNotReachable, wkWrongNumber,
       // Breakdowns
       outcomeAgg, productAgg, sourceAgg,
@@ -330,7 +335,7 @@ router.get('/reports', authorize('dom_superadmin'), async (req, res) => {
       agentAgg,
       // Daily trend (DomLeads)
       dailyDomLeads,
-      // Daily trend (WebsiteLeads)
+      // Daily trend (WebsiteLeads by loadedAt so today's assigned leads appear)
       dailyWebLeads,
       // Hourly breakdown
       hourlyAgg,
@@ -342,6 +347,11 @@ router.get('/reports', authorize('dom_superadmin'), async (req, res) => {
       DomWebsiteLead.countDocuments({ ...df, status: 'loaded' }),
       DomWebsiteLead.countDocuments({ ...df, status: 'completed' }),
       DomWebsiteLead.countDocuments({ ...df, status: 'rejected' }),
+
+      // Assigned-in-period counts (by loadedAt)
+      DomWebsiteLead.countDocuments({ ...dfLoad, loadedBy: { $ne: null } }),
+      DomWebsiteLead.countDocuments({ ...dfLoad, loadedBy: { $ne: null }, source: 'meta' }),
+      DomWebsiteLead.countDocuments({ ...dfLoad, loadedBy: { $ne: null }, source: { $in: ['website', 'manual'] } }),
 
       DomLead.countDocuments(df),
       DomLead.countDocuments({ ...df, status: 'completed' }),
@@ -414,15 +424,18 @@ router.get('/reports', authorize('dom_superadmin'), async (req, res) => {
         { $sort: { '_id.y': 1, '_id.m': 1, '_id.d': 1 } },
       ]),
 
+      // Group website/meta leads by loadedAt date so today-assigned leads are visible
       DomWebsiteLead.aggregate([
-        { $match: df },
+        { $match: { ...dfLoad, loadedBy: { $ne: null } } },
         { $group: {
           _id: {
-            y: { $year:       { date: '$createdAt', timezone: 'Asia/Kolkata' } },
-            m: { $month:      { date: '$createdAt', timezone: 'Asia/Kolkata' } },
-            d: { $dayOfMonth: { date: '$createdAt', timezone: 'Asia/Kolkata' } },
+            y: { $year:       { date: '$loadedAt', timezone: 'Asia/Kolkata' } },
+            m: { $month:      { date: '$loadedAt', timezone: 'Asia/Kolkata' } },
+            d: { $dayOfMonth: { date: '$loadedAt', timezone: 'Asia/Kolkata' } },
           },
           count: { $sum: 1 },
+          meta:    { $sum: { $cond: [{ $eq: ['$source', 'meta'] }, 1, 0] } },
+          website: { $sum: { $cond: [{ $eq: ['$source', 'website'] }, 1, 0] } },
         }},
         { $sort: { '_id.y': 1, '_id.m': 1, '_id.d': 1 } },
       ]),
@@ -446,10 +459,16 @@ router.get('/reports', authorize('dom_superadmin'), async (req, res) => {
       success: true,
       range: { from: fromDate, to: toDate },
       summary: {
-        websiteLeads: { total: webTotal, new: webNew, loaded: webLoaded, completed: webCompleted, rejected: webRejected },
-        workedLeads:  { total: wkTotal, completed: wkCompleted, pending: wkPending, rejected: wkRejected,
-                        interested: wkInterested, callback: wkCallback, notAnswering: wkNotAnswering,
-                        notReachable: wkNotReachable, wrongNumber: wkWrongNumber },
+        websiteLeads: {
+          // Received = createdAt in period; Assigned = loadedAt in period (catches older leads assigned today)
+          total: webTotal, new: webNew, loaded: webLoaded, completed: webCompleted, rejected: webRejected,
+          assigned: webAssigned, assignedMeta: webAssignedMeta, assignedWebsite: webAssignedWebsite,
+        },
+        workedLeads: {
+          total: wkTotal, completed: wkCompleted, pending: wkPending, rejected: wkRejected,
+          interested: wkInterested, callback: wkCallback, notAnswering: wkNotAnswering,
+          notReachable: wkNotReachable, wrongNumber: wkWrongNumber,
+        },
         poolLeads:    { total: poolTotal },
         conversionRate: wkTotal > 0 ? +((wkCompleted / wkTotal) * 100).toFixed(1) : 0,
         interestRate:   wkTotal > 0 ? +((wkInterested / wkTotal) * 100).toFixed(1) : 0,
@@ -458,7 +477,7 @@ router.get('/reports', authorize('dom_superadmin'), async (req, res) => {
       agents: agentAgg,
       trend: {
         domLeads:     dailyDomLeads.map(d => ({ date: `${d._id.y}-${String(d._id.m).padStart(2,'0')}-${String(d._id.d).padStart(2,'0')}`, total: d.total, completed: d.completed })),
-        websiteLeads: dailyWebLeads.map(d => ({ date: `${d._id.y}-${String(d._id.m).padStart(2,'0')}-${String(d._id.d).padStart(2,'0')}`, count: d.count })),
+        websiteLeads: dailyWebLeads.map(d => ({ date: `${d._id.y}-${String(d._id.m).padStart(2,'0')}-${String(d._id.d).padStart(2,'0')}`, count: d.count, meta: d.meta || 0, website: d.website || 0 })),
         hourly: Array.from({ length: 24 }, (_, h) => {
           const found = hourlyAgg.find(x => x._id === h) || {};
           return { hour: h, total: found.total || 0, completed: found.completed || 0, interested: found.interested || 0 };

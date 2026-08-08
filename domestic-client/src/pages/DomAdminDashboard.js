@@ -178,6 +178,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
   const [webSelectedIds,  setWebSelectedIds]  = useState(new Set());
   const [webDateFrom,     setWebDateFrom]     = useState('');
   const [webDateTo,       setWebDateTo]       = useState('');
+  const [webSourceFilter, setWebSourceFilter] = useState('');
   const [webBulkModal,    setWebBulkModal]    = useState(false);
 
   // Bulk select — imported / pool leads
@@ -233,6 +234,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
   const domProductRef      = useRef('');
   const webDateFromRef     = useRef('');
   const webDateToRef       = useRef('');
+  const webSourceRef       = useRef('');
   const domDateFromRef     = useRef('');
   const domDateToRef       = useRef('');
   const domDocFilterRef    = useRef('all');
@@ -269,7 +271,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
     setLeadsLoading(true);
     try {
       // When any filter is active, fetch all results so pagination doesn't hide matches
-      const anyFilter = searchRef.current.trim() || statusFilterRef.current || productTypeRef.current || webDateFromRef.current || webDateToRef.current;
+      const anyFilter = searchRef.current.trim() || statusFilterRef.current || productTypeRef.current || webDateFromRef.current || webDateToRef.current || webSourceRef.current;
       const limit = anyFilter ? 500 : 30;
       const q = new URLSearchParams({ page, limit });
       if (statusFilterRef.current)       q.set('status',      statusFilterRef.current);
@@ -277,6 +279,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
       if (productTypeRef.current)        q.set('productType', productTypeRef.current);
       if (webDateFromRef.current)        q.set('dateFrom',    webDateFromRef.current);
       if (webDateToRef.current)          q.set('dateTo',      webDateToRef.current);
+      if (webSourceRef.current)          q.set('source',      webSourceRef.current);
       const res = await api.get(`/domestic-api/website-leads?${q}`);
       setLeads(res.data?.data || []);
       setLeadsTotal(res.data?.pagination?.total || 0);
@@ -945,115 +948,148 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
         {/* OVERVIEW */}
         {tab === 'overview' && stats && (
           <>
-            {/* Today's Activity Banner */}
-            <div className="bg-gradient-to-r from-[#065F36] to-[#00874A] rounded-2xl p-5 text-white shadow-lg">
-              <div className="flex items-center justify-between flex-wrap gap-3">
-                <div className="flex items-center gap-3">
-                  <div className="p-2.5 bg-white/15 rounded-xl"><Calendar className="h-5 w-5" /></div>
-                  <div>
-                    <p className="font-black text-lg">Today's Activity</p>
-                    <p className="text-white/70 text-xs">{new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', weekday:'long', day:'2-digit', month:'long', year:'numeric' })}</p>
-                    {statsLastUpdated && (
-                      <p className="text-white/50 text-[10px] mt-0.5">Updated: {statsLastUpdated.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour:'2-digit', minute:'2-digit', second:'2-digit' })}</p>
-                    )}
-                  </div>
-                  <button onClick={() => fetchStats()} disabled={statsRefreshing}
-                    className="p-2 bg-white/15 hover:bg-white/25 rounded-xl transition-colors ml-1" title="Refresh stats now">
-                    <RefreshCw className={`h-4 w-4 ${statsRefreshing ? 'animate-spin' : ''}`} />
-                  </button>
+            {/* ── Today's Summary bar ── */}
+            <div className="bg-[#065F36] rounded-2xl px-5 py-4 text-white flex items-center justify-between flex-wrap gap-3 shadow-sm">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-white/15 rounded-xl"><Calendar className="h-5 w-5" /></div>
+                <div>
+                  <p className="font-black text-base">Today's Activity</p>
+                  <p className="text-white/60 text-xs">{new Date().toLocaleDateString('en-IN', { timeZone:'Asia/Kolkata', weekday:'long', day:'2-digit', month:'long', year:'numeric' })}</p>
+                  {statsLastUpdated && <p className="text-white/40 text-[10px] mt-0.5">Updated: {statsLastUpdated.toLocaleTimeString('en-IN', { timeZone:'Asia/Kolkata', hour:'2-digit', minute:'2-digit', second:'2-digit' })}</p>}
                 </div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  {[
-                    { label: 'New Leads Today', val: stats.websiteLeads.today, color: 'bg-white/20' },
-                    { label: 'Unclaimed', val: stats.websiteLeads.new, color: 'bg-amber-500/30' },
-                    { label: 'Active Agents', val: stats.agents.active, color: 'bg-emerald-500/30' },
-                  ].map(s => (
-                    <div key={s.label} className={`${s.color} rounded-xl px-4 py-2.5 text-center min-w-[80px]`}>
-                      <p className="text-2xl font-black">{s.val}</p>
-                      <p className="text-white/70 text-xs font-medium">{s.label}</p>
-                    </div>
-                  ))}
-                  <button onClick={() => setTab('website_leads')}
-                    className="flex items-center gap-1.5 bg-white text-[#065F36] text-xs font-bold px-4 py-2.5 rounded-xl hover:bg-[#E8FFF5] transition-colors shadow-sm">
-                    View Leads →
-                  </button>
+                <button onClick={() => fetchStats()} disabled={statsRefreshing} className="p-2 bg-white/15 hover:bg-white/25 rounded-xl transition-colors" title="Refresh">
+                  <RefreshCw className={`h-4 w-4 ${statsRefreshing ? 'animate-spin' : ''}`} />
+                </button>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                {[
+                  { label: 'New Meta Leads Today', val: stats.websiteLeads.today, bg: 'bg-white/15' },
+                  { label: 'Unclaimed',             val: stats.websiteLeads.new,   bg: 'bg-amber-400/30' },
+                  { label: 'Active Agents',         val: stats.agents.active,      bg: 'bg-emerald-400/25' },
+                ].map(s => (
+                  <div key={s.label} className={`${s.bg} rounded-xl px-4 py-2.5 text-center min-w-[90px]`}>
+                    <p className="text-2xl font-black">{s.val}</p>
+                    <p className="text-white/65 text-xs font-medium">{s.label}</p>
+                  </div>
+                ))}
+                <button onClick={() => setTab('website_leads')} className="flex items-center gap-1.5 bg-white text-[#065F36] text-xs font-bold px-4 py-2.5 rounded-xl hover:bg-[#E8FFF5] transition-colors shadow-sm">
+                  View Meta Allocation →
+                </button>
+              </div>
+            </div>
+
+            {/* ── 4 Allocation cards ── */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+
+              {/* Meta Allocation */}
+              <div onClick={() => setTab('website_leads')}
+                className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 cursor-pointer hover:border-teal-300 hover:shadow-md transition-all group">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="p-2.5 bg-teal-100 rounded-xl group-hover:bg-teal-200 transition-colors"><Globe className="h-5 w-5 text-teal-600" /></div>
+                  <span className="text-xs font-bold text-teal-600 bg-teal-50 border border-teal-100 px-2 py-0.5 rounded-full">Meta Allocation</span>
+                </div>
+                <p className="text-4xl font-black text-gray-800">{stats.websiteLeads.total}</p>
+                <p className="text-sm font-bold text-gray-600 mt-1">Total Leads Received</p>
+                <div className="flex items-center gap-3 mt-3 pt-3 border-t border-gray-100 flex-wrap">
+                  <span className="text-xs text-amber-600 font-bold bg-amber-50 px-2 py-0.5 rounded-full">{stats.websiteLeads.new} Unclaimed</span>
+                  <span className="text-xs text-teal-600 font-bold bg-teal-50 px-2 py-0.5 rounded-full">{stats.websiteLeads.loaded} Loaded</span>
+                  <span className="text-xs text-emerald-600 font-bold bg-emerald-50 px-2 py-0.5 rounded-full">{stats.websiteLeads.completed} Done</span>
+                </div>
+              </div>
+
+              {/* Import Allocation */}
+              <div onClick={() => setTab('lead_pool')}
+                className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 cursor-pointer hover:border-violet-300 hover:shadow-md transition-all group">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="p-2.5 bg-violet-100 rounded-xl group-hover:bg-violet-200 transition-colors"><Database className="h-5 w-5 text-violet-600" /></div>
+                  <span className="text-xs font-bold text-violet-600 bg-violet-50 border border-violet-100 px-2 py-0.5 rounded-full">Import Allocation</span>
+                </div>
+                <p className="text-4xl font-black text-gray-800">{stats.assigned.importedLeads}</p>
+                <p className="text-sm font-bold text-gray-600 mt-1">Leads Assigned to Agents</p>
+                <div className="flex items-center gap-3 mt-3 pt-3 border-t border-gray-100">
+                  <span className="text-xs text-violet-600 font-bold">From Data Pool · Currently active</span>
+                </div>
+              </div>
+
+              {/* Disposition Allocation */}
+              <div onClick={() => setTab('dom_leads')}
+                className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 cursor-pointer hover:border-[#065F36]/30 hover:shadow-md transition-all group">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="p-2.5 bg-[#E8FFF5] rounded-xl group-hover:bg-[#D1FAE5] transition-colors"><Briefcase className="h-5 w-5 text-[#065F36]" /></div>
+                  <span className="text-xs font-bold text-[#065F36] bg-[#E8FFF5] border border-[#D1FAE5] px-2 py-0.5 rounded-full">Disposition Allocation</span>
+                </div>
+                <p className="text-4xl font-black text-gray-800">{stats.domLeads.total}</p>
+                <p className="text-sm font-bold text-gray-600 mt-1">Cases Worked by Agents</p>
+                <div className="flex items-center gap-3 mt-3 pt-3 border-t border-gray-100 flex-wrap">
+                  <span className="text-xs text-emerald-600 font-bold bg-emerald-50 px-2 py-0.5 rounded-full">{stats.domLeads.completed} Completed</span>
+                  <span className="text-xs text-blue-600 font-bold bg-blue-50 px-2 py-0.5 rounded-full">{stats.domLeads.pending} Pending</span>
+                </div>
+              </div>
+
+              {/* Agent Allocation */}
+              <div onClick={() => setTab('agents')}
+                className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 cursor-pointer hover:border-amber-300 hover:shadow-md transition-all group">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="p-2.5 bg-amber-100 rounded-xl group-hover:bg-amber-200 transition-colors"><Users className="h-5 w-5 text-amber-600" /></div>
+                  <span className="text-xs font-bold text-amber-600 bg-amber-50 border border-amber-100 px-2 py-0.5 rounded-full">Agent Allocation</span>
+                </div>
+                <p className="text-4xl font-black text-gray-800">{stats.agents.active}</p>
+                <p className="text-sm font-bold text-gray-600 mt-1">Active Agents</p>
+                <div className="flex items-center gap-3 mt-3 pt-3 border-t border-gray-100">
+                  <span className="text-xs text-gray-500 font-bold">{stats.agents.total} total · {stats.agents.active} online now</span>
                 </div>
               </div>
             </div>
 
-            {/* Assigned Leads Summary */}
-            {stats.assigned && (
-              <div className="grid grid-cols-3 gap-4">
-                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex items-center gap-4">
-                  <div className="p-3 bg-teal-100 rounded-xl flex-shrink-0"><Globe className="h-5 w-5 text-teal-600" /></div>
-                  <div>
-                    <p className="text-2xl font-black text-gray-800">{stats.assigned.websiteLeads}</p>
-                    <p className="text-xs text-gray-500 font-medium">Website Leads Assigned</p>
-                    <p className="text-xs text-teal-600 font-semibold mt-0.5">Currently with agents</p>
+            {/* ── Quick stats row ── */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {[
+                { icon: <TrendingUp className="h-4 w-4 text-emerald-600" />, bg: 'bg-emerald-50', label: 'Conversion Rate',    val: `${stats.conversionRate}%`, sub: 'Meta leads completed' },
+                { icon: <CheckCircle2 className="h-4 w-4 text-[#065F36]" />,bg: 'bg-[#E8FFF5]',  label: 'Completed Cases',     val: stats.websiteLeads.completed, sub: 'Out of all meta leads' },
+                { icon: <AlertCircle className="h-4 w-4 text-amber-600" />, bg: 'bg-amber-50',   label: 'Unclaimed Meta Leads',val: stats.websiteLeads.new,       sub: 'Waiting to be assigned' },
+                { icon: <Clock className="h-4 w-4 text-blue-600" />,        bg: 'bg-blue-50',    label: 'Pending Cases',       val: stats.domLeads.pending,       sub: 'Not yet completed' },
+              ].map(s => (
+                <div key={s.label} className="bg-white rounded-xl border border-gray-100 shadow-sm px-4 py-3.5 flex items-center gap-3">
+                  <div className={`p-2 ${s.bg} rounded-lg flex-shrink-0`}>{s.icon}</div>
+                  <div className="min-w-0">
+                    <p className="text-xl font-black text-gray-800">{s.val}</p>
+                    <p className="text-xs font-bold text-gray-700 truncate">{s.label}</p>
+                    <p className="text-xs text-gray-400 truncate">{s.sub}</p>
                   </div>
                 </div>
-                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex items-center gap-4">
-                  <div className="p-3 bg-violet-100 rounded-xl flex-shrink-0"><Database className="h-5 w-5 text-violet-600" /></div>
-                  <div>
-                    <p className="text-2xl font-black text-gray-800">{stats.assigned.importedLeads}</p>
-                    <p className="text-xs text-gray-500 font-medium">Imported Leads Assigned</p>
-                    <p className="text-xs text-violet-600 font-semibold mt-0.5">Currently with agents</p>
-                  </div>
-                </div>
-                <div
-                  onClick={() => setTab('assigned_leads')}
-                  className="bg-gradient-to-br from-amber-400 to-orange-500 rounded-2xl p-5 flex items-center gap-4 cursor-pointer hover:shadow-md transition-all shadow-sm">
-                  <div className="p-3 bg-white/20 rounded-xl flex-shrink-0"><UserCheck className="h-5 w-5 text-white" /></div>
-                  <div>
-                    <p className="text-2xl font-black text-white">{stats.assigned.total}</p>
-                    <p className="text-xs text-white/80 font-medium">Total Leads Assigned</p>
-                    <p className="text-xs text-white/60 font-semibold mt-0.5">Click to view all →</p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 xl:gap-4">
-              <KpiCard icon={<Globe className="h-5 w-5" />}      label="Total Website Leads"  value={stats.websiteLeads.total}     color="blue"   />
-              <KpiCard icon={<AlertCircle className="h-5 w-5"/>} label="New (Unclaimed)"       value={stats.websiteLeads.new}       color="orange" />
-              <KpiCard icon={<CheckCircle2 className="h-5 w-5"/>}label="Completed"             value={stats.websiteLeads.completed} color="green"  />
-              <KpiCard icon={<TrendingUp className="h-5 w-5" />} label="Conversion Rate"       value={`${stats.conversionRate}%`}  color="violet" />
-            </div>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 xl:gap-4">
-              <KpiCard icon={<Calendar className="h-5 w-5" />}  label="Today's Leads"    value={stats.websiteLeads.today}   color="sky"    />
-              <KpiCard icon={<Clock className="h-5 w-5" />}     label="Loaded by Agents" value={stats.websiteLeads.loaded}  color="amber"  />
-              <KpiCard icon={<Briefcase className="h-5 w-5" />} label="Worked Leads"     value={stats.domLeads.total}       color="indigo" />
-              <KpiCard icon={<UserCheck className="h-5 w-5" />} label="Active Agents"    value={stats.agents.active}        color="teal"   />
+              ))}
             </div>
 
+            {/* ── Lead Pipeline ── */}
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-              <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center justify-between mb-5">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 bg-gradient-to-br from-[#065F36] to-[#00A651] rounded-xl shadow-sm">
-                    <TrendingUp className="h-5 w-5 text-white" />
-                  </div>
+                  <div className="p-2 bg-[#E8FFF5] rounded-xl"><TrendingUp className="h-4 w-4 text-[#065F36]" /></div>
                   <div>
-                    <h3 className="font-bold text-gray-800">Lead Pipeline</h3>
-                    <p className="text-xs text-gray-400">Conversion funnel — how leads move through each stage</p>
+                    <h3 className="font-bold text-gray-800 text-sm">Lead Pipeline</h3>
+                    <p className="text-xs text-gray-400">How leads flow through each stage — from received to completed</p>
                   </div>
                 </div>
-                <button onClick={fetchStats} className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-[#065F36] border border-gray-200 rounded-xl px-3 py-1.5 hover:border-[#065F36] transition-all">
+                <button onClick={fetchStats} className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-[#065F36] border border-gray-200 rounded-xl px-3 py-1.5 transition-all">
                   <RefreshCw className="h-3.5 w-3.5" /> Refresh
                 </button>
               </div>
-              <div className="space-y-5">
+              <div className="space-y-4">
                 {pipeline.map((stage, idx) => {
                   const pct = Math.max((stage.count / maxPipeline) * 100, 3);
-                  const colors = ['from-blue-500 to-blue-600', 'from-amber-400 to-orange-500', 'from-[#065F36] to-[#00A651]', 'from-violet-500 to-purple-600'];
+                  const colors = ['bg-teal-500', 'bg-amber-400', 'bg-[#065F36]', 'bg-violet-500'];
+                  const bgColors = ['bg-teal-50', 'bg-amber-50', 'bg-emerald-50', 'bg-violet-50'];
+                  const textColors = ['text-teal-700', 'text-amber-700', 'text-[#065F36]', 'text-violet-700'];
                   return (
                     <div key={stage.stage}>
                       <div className="flex items-center justify-between mb-1.5">
                         <span className="text-sm font-semibold text-gray-700">{stage.stage}</span>
-                        <span className="text-sm font-black text-gray-800">{stage.count.toLocaleString()}</span>
+                        <span className={`text-sm font-black px-2 py-0.5 rounded-full text-xs ${bgColors[idx % bgColors.length]} ${textColors[idx % textColors.length]}`}>
+                          {stage.count.toLocaleString()}
+                        </span>
                       </div>
-                      <div className="relative h-3 bg-gray-100 rounded-full overflow-hidden">
-                        <div className={`absolute inset-y-0 left-0 bg-gradient-to-r ${colors[idx % colors.length]} rounded-full transition-all duration-1000`}
-                          style={{ width: `${pct}%` }} />
+                      <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden">
+                        <div className={`h-full ${colors[idx % colors.length]} rounded-full transition-all duration-700`} style={{ width: `${pct}%` }} />
                       </div>
                       {idx < pipeline.length - 1 && stage.count > 0 && pipeline[idx + 1]?.count > 0 && (
                         <p className="text-xs text-gray-400 mt-1">
@@ -1143,15 +1179,24 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                   <option value="demat">Demat Account</option>
                 </optgroup>
               </select>
+              {/* Source filter */}
+              <select value={webSourceFilter}
+                onChange={(e) => { setWebSourceFilter(e.target.value); webSourceRef.current = e.target.value; fetchLeads(1); }}
+                className="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white text-gray-700">
+                <option value="">🌐 All Sources</option>
+                <option value="meta">📘 Meta Ads only</option>
+                <option value="website">🌐 Website Form only</option>
+                <option value="manual">✍️ Manual only</option>
+              </select>
               <button onClick={() => fetchLeads(1)}
                 className="flex items-center gap-2 text-sm bg-[#065F36] text-white px-4 py-2 rounded-xl hover:bg-[#054A2E] font-semibold">
                 <Search className="h-4 w-4" /> Search
               </button>
               {/* Clear all filters */}
               <button
-                onClick={() => { setSearch(''); searchRef.current=''; setStatusFilter(''); statusFilterRef.current=''; setProductTypeFilter(''); productTypeRef.current=''; setWebDateFrom(''); webDateFromRef.current=''; setWebDateTo(''); webDateToRef.current=''; fetchLeads(1); }}
+                onClick={() => { setSearch(''); searchRef.current=''; setStatusFilter(''); statusFilterRef.current=''; setProductTypeFilter(''); productTypeRef.current=''; setWebSourceFilter(''); webSourceRef.current=''; setWebDateFrom(''); webDateFromRef.current=''; setWebDateTo(''); webDateToRef.current=''; fetchLeads(1); }}
                 className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border transition-all ${
-                  (search || statusFilter || productTypeFilter || webDateFrom || webDateTo)
+                  (search || statusFilter || productTypeFilter || webSourceFilter || webDateFrom || webDateTo)
                     ? 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100'
                     : 'bg-gray-50 text-gray-300 border-gray-200 cursor-default'
                 }`}
