@@ -1,0 +1,31 @@
+import React, { useState, useEffect } from 'react';
+import { Navigate, useLocation } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
+import { Eye, EyeOff, Mail, Lock, ShieldCheck, Users } from 'lucide-react';
+import LoadingSpinner from '../components/LoadingSpinner';
+
+const STYLES = `
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+  * { font-family: 'Inter', sans-serif; box-sizing: border-box; }
+  @keyframes fade-in { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
+  .fi-1 { animation: fade-in 0.5s ease forwards; }
+  .fi-2 { animation: fade-in 0.5s ease 0.1s forwards; opacity: 0; }
+  .fi-3 { animation: fade-in 0.5s ease 0.2s forwards; opacity: 0; }
+  .fi-4 { animation: fade-in 0.5s ease 0.3s forwards; opacity: 0; }
+  .lms-input { border: 1px solid #d1d9e6; background: #fff; color: #0f172a; transition: border-color .2s, box-shadow .2s; outline: none; }
+  .lms-input:focus { border-color: #0b1a3d; box-shadow: 0 0 0 3px rgba(11,26,61,0.12); }
+  .lms-input::placeholder { color: #a0aec0; }
+  .lms-btn { background: #0b1a3d; transition: background .2s; cursor: pointer; }
+  .lms-btn:hover:not(:disabled) { background: #0f2260; }
+  .lms-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+`;
+
+/* ── Decorative geometric shapes for right panel background ── */
+const BgShapes = () => (
+  <svg className="absolute inset-0 w-full h-full pointer-events-none" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid slice">
+    <polygon points="55%,0 100%,0 100%,55% 72%,0" fill="#c3d5ea" opacity="0.55"/>
+    <polygon points="0,68% 38%,100% 0,100%" fill="#c0d2e8" opacity="0.5"/>
+    <polygon points="82%,28% 100%,18% 100%,72% 86%,82%" fill="#b8cce0" opacity="0.4"/>
+    <polygon points="0,0 16%,0 0,20%" fill="#c8d9ed" opacity="0.4"/>
+  </svg>
+);

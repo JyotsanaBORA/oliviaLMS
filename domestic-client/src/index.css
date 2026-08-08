@@ -1,0 +1,29 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  /* Scale text up slightly on larger screens so dashboards don't look tiny */
+  html {
+    font-size: clamp(15px, 1.15vw, 17px);
+  }
+  body {
+    @apply bg-gray-50 text-gray-900 font-sans;
+  }
+}
+
+@layer utilities {
+  /* Thin scrollbar for sidebars */
+  .scrollbar-thin::-webkit-scrollbar { width: 4px; }
+  .scrollbar-thin::-webkit-scrollbar-track { @apply bg-gray-100; }
+  .scrollbar-thin::-webkit-scrollbar-thumb { @apply bg-gray-400 rounded-full; }
+
+  /* App scrollbar for main content areas — slightly wider, appears on hover */
+  .scrollbar-app::-webkit-scrollbar { width: 6px; height: 6px; }
+  .scrollbar-app::-webkit-scrollbar-track { @apply bg-transparent; }
+  .scrollbar-app::-webkit-scrollbar-thumb { @apply bg-gray-300 rounded-full; }
+  .scrollbar-app:hover::-webkit-scrollbar-thumb { @apply bg-gray-400; }
+
+  /* Prevent content from causing outer-page horizontal scroll */
+  .no-x-overflow { overflow-x: hidden; }
+}

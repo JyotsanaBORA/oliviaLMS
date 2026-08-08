@@ -1,0 +1,155 @@
+# ========================
+# Dependencies
+# ========================
+node_modules/
+jspm_packages/
+web_modules/
+package-lock.json
+
+# ========================
+# Environment / Secrets
+# ========================
+.env
+.env.*
+!.env.example
+!.env.production
+
+# ========================
+# Deployment & Server Config (SENSITIVE)
+# ========================
+ecosystem.config.js
+quick-fix-deploy.sh
+QUICKSTART.sh
+SERVER_DEPLOYMENT.sh
+status.sh
+update.sh
+nginx.conf
+
+# ========================
+# Build output
+# ========================
+build/
+dist/
+client/build/
+
+# ========================
+# Data files (CSV, database exports)
+# ========================
+*.csv
+database-export/
+server/database-export/
+
+# ========================
+# Load testing results
+# ========================
+load-testing/results/*.json
+load-testing/.env*
+
+# ========================
+# Logs
+# ========================
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# ========================
+# Runtime data
+# ========================
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# ========================
+# PM2
+# ========================
+.pm2/
+pm2.log
+
+# ========================
+# Coverage & Testing
+# ========================
+coverage/
+.nyc_output/
+lib-cov/
+
+# ========================
+# Cache
+# ========================
+.npm
+.cache
+.parcel-cache
+
+# ========================
+# Framework build outputs
+# ========================
+.next
+.nuxt
+.out
+.storybook-out
+
+# ========================
+# Package manager
+# ========================
+*.tgz
+.yarn-integrity
+.node_repl_history
+
+# ========================
+# Editor / IDE
+# ========================
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# ========================
+# OS files
+# ========================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# ========================
+# SSL / Certificates
+# ========================
+*.pem
+*.key
+*.crt
+*.csr
+
+# ========================
+# Backups & Archives
+# ========================
+*.backup
+*.bak
+*.sqlite
+*.zip
+*.tar.gz
+
+# ========================
+# Nginx logs
+# ========================
+*.access.log
+*.error.log
+
+# ========================
+# Docker
+# ========================
+.dockerignore
+
+# ========================
+# Temporary
+# ========================
+tmp/
+temp/

@@ -1,0 +1,46 @@
+name: Deploy LMS
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to VPS via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: root
+          password: ${{ secrets.VPS_PASSWORD }}
+          timeout: 600s
+          command_timeout: 600s
+          script: |
+            set -e
+            echo "=== [1] Navigating to project ==="
+            cd /root/Olivialms
+
+            echo "=== [2] Authenticating git ==="
+            git remote set-url origin https://${{ secrets.GH_PAT }}@github.com/Reddington-Global-Consultancy-Pvt-Ltd/Olivialms.git
+
+            echo "=== [3] Pulling latest code ==="
+            git reset --hard HEAD
+            git pull origin main
+            echo ">>> Code is now at: $(git log -1 --oneline)"
+
+            echo "=== [3.5] Rescuing any uploads still inside old container ==="
+            mkdir -p /root/Olivialms/domestic-server/uploads
+            if docker inspect domestic-backend > /dev/null 2>&1; then
+              docker cp domestic-backend:/app/uploads/. /root/Olivialms/domestic-server/uploads/ 2>/dev/null \
+                && echo ">>> Uploads rescued to host filesystem" \
+                || echo ">>> No uploads to rescue"
+            else
+              echo ">>> No running domestic-backend container found"
+            fi
+
+            echo "=== [4] Running deploy script ==="
+            chmod +x /root/Olivialms/deploy.sh
+            bash /root/Olivialms/deploy.sh
+
+            echo "=== [5] Done ==="
