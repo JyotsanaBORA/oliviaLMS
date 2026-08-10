@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   LogOut, Plus, Shield, Eye, EyeOff, X, RefreshCw, Key,
   Users, UserPlus, ChevronLeft, ChevronRight, CheckCircle2, AlertCircle, Copy,
@@ -52,6 +52,7 @@ const istToday = (offsetDays = 0) => {
   const ist = new Date(Date.now() + IST_MS - offsetDays * 86400000);
   return ist.toISOString().slice(0, 10);
 };
+const localDateStr = istToday;
 
 const fmtShort = (d) =>
   d ? new Date(d).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric' }) : 'Never';

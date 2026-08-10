@@ -52,7 +52,8 @@ function sleep(ms) {
  * @throws {Error}             - on fatal error or exhausted retries
  */
 async function fetchLeadFromGraph(leadgenId, maxRetries = 3) {
-  const accessToken = process.env.META_ACCESS_TOKEN;
+  const rawToken    = process.env.META_ACCESS_TOKEN || '';
+  const accessToken = rawToken.trim().replace(/>$/, '');
   if (!accessToken) {
     throw new Error('META_ACCESS_TOKEN is not set in .env');
   }
