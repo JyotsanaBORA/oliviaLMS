@@ -43,9 +43,10 @@ function sleep(ms) {
  * @returns {Promise<Object>} Graph API lead object with field_data
  */
 async function fetchLeadFromGraph(leadgenId, maxRetries = 3) {
-  const accessToken = process.env.DOM_META_ACCESS_TOKEN;
+  const rawToken    = process.env.DOM_META_ACCESS_TOKEN || process.env.META_ACCESS_TOKEN || '';
+  const accessToken = rawToken.trim().replace(/>$/, '');
   if (!accessToken) {
-    throw new Error('DOM_META_ACCESS_TOKEN is not set in .env');
+    throw new Error('DOM_META_ACCESS_TOKEN or META_ACCESS_TOKEN is not set in .env');
   }
 
   const url = `${GRAPH_BASE}/${GRAPH_VERSION}/${encodeURIComponent(leadgenId)}`

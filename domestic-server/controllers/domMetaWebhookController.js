@@ -166,7 +166,7 @@ async function processSingleEvent(event, io) {
     let parsedFields = {};
     let schemaFields = {};
 
-    const realId = !isFakeLeadgenId(leadgenId);
+    const realId = !isTest && !isFakeLeadgenId(leadgenId);
 
     if (realId) {
       console.log(`[DomMetaWebhook] Fetching from Graph API — ${tag}`);

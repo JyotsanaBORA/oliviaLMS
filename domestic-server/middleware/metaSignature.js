@@ -14,7 +14,7 @@
 const crypto = require('crypto');
 
 function validateMetaSignature(req, res, next) {
-  const appSecret = process.env.DOM_META_APP_SECRET;
+  const appSecret = process.env.DOM_META_APP_SECRET || process.env.META_APP_SECRET;
   const isDev     = process.env.NODE_ENV !== 'production';
   const signature = req.headers['x-hub-signature-256'];
 

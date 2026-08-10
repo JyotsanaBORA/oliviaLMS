@@ -198,7 +198,7 @@ async function processSingleEvent(req, event) {
     let parsedFields = {};
     let schemaFields = {};
 
-    const realId = !isFakeLeadgenId(leadgenId);
+    const realId = !isTest && !isFakeLeadgenId(leadgenId);
 
     if (realId) {
       // Real lead — call Graph API
