@@ -94,7 +94,7 @@ function verify(req, res) {
   const mode      = params['hub.mode'];
   const token     = params['hub.verify_token'];
   const challenge = params['hub.challenge'];
-  const expected  = process.env.DOM_META_VERIFY_TOKEN;
+  const expected  = process.env.DOM_META_VERIFY_TOKEN || process.env.META_VERIFY_TOKEN;
 
   console.log(`[DomMetaWebhook] GET verify — mode="${mode}" match=${token === expected} env_set=${!!expected}`);
 
