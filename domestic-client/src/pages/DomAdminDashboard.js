@@ -135,6 +135,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
   const [domStatusFilter,  setDomStatusFilter]   = useState('');
   const [domProductFilter, setDomProductFilter]  = useState('');
   const [domLeadsLoading,  setDomLeadsLoading]   = useState(false);
+  const [domBatchFilter,   setDomBatchFilter]    = useState('');
 
   const [agents,        setAgents]        = useState([]);
   const [agentsLoading, setAgentsLoading] = useState(false);
@@ -152,6 +153,8 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
   const [assignCounts,     setAssignCounts]     = useState({});
   const [assigning,        setAssigning]        = useState(null);
   const [poolStatusFilter, setPoolStatusFilter] = useState('');
+  const [poolBatchFilter,  setPoolBatchFilter]  = useState('');
+  const [poolBatches,      setPoolBatches]      = useState([]);
 
   // Assigned Leads tab
   const [assignedLeadsData,       setAssignedLeadsData]       = useState([]);
@@ -241,6 +244,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
   const domOutcomeRef      = useRef('');
   const domAgentRef        = useRef('');
   const domCibilRef        = useRef('');
+  const domBatchRef        = useRef('');
   const assignedDocFilterRef  = useRef('all');
   const assignedAgentRef     = useRef('');
   const assignedCibilRef     = useRef('');
@@ -299,7 +303,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
     setDomLeadsLoading(true);
     try {
       // When any filter is active, fetch all results so pagination doesn't hide matches
-      const anyFilter = domSearchRef.current.trim() || domStatusRef.current || domProductRef.current || domDateFromRef.current || domDateToRef.current || domDocFilterRef.current !== 'all' || domOutcomeRef.current || domAgentRef.current || domCibilRef.current;
+      const anyFilter = domSearchRef.current.trim() || domStatusRef.current || domProductRef.current || domDateFromRef.current || domDateToRef.current || domDocFilterRef.current !== 'all' || domOutcomeRef.current || domAgentRef.current || domCibilRef.current || domBatchRef.current;
       const limit = anyFilter ? 500 : 30;
       const q = new URLSearchParams({ page, limit });
       if (domSearchRef.current.trim())   q.set('search',           domSearchRef.current.trim());
@@ -310,6 +314,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
       if (domOutcomeRef.current)         q.set('callOutcome',      domOutcomeRef.current);
       if (domAgentRef.current)           q.set('agentId',          domAgentRef.current);
       if (domCibilRef.current)           q.set('cibilScoreRange',  domCibilRef.current);
+      if (domBatchRef.current)           q.set('batchId',          domBatchRef.current);
       const res = await api.get(`/domestic-api/leads?${q}`);
       setDomLeads(res.data?.data || []);
       setDomLeadsTotal(res.data?.pagination?.total || 0);
@@ -428,11 +433,44 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
     } catch { /* silent */ }
   }, []);
 
-  const fetchPoolLeads = useCallback(async (page = 1, statusF = '') => {
+  const fetchPoolBatches = useCallback(async () => {
+    try {
+      const res = await api.get('/domestic-api/import-leads/my-batches');
+      setPoolBatches(res.data?.data || []);
+    } catch { /* non-critical */ }
+  }, []);
+
+  const handleExportPoolLeads = useCallback(async () => {
+    try {
+      toast.loading('Exporting…', { id: 'pool-export' });
+      const q = new URLSearchParams();
+      if (poolBatchFilter)  q.set('batchId', poolBatchFilter);
+      if (poolStatusFilter) q.set('status',  poolStatusFilter);
+      const token = localStorage.getItem('dom_token');
+      const res   = await fetch(`/domestic-api/import-leads/export?${q}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error(`Server error ${res.status}`);
+      const blob = await res.blob();
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href     = url;
+      const batchInfo = poolBatchFilter
+        ? (poolBatches.find(b => b._id === poolBatchFilter)?.batchName || poolBatchFilter).replace(/\s+/g, '_').slice(0, 40)
+        : 'all-batches';
+      a.download = `import-leads-${batchInfo}-${localDateStr()}.xlsx`;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success('Export ready!', { id: 'pool-export' });
+    } catch (err) { toast.error(`Export failed: ${err.message}`, { id: 'pool-export' }); }
+  }, [poolBatchFilter, poolStatusFilter, poolBatches]);
+
+  const fetchPoolLeads = useCallback(async (page = 1, statusF = '', batchF = '') => {
     setPoolLoading(true);
     try {
       const q = new URLSearchParams({ page, limit: 50 });
       if (statusF) q.set('status', statusF);
+      if (batchF)  q.set('batchId', batchF);
       const res = await api.get(`/domestic-api/import-leads?${q}`);
       setPoolLeads(res.data?.data || []);
       setPoolLeadsTotal(res.data?.pagination?.total || 0);
@@ -450,11 +488,11 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
       toast.success(res.data.message);
       setAssignCounts((prev) => ({ ...prev, [agentId]: '' }));
       fetchPoolStats();
-      fetchPoolLeads(poolPage, poolStatusFilter);
+      fetchPoolLeads(poolPage, poolStatusFilter, poolBatchFilter);
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to assign leads.');
     } finally { setAssigning(null); }
-  }, [assignCounts, fetchPoolStats, fetchPoolLeads, poolPage, poolStatusFilter]);
+  }, [assignCounts, fetchPoolStats, fetchPoolLeads, poolPage, poolStatusFilter, poolBatchFilter]);
 
   // Load stats on mount + auto-refresh every 60 seconds
   useEffect(() => {
@@ -562,9 +600,9 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
   // Load tab data only on tab switch — not on filter changes
   useEffect(() => {
     if (tab === 'website_leads') { fetchLeads(1); fetchProductTypes(); fetchAgents(); }
-    if (tab === 'dom_leads')     fetchDomLeads(1);
+    if (tab === 'dom_leads')     { fetchDomLeads(1); fetchAgents(); fetchPoolBatches(); }
     if (tab === 'agents')        fetchAgents();
-    if (tab === 'lead_pool')     { fetchPoolStats(); fetchPoolLeads(1); fetchAgents(); }
+    if (tab === 'lead_pool')     { fetchPoolStats(); fetchPoolLeads(1); fetchPoolBatches(); fetchAgents(); }
     if (tab === 'assigned_leads') { fetchAssignedLeadsData(1); fetchAgents(); }
     if (tab === 'bulk_transfer')  fetchAgents();
   }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -658,11 +696,11 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
       setPoolSelectedIds(new Set());
       setPoolBulkModal(false);
       fetchPoolStats();
-      fetchPoolLeads(poolPage, poolStatusFilter);
+      fetchPoolLeads(poolPage, poolStatusFilter, poolBatchFilter);
     } catch (err) {
       toast.error(err.response?.data?.message || 'Bulk assign failed.');
     } finally { setAssigning(null); }
-  }, [poolSelectedIds, fetchPoolStats, fetchPoolLeads, poolPage, poolStatusFilter]);
+  }, [poolSelectedIds, fetchPoolStats, fetchPoolLeads, poolPage, poolStatusFilter, poolBatchFilter]);
 
   // Reassign a single imported lead to a different agent
   const handleReassign = useCallback(async (agentId, agentName) => {
@@ -672,12 +710,12 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
       const res = await api.patch(`/domestic-api/import-leads/${reassignModal._id}/reassign`, { agentId });
       toast.success(res.data.message);
       setReassignModal(null);
-      fetchPoolLeads(poolPage, poolStatusFilter);
+      fetchPoolLeads(poolPage, poolStatusFilter, poolBatchFilter);
       fetchPoolStats();
     } catch (err) {
       toast.error(err.response?.data?.message || 'Reassign failed.');
     } finally { setReassigning(false); }
-  }, [reassignModal, fetchPoolLeads, poolPage, poolStatusFilter, fetchPoolStats]);
+  }, [reassignModal, fetchPoolLeads, poolPage, poolStatusFilter, poolBatchFilter, fetchPoolStats]);
 
   // Drag & drop — drop a lead onto an agent
   const handleDrop = useCallback(async (agentId, agentName) => {
@@ -694,12 +732,12 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
         const res = await api.post('/domestic-api/import-leads/assign', { agentId, leadIds: [item.id] });
         toast.success(res.data.message);
         fetchPoolStats();
-        fetchPoolLeads(poolPage, poolStatusFilter);
+        fetchPoolLeads(poolPage, poolStatusFilter, poolBatchFilter);
       }
     } catch (err) {
       toast.error(err.response?.data?.message || 'Assign failed.');
     }
-  }, [dragItem, fetchLeads, leadsPage, fetchPoolStats, fetchPoolLeads, poolPage, poolStatusFilter]);
+  }, [dragItem, fetchLeads, leadsPage, fetchPoolStats, fetchPoolLeads, poolPage, poolStatusFilter, poolBatchFilter]);
 
   // Admin marks a worked lead as completed / pending / rejected
   const handleLeadStatusChange = useCallback(async (leadId, newStatus, currentStatus) => {
@@ -726,6 +764,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
       if (domOutcomeRef.current)        q.set('callOutcome', domOutcomeRef.current);
       if (domDocFilterRef.current !== 'all') q.set('docStatus', domDocFilterRef.current);
       if (domAgentRef.current)            q.set('agentId',    domAgentRef.current);
+      if (domBatchRef.current)            q.set('batchId',    domBatchRef.current);
       const token = localStorage.getItem('dom_token');
       const res   = await fetch(`/domestic-api/leads/export?${q}`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -736,13 +775,14 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
       const a    = document.createElement('a');
       a.href     = url;
       const agentName = domAgentRef.current ? agents.find(ag => ag._id === domAgentRef.current)?.name?.replace(/\s+/g, '_') : '';
-      const suffix = agentName ? `_${agentName}` : domOutcomeRef.current ? `_${domOutcomeRef.current}` : domStatusRef.current ? `_${domStatusRef.current}` : '';
+      const batchName = domBatchRef.current ? (poolBatches.find(b => b._id === domBatchRef.current)?.batchName || 'batch').replace(/\s+/g, '_').slice(0, 30) : '';
+      const suffix = batchName ? `_${batchName}` : agentName ? `_${agentName}` : domOutcomeRef.current ? `_${domOutcomeRef.current}` : domStatusRef.current ? `_${domStatusRef.current}` : '';
       a.download = `leads${suffix}-${localDateStr()}.xlsx`;
       document.body.appendChild(a); a.click(); document.body.removeChild(a);
       URL.revokeObjectURL(url);
       toast.success('Excel exported!', { id: 'csv' });
     } catch (err) { toast.error(`Export failed: ${err.message}`, { id: 'csv' }); }
-  }, []);
+  }, [agents, poolBatches]);
 
   const handleExportWithDocs = useCallback(async () => {
     try {
@@ -756,6 +796,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
       if (domOutcomeRef.current)        q.set('callOutcome', domOutcomeRef.current);
       if (domDocFilterRef.current !== 'all') q.set('docStatus', domDocFilterRef.current);
       if (domAgentRef.current)            q.set('agentId',    domAgentRef.current);
+      if (domBatchRef.current)            q.set('batchId',    domBatchRef.current);
       const token = localStorage.getItem('dom_token');
       const res   = await fetch(`/domestic-api/leads/export-zip?${q}`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -1468,15 +1509,30 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                 <option value="above_800">{'>  800 (Excellent)'}</option>
                 <option value="unknown">Unknown</option>
               </select>
+              {/* Batch filter — only for imported batch leads */}
+              {poolBatches.length > 0 && (
+                <select
+                  value={domBatchFilter}
+                  onChange={(e) => { setDomBatchFilter(e.target.value); domBatchRef.current = e.target.value; fetchDomLeads(1); }}
+                  className="text-sm border border-indigo-200 rounded-xl px-3 py-2 bg-indigo-50 text-indigo-700 font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                >
+                  <option value="">📁 All Batches</option>
+                  {poolBatches.map((b) => (
+                    <option key={b._id} value={b._id}>
+                      {b.batchName || b._id} ({b.total})
+                    </option>
+                  ))}
+                </select>
+              )}
               <button onClick={() => fetchDomLeads(1)}
                 className="flex items-center gap-2 text-sm bg-[#065F36] text-white px-4 py-2 rounded-xl hover:bg-[#054A2E] font-semibold">
                 <Search className="h-4 w-4" /> Search
               </button>
               {/* Clear all filters */}
               <button
-                onClick={() => { setDomSearch(''); domSearchRef.current=''; setDomStatusFilter(''); domStatusRef.current=''; setDomProductFilter(''); domProductRef.current=''; setDomDateFrom(''); domDateFromRef.current=''; setDomDateTo(''); domDateToRef.current=''; setDomOutcomeFilter(''); domOutcomeRef.current=''; setDomDocFilter('all'); domDocFilterRef.current='all'; setDomAgentFilter(''); domAgentRef.current=''; setDomCibilFilter(''); domCibilRef.current=''; fetchDomLeads(1); }}
+                onClick={() => { setDomSearch(''); domSearchRef.current=''; setDomStatusFilter(''); domStatusRef.current=''; setDomProductFilter(''); domProductRef.current=''; setDomDateFrom(''); domDateFromRef.current=''; setDomDateTo(''); domDateToRef.current=''; setDomOutcomeFilter(''); domOutcomeRef.current=''; setDomDocFilter('all'); domDocFilterRef.current='all'; setDomAgentFilter(''); domAgentRef.current=''; setDomCibilFilter(''); domCibilRef.current=''; setDomBatchFilter(''); domBatchRef.current=''; fetchDomLeads(1); }}
                 className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border transition-all ${
-                  (domSearch || domStatusFilter || domProductFilter || domDateFrom || domDateTo || domOutcomeFilter || domDocFilter !== 'all' || domAgentFilter || domCibilFilter)
+                  (domSearch || domStatusFilter || domProductFilter || domDateFrom || domDateTo || domOutcomeFilter || domDocFilter !== 'all' || domAgentFilter || domCibilFilter || domBatchFilter)
                     ? 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100'
                     : 'bg-gray-50 text-gray-300 border-gray-200 cursor-default'
                 }`}
@@ -1491,11 +1547,12 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                 <option value="partial">📎 Partial Docs</option>
                 <option value="full">✅ Full Docs</option>
               </select>
-              {user.role === 'dom_superadmin' && (
+              {(user.role === 'dom_superadmin' || user.role === 'dom_admin') && (
                 <>
                   <button onClick={handleExportExcel}
-                    className="flex items-center gap-2 text-sm bg-white border border-[#D1FAE5] text-[#065F36] px-4 py-2 rounded-xl hover:bg-[#E8FFF5] font-semibold transition-colors">
-                    <FileDown className="h-4 w-4" /> Export Excel
+                    className="flex items-center gap-2 text-sm bg-white border border-[#D1FAE5] text-[#065F36] px-4 py-2 rounded-xl hover:bg-[#E8FFF5] font-semibold transition-colors"
+                    title={domBatchFilter ? `Export worked leads for batch: ${poolBatches.find(b => b._id === domBatchFilter)?.batchName || ''}` : 'Export all filtered leads'}>
+                    <FileDown className="h-4 w-4" /> Export Excel{domBatchFilter ? ' (Batch)' : ''}
                   </button>
                   <button onClick={handleExportWithDocs}
                     className="flex items-center gap-2 text-sm bg-white border border-blue-200 text-blue-700 px-4 py-2 rounded-xl hover:bg-blue-50 font-semibold transition-colors">
@@ -1539,7 +1596,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
             </div>
 
             {/* Results count bar */}
-            {(domSearch || domStatusFilter || domProductFilter || domDateFrom || domDateTo || domOutcomeFilter || domAgentFilter || domDocFilter !== 'all' || domCibilFilter) && !domLeadsLoading && (() => {
+            {(domSearch || domStatusFilter || domProductFilter || domDateFrom || domDateTo || domOutcomeFilter || domAgentFilter || domDocFilter !== 'all' || domCibilFilter || domBatchFilter) && !domLeadsLoading && (() => {
               const c = domLeads.filter(dl => domDocFilter === 'all' || getDocStatus(dl.documents).status === domDocFilter).length;
               return c > 0 ? (
                 <div className="px-5 py-2.5 bg-[#E8FFF5] border-b border-[#D1FAE5] flex items-center gap-2">
@@ -2759,7 +2816,26 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                     <p className="text-xs text-gray-400">Imported Excel leads — track unassigned vs assigned</p>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  {/* Batch filter dropdown */}
+                  {poolBatches.length > 0 && (
+                    <select
+                      value={poolBatchFilter}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setPoolBatchFilter(val);
+                        fetchPoolLeads(1, poolStatusFilter, val);
+                      }}
+                      className="text-xs border border-gray-200 rounded-xl px-3 py-2 bg-white text-gray-700 font-semibold focus:outline-none focus:ring-2 focus:ring-violet-300 max-w-[200px]"
+                    >
+                      <option value="">All Batches</option>
+                      {poolBatches.map((b) => (
+                        <option key={b._id} value={b._id}>
+                          {b.batchName || b._id} ({b.total})
+                        </option>
+                      ))}
+                    </select>
+                  )}
                   {/* Sub-tab toggle */}
                   <div className="flex items-center bg-gray-100 rounded-xl p-1 gap-0.5">
                     {[
@@ -2768,7 +2844,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                       { val: 'assigned', label: 'Assigned',    dot: 'bg-violet-500', count: poolStats?.stats?.assigned  },
                     ].map(s => (
                       <button key={s.val}
-                        onClick={() => { setPoolStatusFilter(s.val); fetchPoolLeads(1, s.val); }}
+                        onClick={() => { setPoolStatusFilter(s.val); fetchPoolLeads(1, s.val, poolBatchFilter); }}
                         className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
                           poolStatusFilter === s.val ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500 hover:text-gray-700'
                         }`}>
@@ -2780,7 +2856,22 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                       </button>
                     ))}
                   </div>
-                  <button onClick={() => fetchPoolLeads(poolPage, poolStatusFilter)}
+                  {poolBatchFilter && (
+                    <button
+                      onClick={() => { setPoolBatchFilter(''); fetchPoolLeads(1, poolStatusFilter, ''); }}
+                      className="flex items-center gap-1 text-xs text-violet-600 hover:text-violet-800 font-semibold border border-violet-200 bg-violet-50 rounded-xl px-2 py-1.5"
+                      title="Clear batch filter"
+                    >
+                      <X className="h-3 w-3" /> Clear Batch
+                    </button>
+                  )}
+                  <button onClick={handleExportPoolLeads}
+                    className="flex items-center gap-1.5 text-sm text-emerald-700 hover:text-emerald-900 border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 rounded-xl px-3 py-2 font-semibold transition-colors"
+                    title={poolBatchFilter ? 'Export this batch as Excel' : 'Export all visible leads as Excel'}
+                  >
+                    <FileDown className="h-4 w-4" /> Export
+                  </button>
+                  <button onClick={() => fetchPoolLeads(poolPage, poolStatusFilter, poolBatchFilter)}
                     className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-[#065F36] border border-gray-200 rounded-xl px-3 py-2">
                     <RefreshCw className="h-4 w-4" />
                   </button>
@@ -2816,6 +2907,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                         </th>
                         <th className="pl-2 pr-3 py-3.5 text-left">Customer</th>
                         <th className="px-3 py-3.5 text-left">Mobile</th>
+                        <th className="px-3 py-3.5 text-left">Batch</th>
                         <th className="px-3 py-3.5 text-left">City</th>
                         <th className="px-3 py-3.5 text-left">Product</th>
                         <th className="px-3 py-3.5 text-left">Source</th>
@@ -2863,6 +2955,17 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                             </div>
                           </td>
                           <td className="px-3 py-3.5 font-mono text-xs text-gray-600 tracking-wide">{l.mobile || '—'}</td>
+                          <td className="px-3 py-3.5">
+                            {l.importBatchName ? (
+                              <button
+                                onClick={() => { setPoolBatchFilter(l.importBatchId); fetchPoolLeads(1, poolStatusFilter, l.importBatchId); }}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 transition-colors max-w-[130px] truncate"
+                                title={`Filter by batch: ${l.importBatchName}`}
+                              >
+                                📁 {l.importBatchName}
+                              </button>
+                            ) : <span className="text-gray-300 text-xs">—</span>}
+                          </td>
                           <td className="px-3 py-3.5 text-gray-500">{l.city || '—'}</td>
                           <td className="px-3 py-3.5">
                             {l.productType
@@ -2933,8 +3036,8 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
               )}
               <Pagination
                 total={poolLeadsTotal} page={poolPage} perPage={50} count={poolLeads.length}
-                onPrev={() => fetchPoolLeads(poolPage - 1, poolStatusFilter)}
-                onNext={() => fetchPoolLeads(poolPage + 1, poolStatusFilter)}
+                onPrev={() => fetchPoolLeads(poolPage - 1, poolStatusFilter, poolBatchFilter)}
+                onNext={() => fetchPoolLeads(poolPage + 1, poolStatusFilter, poolBatchFilter)}
               />
             </div>
           </div>

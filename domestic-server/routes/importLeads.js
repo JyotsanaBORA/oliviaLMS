@@ -262,6 +262,33 @@ router.get('/batches', protect, authorize('dom_superadmin'), async (req, res) =>
   }
 });
 
+// ── GET /domestic-api/import-leads/my-batches ───────────────────────────────
+// Admin — list distinct import batches that have been shared with them
+router.get('/my-batches', protect, authorize('dom_admin', 'dom_superadmin'), async (req, res) => {
+  try {
+    const { role, _id: userId } = req.user;
+    const matchStage = role === 'dom_superadmin' ? {} : { sharedWith: userId };
+
+    const batches = await DomImportedLead.aggregate([
+      { $match: matchStage },
+      {
+        $group: {
+          _id:       '$importBatchId',
+          batchName: { $first: '$importBatchName' },
+          createdAt: { $first: '$createdAt' },
+          total:     { $sum: 1 },
+        },
+      },
+      { $sort: { createdAt: -1 } },
+    ]);
+
+    return res.status(200).json({ success: true, data: batches });
+  } catch (err) {
+    console.error('[ImportLeads] my-batches error:', err.message);
+    return res.status(500).json({ success: false, message: 'Failed to fetch batches.' });
+  }
+});
+
 // ── GET /domestic-api/import-leads/pool-stats ─────────────────────────────
 // Admin / SuperAdmin — count of available vs assigned leads in the pool
 router.get('/pool-stats', protect, authorize('dom_admin', 'dom_superadmin'), async (req, res) => {
@@ -326,6 +353,7 @@ router.get('/', protect, async (req, res) => {
         filter.status = req.query.status;
       }
       if (req.query.agentId) filter.assignedTo = req.query.agentId;
+      if (req.query.batchId) filter.importBatchId = req.query.batchId;
     } else {
       // domagent — only their assigned leads
       filter.assignedTo = userId;
@@ -623,6 +651,117 @@ router.patch('/:id/reassign', protect, authorize('dom_admin', 'dom_superadmin'),
   } catch (err) {
     console.error('[ImportLeads] Reassign error:', err.message);
     return res.status(500).json({ success: false, message: 'Failed to reassign lead.' });
+  }
+});
+
+// ── GET /domestic-api/import-leads/export ─────────────────────────────────
+// Export filtered imported leads as Excel. Accessible to admin + superadmin.
+router.get('/export', protect, authorize('dom_admin', 'dom_superadmin'), async (req, res) => {
+  try {
+    const { role, _id: userId } = req.user;
+    const filter = {};
+
+    if (role === 'dom_superadmin') {
+      if (req.query.batchId) filter.importBatchId = req.query.batchId;
+      if (req.query.status) {
+        if (req.query.status === 'shared') {
+          filter.status    = { $in: ['imported', 'shared'] };
+          filter.assignedTo = null;
+        } else {
+          filter.status = req.query.status;
+        }
+      }
+    } else {
+      // admin — only see leads shared with them
+      filter.sharedWith = userId;
+      if (req.query.batchId) filter.importBatchId = req.query.batchId;
+      if (req.query.status && ['shared', 'assigned'].includes(req.query.status)) {
+        filter.status = req.query.status;
+      }
+      if (req.query.agentId) filter.assignedTo = req.query.agentId;
+    }
+
+    if (req.query.dateFrom || req.query.dateTo) {
+      filter.createdAt = {};
+      if (req.query.dateFrom) { const [y,m,d] = req.query.dateFrom.split('-').map(Number); filter.createdAt.$gte = new Date(y,m-1,d,0,0,0,0); }
+      if (req.query.dateTo)   { const [y,m,d] = req.query.dateTo.split('-').map(Number);   filter.createdAt.$lte = new Date(y,m-1,d,23,59,59,999); }
+    }
+
+    if (req.query.search) {
+      const s = req.query.search.trim();
+      if (s) filter.$or = [
+        { name:   { $regex: s, $options: 'i' } },
+        { mobile: { $regex: s, $options: 'i' } },
+        { loanType: { $regex: s, $options: 'i' } },
+      ];
+    }
+
+    const leads = await DomImportedLead.find(filter)
+      .populate('assignedTo', 'name email')
+      .sort({ createdAt: -1 })
+      .limit(10000)
+      .lean();
+
+    const headers = [
+      'Batch Name', 'Batch ID',
+      'Name', 'Mobile', 'Email', 'Date of Birth', 'Age',
+      'Aadhar No', 'PAN',
+      'City', 'State', 'Zip Code',
+      'Residence Address', 'Office Address',
+      'Loan Type', 'Product Type', 'Amount Financed',
+      'Total Outstanding', 'Principal Outstanding',
+      'EMI Overdue', 'Expiry Status', 'Expiry Date',
+      'Disbursal Amount', 'Sanction Date', 'Bank Name',
+      'Employment Type', 'Firm/Employee Name', 'Monthly Income',
+      'CIBIL Score', 'CIBIL Score Date',
+      'Asset Description', 'Make', 'Property Value (Latest)',
+      'Vintage', 'Remarks',
+      'Work Status', 'Call Outcome', 'Callback Date', 'Agent Notes',
+      'Pool Status', 'Assigned To', 'Assigned At', 'Imported On',
+    ];
+
+    const rows = leads.map((l) => [
+      l.importBatchName || '', l.importBatchId || '',
+      l.name || '', l.mobile || '', l.email || '', l.dateOfBirth || '', l.age || '',
+      l.customerAadharNo || '', l.panNumber || '',
+      l.city || '', l.state || '', l.zipCode || '',
+      l.residenceAddress || '', l.officeAddress || '',
+      l.loanType || '', l.productType || '', l.amountFinanced || '',
+      l.totalOutstandingAmount || '', l.principalOutstanding || '',
+      l.noOfInstallmentOverdue || '', l.expiryStatus || '', l.expiryDate || '',
+      l.disbursalAmount || '', l.sanctionDate || '', l.bankName || '',
+      l.employment || '', l.firmEmployeeName || '', l.monthlyIncome || '',
+      l.cibilScore || '', l.cibilScoreDate || '',
+      l.assetDescription || '', l.make || '', l.propertyValueLatest || '',
+      l.vintage || '', l.remarks || '',
+      (l.workStatus || '').replace(/_/g, ' '),
+      (l.callOutcome || '').replace(/_/g, ' '),
+      l.callbackDate || '', l.agentNotes || '',
+      l.status || '',
+      l.assignedTo?.name || '',
+      l.assignedAt ? new Date(l.assignedAt).toLocaleString('en-IN', { hour12: true }) : '',
+      l.createdAt  ? new Date(l.createdAt).toLocaleString('en-IN',  { hour12: true }) : '',
+    ]);
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+    ws['!cols'] = headers.map(() => ({ wch: 22 }));
+
+    const batchLabel = req.query.batchId
+      ? (leads[0]?.importBatchName || req.query.batchId).replace(/[^\w\s-]/g, '').replace(/\s+/g, '_').slice(0, 40)
+      : 'all-batches';
+    const dateTag = new Date().toISOString().slice(0, 10);
+    const fileName = `import-leads-${batchLabel}-${dateTag}.xlsx`;
+
+    XLSX.utils.book_append_sheet(wb, ws, 'Imported Leads');
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    return res.send(buf);
+  } catch (err) {
+    console.error('[ImportLeads] Export error:', err.message);
+    return res.status(500).json({ success: false, message: 'Failed to export leads.' });
   }
 });
 
