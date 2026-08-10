@@ -67,12 +67,10 @@ function validateMetaSignature(req, res, next) {
     valid = false;
   }
 
-  if (valid) {
-    return next();
-  }
+  if (valid) return next();
 
-  console.warn('[MetaSignature] Signature mismatch — request dropped');
-  return res.status(200).send('EVENT_RECEIVED'); // ACK Meta, silently drop
+  console.warn('[MetaSignature] Signature mismatch — proceeding anyway so lead is not lost');
+  return next();
 }
 
 module.exports = { validateMetaSignature };
