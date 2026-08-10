@@ -278,6 +278,11 @@ router.get('/', protect, async (req, res) => {
       filter.status = status;
     }
     if (req.query.productType) filter.productType = req.query.productType;
+    // Filter by import batch — resolve batch IDs to sourceImportedLead IDs
+    if (req.query.batchId) {
+      const batchLeadIds = await DomImportedLead.distinct('_id', { importBatchId: req.query.batchId });
+      filter.sourceImportedLead = { $in: batchLeadIds };
+    }
     // Filter by CIBIL score range
     if (req.query.cibilScoreRange) {
       const validRanges = ['below_600', '600_699', '700_749', '750_800', 'above_800', 'unknown'];
@@ -387,7 +392,7 @@ function buildDocStatusFilter(docStatus) {
 
 // ── GET /domestic-api/leads/export ────────────────────────────────────────
 // SuperAdmin only: export all filtered leads as Excel download.
-router.get('/export', protect, authorize('dom_superadmin'), async (req, res) => {
+router.get('/export', protect, authorize('dom_admin', 'dom_superadmin'), async (req, res) => {
   try {
     const status      = req.query.status;
     const search      = (req.query.search || '').trim();
@@ -400,6 +405,11 @@ router.get('/export', protect, authorize('dom_superadmin'), async (req, res) => 
     if (agentId)    filter.assignedTo = agentId;
     if (status && ['pending', 'completed', 'rejected'].includes(status)) filter.status = status;
     if (productType) filter.productType = productType;
+    // Filter by import batch
+    if (req.query.batchId) {
+      const batchLeadIds = await DomImportedLead.distinct('_id', { importBatchId: req.query.batchId });
+      filter.sourceImportedLead = { $in: batchLeadIds };
+    }
     if (req.query.dateFrom || req.query.dateTo) {
       filter.createdAt = {};
       if (req.query.dateFrom) { const [y,m,d] = req.query.dateFrom.split('-').map(Number); filter.createdAt.$gte = new Date(y,m-1,d,0,0,0,0); }
