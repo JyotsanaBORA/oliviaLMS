@@ -1,4 +1,4 @@
-// BACKUP of original LoginPage.js before redesign
+﻿// BACKUP of original LoginPage.js before redesign
 // Original file preserved here for reference
 
 import React, { useState } from 'react';
@@ -43,7 +43,7 @@ const LoginPage = () => {
             <Briefcase className="h-8 w-8 text-white" />
           </div>
           <h1 className="text-3xl font-bold text-white">Domestic LMS</h1>
-          <p className="text-blue-200 mt-1">CashBridge — Loan Management System</p>
+          <p className="text-blue-200 mt-1">CashBridge  Loan Management System</p>
         </div>
         <div className="bg-white rounded-2xl shadow-2xl p-8">
           <div className="flex items-center justify-center mb-6">
@@ -63,20 +63,20 @@ const LoginPage = () => {
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">Password</label>
               <input type="password" name="password" value={form.password} onChange={handleChange}
-                placeholder="••••••••" required
+                placeholder="" required
                 className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm" />
             </div>
             <button type="submit" disabled={loading}
               className="w-full flex items-center justify-center gap-2 bg-blue-700 hover:bg-blue-800 disabled:bg-blue-400 text-white font-semibold py-3 px-6 rounded-lg transition-colors">
               {loading ? <span className="w-5 h-5 border-2 border-white/40 border-t-white rounded-full animate-spin" /> : <LogIn className="h-4 w-4" />}
-              {loading ? 'Signing in…' : 'Sign In'}
+              {loading ? 'Signing in' : 'Sign In'}
             </button>
           </form>
           <div className="mt-6 pt-5 border-t border-gray-100 text-center">
             <p className="text-xs text-gray-500 mb-2">Looking for international process?</p>
             <a href={process.env.REACT_APP_INTERNATIONAL_URL || 'http://localhost:3000'}
               className="text-sm text-blue-600 hover:text-blue-800 font-medium transition-colors">
-              Switch to International LMS →
+              Switch to International LMS 
             </a>
           </div>
         </div>
@@ -86,3 +86,4 @@ const LoginPage = () => {
 };
 
 export default LoginPage;
+

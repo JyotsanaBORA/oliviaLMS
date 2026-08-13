@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { X, Save, User, Briefcase, CreditCard, FileText, MessageSquare, ChevronDown, ChevronUp, Eye, Phone, MapPin, BarChart2, Users, ShieldCheck, CheckCircle, AlertCircle } from 'lucide-react';
 import api from '../utils/axios';
 import toast from 'react-hot-toast';
@@ -202,10 +202,10 @@ const LeadFormModal = ({ websiteLead, importedLead, existingDomLead, onClose, on
       if (scores?.length) {
         const range = mapScoreToRange(scores[0]?.score);
         setForm(prev => ({ ...prev, cibilScoreRange: range }));
-        toast.success(`CIBIL Score: ${parseInt(scores[0].score, 10)} — score range updated.`);
+        toast.success(`CIBIL Score: ${parseInt(scores[0].score, 10)}  score range updated.`);
       }
     } catch (err) {
-      // Always coerce to a plain string — Signzy can return objects in error fields
+      // Always coerce to a plain string  Signzy can return objects in error fields
       const raw = err.response?.data?.message;
       const msg = typeof raw === 'string'
         ? raw
@@ -275,10 +275,10 @@ const LeadFormModal = ({ websiteLead, importedLead, existingDomLead, onClose, on
 
   // Determine header subtitle
   const headerSubtitle = importedLead
-    ? `${importedLead.name || ''} · ${importedLead.mobile || ''} · Pool Lead`
+    ? `${importedLead.name || ''}  ${importedLead.mobile || ''}  Pool Lead`
     : websiteLead
-      ? `${websiteLead.name} · ${websiteLead.mobile} · ${websiteLead.productType}`
-      : isEdit ? `${form.name} · ${form.mobile}` : 'Enter customer details manually';
+      ? `${websiteLead.name}  ${websiteLead.mobile}  ${websiteLead.productType}`
+      : isEdit ? `${form.name}  ${form.mobile}` : 'Enter customer details manually';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3">
@@ -295,9 +295,9 @@ const LeadFormModal = ({ websiteLead, importedLead, existingDomLead, onClose, on
                 {isEdit
                   ? 'Edit Lead'
                   : importedLead
-                    ? '📊 Work on Imported Lead'
+                    ? ' Work on Imported Lead'
                     : websiteLead
-                      ? '🌐 Work on Meta Lead'
+                      ? ' Work on Meta Lead'
                       : 'New Manual Lead'}
               </h2>
               {/* Source badge */}
@@ -305,7 +305,7 @@ const LeadFormModal = ({ websiteLead, importedLead, existingDomLead, onClose, on
                 <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${
                   importedLead ? 'bg-violet-500/30 text-white border-violet-300/40' : 'bg-teal-500/30 text-white border-teal-300/40'
                 }`}>
-                  {importedLead ? '📊 Imported Data' : '🌐 Meta / Website'}
+                  {importedLead ? ' Imported Data' : ' Meta / Website'}
                 </span>
               )}
               {leadRef && (
@@ -361,7 +361,7 @@ const LeadFormModal = ({ websiteLead, importedLead, existingDomLead, onClose, on
         {/* Body */}
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto scrollbar-thin">
 
-          {/* ── Imported Data Reference Panel (only when working a pool lead) ── */}
+          {/*  Imported Data Reference Panel (only when working a pool lead)  */}
           {importedLead && (
             <div className="border-b border-gray-100 flex-shrink-0">
               {/* Toggle bar */}
@@ -372,12 +372,12 @@ const LeadFormModal = ({ websiteLead, importedLead, existingDomLead, onClose, on
                 }`}>
                 <div className="flex items-center gap-2">
                   <Eye className="h-3.5 w-3.5" />
-                  <span>📋 View Imported Lead Data (reference while working)</span>
+                  <span> View Imported Lead Data (reference while working)</span>
                   {(importedLead.totalOutstandingAmount || importedLead.noOfInstallmentOverdue) && (
                     <span className="flex items-center gap-2 ml-2">
                       {importedLead.totalOutstandingAmount && (
                         <span className="bg-amber-100 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-full text-xs font-bold">
-                          OS: ₹{importedLead.totalOutstandingAmount}
+                          OS: {importedLead.totalOutstandingAmount}
                         </span>
                       )}
                       {importedLead.noOfInstallmentOverdue && parseInt(importedLead.noOfInstallmentOverdue) > 0 && (
@@ -413,10 +413,10 @@ const LeadFormModal = ({ websiteLead, importedLead, existingDomLead, onClose, on
                     </p>
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                       {[
-                        { label: 'Total Outstanding', val: importedLead.totalOutstandingAmount, prefix: '₹', highlight: true },
-                        { label: 'Principal',          val: importedLead.principalOutstanding,   prefix: '₹', highlight: true },
-                        { label: 'Amount Financed',    val: importedLead.amountFinanced,          prefix: '₹' },
-                        { label: 'Disbursal Amt',      val: importedLead.disbursalAmount,         prefix: '₹' },
+                        { label: 'Total Outstanding', val: importedLead.totalOutstandingAmount, prefix: '', highlight: true },
+                        { label: 'Principal',          val: importedLead.principalOutstanding,   prefix: '', highlight: true },
+                        { label: 'Amount Financed',    val: importedLead.amountFinanced,          prefix: '' },
+                        { label: 'Disbursal Amt',      val: importedLead.disbursalAmount,         prefix: '' },
                         { label: 'CIBIL Score',        val: importedLead.cibilScore },
                         { label: 'EMI Overdue',        val: importedLead.noOfInstallmentOverdue },
                         { label: 'Live Loans',         val: importedLead.countOfLiveLoans },
@@ -468,7 +468,7 @@ const LeadFormModal = ({ websiteLead, importedLead, existingDomLead, onClose, on
                         { label: 'PAN',           val: importedLead.panNumber },
                         { label: 'Aadhar No',     val: importedLead.customerAadharNo },
                         { label: 'DOB / Age',     val: [importedLead.dateOfBirth, importedLead.age].filter(Boolean).join(' / ') },
-                        { label: 'Property Val',  val: importedLead.propertyValueLatest, prefix: '₹' },
+                        { label: 'Property Val',  val: importedLead.propertyValueLatest, prefix: '' },
                         { label: 'Asset',         val: importedLead.assetDescription },
                       ].filter(x => x.val).map(({ label, val, prefix = '' }) => (
                         <div key={label} className="bg-white border border-gray-100 rounded-xl p-2.5">
@@ -484,7 +484,7 @@ const LeadFormModal = ({ websiteLead, importedLead, existingDomLead, onClose, on
           )}
 
           <div className="p-6">
-            {/* ── PERSONAL ──────────────────────────────────────────────── */}
+            {/*  PERSONAL  */}
             {activeTab === 'personal' && (
               <div className="space-y-6">
 
@@ -623,7 +623,7 @@ const LeadFormModal = ({ websiteLead, importedLead, existingDomLead, onClose, on
               </div>
             )}
 
-            {/* ── EMPLOYMENT ────────────────────────────────────────────── */}
+            {/*  EMPLOYMENT  */}
             {activeTab === 'employment' && (
               <div className="space-y-6">
 
@@ -642,13 +642,13 @@ const LeadFormModal = ({ websiteLead, importedLead, existingDomLead, onClose, on
                     </Field>
                     {form.employmentType === 'other' && (
                       <Field label="Specify Employment">
-                        <Input value={form.customEmploymentType} onChange={set('customEmploymentType')} placeholder="e.g. Freelancer, Retired, Student…" />
+                        <Input value={form.customEmploymentType} onChange={set('customEmploymentType')} placeholder="e.g. Freelancer, Retired, Student" />
                       </Field>
                     )}
                     <Field label="Present Employer / Company Name">
                       <Input value={form.companyName} onChange={set('companyName')} placeholder="e.g. Infosys Ltd." />
                     </Field>
-                    <Field label="Monthly Salary / Income (₹)">
+                    <Field label="Monthly Salary / Income ()">
                       <Input type="number" value={form.monthlySalary} onChange={set('monthlySalary')} placeholder="e.g. 50000" min={0} />
                     </Field>
                     <Field label="No. of Years at Current Job">
@@ -684,13 +684,13 @@ const LeadFormModal = ({ websiteLead, importedLead, existingDomLead, onClose, on
               </div>
             )}
 
-            {/* ── LOAN ──────────────────────────────────────────────────── */}
+            {/*  LOAN  */}
             {activeTab === 'loan' && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Field label="Product / Service Type">
                   <Select value={form.productType} onChange={set('productType')}>
                     <option value="">Select</option>
-                    <optgroup label="── Loans ──">
+                    <optgroup label=" Loans ">
                       <option value="personal_loan">Personal Loan</option>
                       <option value="home_loan">Home Loan</option>
                       <option value="car_loan">Car Loan</option>
@@ -699,27 +699,27 @@ const LeadFormModal = ({ websiteLead, importedLead, existingDomLead, onClose, on
                       <option value="education_loan">Education Loan</option>
                       <option value="gold_loan">Gold Loan</option>
                     </optgroup>
-                    <optgroup label="── Cards ──">
+                    <optgroup label=" Cards ">
                       <option value="credit_card">Credit Card</option>
                     </optgroup>
-                    <optgroup label="── Insurance ──">
+                    <optgroup label=" Insurance ">
                       <option value="health_insurance">Health Insurance</option>
                       <option value="life_insurance">Life Insurance</option>
                       <option value="motor_insurance">Motor Insurance</option>
                       <option value="travel_insurance">Travel Insurance</option>
                     </optgroup>
-                    <optgroup label="── Investments ──">
+                    <optgroup label=" Investments ">
                       <option value="mutual_fund">Mutual Fund</option>
                       <option value="sip">SIP</option>
                       <option value="demat">Demat Account</option>
                     </optgroup>
-                    <optgroup label="── Other ──">
+                    <optgroup label=" Other ">
                       <option value="general">General Enquiry</option>
                       <option value="other">Other</option>
                     </optgroup>
                   </Select>
                 </Field>
-                <Field label="Required Loan Amount (₹)">
+                <Field label="Required Loan Amount ()">
                   <Input
                     type="number"
                     value={form.loanAmountRequired}
@@ -737,21 +737,21 @@ const LeadFormModal = ({ websiteLead, importedLead, existingDomLead, onClose, on
               </div>
             )}
 
-            {/* ── CREDIT ────────────────────────────────────────────────── */}
+            {/*  CREDIT  */}
             {activeTab === 'credit' && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Field label="CIBIL Score Range">
                   <Select value={form.cibilScoreRange} onChange={set('cibilScoreRange')}>
                     <option value="">Select</option>
                     <option value="below_600">Below 600 (Poor)</option>
-                    <option value="600_699">600–699 (Fair)</option>
-                    <option value="700_749">700–749 (Good)</option>
-                    <option value="750_800">750–800 (Very Good)</option>
+                    <option value="600_699">600699 (Fair)</option>
+                    <option value="700_749">700749 (Good)</option>
+                    <option value="750_800">750800 (Very Good)</option>
                     <option value="above_800">Above 800 (Excellent)</option>
                     <option value="unknown">Don't Know</option>
                   </Select>
                 </Field>
-                <Field label="Monthly EMI Obligations (₹)">
+                <Field label="Monthly EMI Obligations ()">
                   <Input
                     type="number"
                     value={form.existingEMI}
@@ -772,7 +772,7 @@ const LeadFormModal = ({ websiteLead, importedLead, existingDomLead, onClose, on
               </div>
             )}
 
-            {/* ── CIBIL CHECK ───────────────────────────────────────────── */}
+            {/*  CIBIL CHECK  */}
             {activeTab === 'cibil_check' && (
               <div className="space-y-5">
 
@@ -783,7 +783,7 @@ const LeadFormModal = ({ websiteLead, importedLead, existingDomLead, onClose, on
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-bold text-indigo-800">Live CIBIL Score Check</p>
-                    <p className="text-xs text-indigo-500 mt-0.5">Powered by Signzy — verify customer's credit score in real time</p>
+                    <p className="text-xs text-indigo-500 mt-0.5">Powered by Signzy  verify customer's credit score in real time</p>
                   </div>
                   {cibilResult && (
                     <button type="button" onClick={() => { setCibilResult(null); setCibilError(''); }}
@@ -793,7 +793,7 @@ const LeadFormModal = ({ websiteLead, importedLead, existingDomLead, onClose, on
                   )}
                 </div>
 
-                {/* ── Input form ── */}
+                {/*  Input form  */}
                 {!cibilResult && (
                   <>
                     <p className="text-xs text-gray-500">Details are pre-filled from the lead form. Select gender and click <strong>Run CIBIL Check</strong>.</p>
@@ -863,12 +863,12 @@ const LeadFormModal = ({ websiteLead, importedLead, existingDomLead, onClose, on
                       {cibilChecking
                         ? <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
                         : <ShieldCheck className="h-4 w-4" />}
-                      {cibilChecking ? 'Checking…' : 'Run CIBIL Check'}
+                      {cibilChecking ? 'Checking' : 'Run CIBIL Check'}
                     </button>
                   </>
                 )}
 
-                {/* ── Result panel ── */}
+                {/*  Result panel  */}
                 {cibilResult && (() => {
                   const cibilData  = cibilResult?.data;
                   const report     = cibilData?.CIBILReport;
@@ -901,7 +901,7 @@ const LeadFormModal = ({ websiteLead, importedLead, existingDomLead, onClose, on
                               : scoreVal >= 600 ? 'text-amber-600'
                               : 'text-red-600'
                           }`}>
-                            {scoreVal !== null ? scoreVal : '—'}
+                            {scoreVal !== null ? scoreVal : ''}
                           </p>
                           {reportName && <p className="text-xs text-gray-400 mt-1">{reportName}</p>}
                         </div>
@@ -923,8 +923,8 @@ const LeadFormModal = ({ websiteLead, importedLead, existingDomLead, onClose, on
                           {[
                             { label: 'Total Accounts',   val: acctSumm.totalAccounts },
                             { label: 'Overdue Accounts', val: acctSumm.overdueAccounts, warn: acctSumm.overdueAccounts > 0 },
-                            { label: 'Current Balance',  val: acctSumm.currentBalance  != null ? `₹${acctSumm.currentBalance.toLocaleString('en-IN')}` : null },
-                            { label: 'Overdue Balance',  val: acctSumm.overdueBalance  != null ? `₹${acctSumm.overdueBalance.toLocaleString('en-IN')}` : null, warn: acctSumm.overdueBalance > 0 },
+                            { label: 'Current Balance',  val: acctSumm.currentBalance  != null ? `${acctSumm.currentBalance.toLocaleString('en-IN')}` : null },
+                            { label: 'Overdue Balance',  val: acctSumm.overdueBalance  != null ? `${acctSumm.overdueBalance.toLocaleString('en-IN')}` : null, warn: acctSumm.overdueBalance > 0 },
                             { label: 'Enquiries (30d)',  val: inqSumm.inquiryPast30Days },
                             { label: 'Enquiries (12m)',  val: inqSumm.inquiryPast12Months },
                             { label: 'Total Enquiries',  val: inqSumm.totalInquiry },
@@ -958,14 +958,14 @@ const LeadFormModal = ({ websiteLead, importedLead, existingDomLead, onClose, on
               </div>
             )}
 
-            {/* ── REFERENCES ────────────────────────────────────────────── */}
+            {/*  REFERENCES  */}
             {activeTab === 'references' && (
               <div className="space-y-6">
 
                 {/* Reference 1 */}
                 <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-4">
                   <p className="text-[11px] font-extrabold text-blue-600 uppercase tracking-wider mb-3 flex items-center gap-1.5">
-                    <Users className="h-3.5 w-3.5" /> Reference 1 — Relative (must)
+                    <Users className="h-3.5 w-3.5" /> Reference 1  Relative (must)
                   </p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <Field label="Name">
@@ -987,7 +987,7 @@ const LeadFormModal = ({ websiteLead, importedLead, existingDomLead, onClose, on
                 {/* Reference 2 */}
                 <div className="bg-purple-50/50 border border-purple-100 rounded-xl p-4">
                   <p className="text-[11px] font-extrabold text-purple-600 uppercase tracking-wider mb-3 flex items-center gap-1.5">
-                    <Users className="h-3.5 w-3.5" /> Reference 2 — Friend
+                    <Users className="h-3.5 w-3.5" /> Reference 2  Friend
                   </p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <Field label="Name">
@@ -1009,7 +1009,7 @@ const LeadFormModal = ({ websiteLead, importedLead, existingDomLead, onClose, on
               </div>
             )}
 
-            {/* ── DOCUMENTS ─────────────────────────────────────────────── */}
+            {/*  DOCUMENTS  */}
             {activeTab === 'documents' && (
               domLeadId ? (
                 <DocumentUpload
@@ -1027,25 +1027,25 @@ const LeadFormModal = ({ websiteLead, importedLead, existingDomLead, onClose, on
               )
             )}
 
-            {/* ── DISPOSITION ───────────────────────────────────────────── */}
+            {/*  DISPOSITION  */}
             {activeTab === 'disposition' && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Field label="Call Outcome">
                   <Select value={form.callOutcome} onChange={set('callOutcome')}>
                     <option value="">Select</option>
-                    <option value="interested">✅ Interested</option>
-                    <option value="not_interested">❌ Not Interested</option>
-                    <option value="not_eligible">🚫 Not Eligible</option>
-                    <option value="callback">📞 Callback Requested</option>
-                    <option value="not_reachable">📵 Not Reachable</option>
-                    <option value="not_answering">🔕 Not Answering</option>
-                    <option value="wrong_number">❓ Wrong Number</option>
-                    <option value="other">✏️ Other (specify)</option>
+                    <option value="interested"> Interested</option>
+                    <option value="not_interested"> Not Interested</option>
+                    <option value="not_eligible"> Not Eligible</option>
+                    <option value="callback"> Callback Requested</option>
+                    <option value="not_reachable"> Not Reachable</option>
+                    <option value="not_answering"> Not Answering</option>
+                    <option value="wrong_number"> Wrong Number</option>
+                    <option value="other"> Other (specify)</option>
                   </Select>
                 </Field>
                 {form.callOutcome === 'other' && (
                   <Field label="Specify Disposition">
-                    <Input value={form.customCallOutcome} onChange={set('customCallOutcome')} placeholder="e.g. Busy, Switched off, Language barrier…" />
+                    <Input value={form.customCallOutcome} onChange={set('customCallOutcome')} placeholder="e.g. Busy, Switched off, Language barrier" />
                   </Field>
                 )}
                 <Field label="Callback Date (if applicable)">
@@ -1057,7 +1057,7 @@ const LeadFormModal = ({ websiteLead, importedLead, existingDomLead, onClose, on
                       value={form.notes}
                       onChange={set('notes')}
                       rows={5}
-                      placeholder="Write call notes, customer requirements, special instructions…"
+                      placeholder="Write call notes, customer requirements, special instructions"
                       className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
                     />
                   </Field>
@@ -1089,7 +1089,7 @@ const LeadFormModal = ({ websiteLead, importedLead, existingDomLead, onClose, on
               ) : (
                 <Save className="h-4 w-4" />
               )}
-              {saving ? 'Saving…' : isEdit ? 'Update Lead' : 'Save Lead'}
+              {saving ? 'Saving' : isEdit ? 'Update Lead' : 'Save Lead'}
             </button>
           )}
         </div>
@@ -1099,3 +1099,4 @@ const LeadFormModal = ({ websiteLead, importedLead, existingDomLead, onClose, on
 };
 
 export default LeadFormModal;
+

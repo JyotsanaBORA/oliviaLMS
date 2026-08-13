@@ -1,10 +1,10 @@
-'use strict';
+﻿'use strict';
 const jwt    = require('jsonwebtoken');
 const DomUser = require('../models/DomUser');
 
 /**
- * protect — verifies the JWT and attaches the DomUser to req.user.
- * Uses DOM_JWT_SECRET — completely separate from international LMS.
+ * protect  verifies the JWT and attaches the DomUser to req.user.
+ * Uses DOM_JWT_SECRET  completely separate from international LMS.
  */
 const protect = async (req, res, next) => {
   try {
@@ -15,20 +15,20 @@ const protect = async (req, res, next) => {
     }
 
     if (!token) {
-      return res.status(401).json({ success: false, message: 'Not authorized — no token provided.' });
+      return res.status(401).json({ success: false, message: 'Not authorized  no token provided.' });
     }
 
     let decoded;
     try {
       decoded = jwt.verify(token, process.env.DOM_JWT_SECRET);
     } catch {
-      return res.status(401).json({ success: false, message: 'Not authorized — token invalid or expired.' });
+      return res.status(401).json({ success: false, message: 'Not authorized  token invalid or expired.' });
     }
 
     const user = await DomUser.findById(decoded.id).lean();
 
     if (!user) {
-      return res.status(401).json({ success: false, message: 'Not authorized — user not found.' });
+      return res.status(401).json({ success: false, message: 'Not authorized  user not found.' });
     }
 
     if (!user.isActive) {
@@ -44,7 +44,7 @@ const protect = async (req, res, next) => {
 };
 
 /**
- * authorize — restrict access to specific roles.
+ * authorize  restrict access to specific roles.
  * Usage: router.get('/route', protect, authorize('dom_admin', 'dom_superadmin'), handler)
  */
 const authorize = (...roles) => (req, res, next) => {
@@ -58,7 +58,7 @@ const authorize = (...roles) => (req, res, next) => {
 };
 
 /**
- * generateToken — signs a JWT with the domestic secret.
+ * generateToken  signs a JWT with the domestic secret.
  */
 const generateToken = (id) =>
   jwt.sign({ id }, process.env.DOM_JWT_SECRET, {
@@ -66,3 +66,4 @@ const generateToken = (id) =>
   });
 
 module.exports = { protect, authorize, generateToken };
+

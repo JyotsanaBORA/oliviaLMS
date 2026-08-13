@@ -1,11 +1,11 @@
-'use strict';
+﻿'use strict';
 const mongoose = require('mongoose');
 
 /**
- * DomNotification — one record per (websiteLead, agent) pair.
+ * DomNotification  one record per (websiteLead, agent) pair.
  * When a new website lead arrives, a notification is created for every
  * active domagent.  When any agent loads the lead, ALL notifications
- * for that lead are deleted (or marked read) — the popup vanishes for
+ * for that lead are deleted (or marked read)  the popup vanishes for
  * everyone.
  */
 const domNotificationSchema = new mongoose.Schema(
@@ -33,3 +33,4 @@ domNotificationSchema.index({ agent: 1, createdAt: -1 });
 domNotificationSchema.index({ websiteLead: 1 }); // for bulk deletion when lead is loaded
 
 module.exports = mongoose.model('DomNotification', domNotificationSchema);
+

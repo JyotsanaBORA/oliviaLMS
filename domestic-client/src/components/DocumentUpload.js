@@ -1,11 +1,11 @@
-import React, { useState, useRef, useEffect } from 'react';
+﻿import React, { useState, useRef, useEffect } from 'react';
 import { Upload, CheckCircle, FileText, Loader, Eye, RefreshCw } from 'lucide-react';
 import api from '../utils/axios';
 import toast from 'react-hot-toast';
 
 const DOC_TYPES = [
-  { key: 'aadhaar_front',  label: 'Aadhaar — Front',       required: true },
-  { key: 'aadhaar_back',   label: 'Aadhaar — Back',        required: true },
+  { key: 'aadhaar_front',  label: 'Aadhaar  Front',       required: true },
+  { key: 'aadhaar_back',   label: 'Aadhaar  Back',        required: true },
   { key: 'pan_card',       label: 'PAN Card',              required: true },
   { key: 'salary_slip_1',  label: 'Salary Slip (Month 1)', required: false },
   { key: 'salary_slip_2',  label: 'Salary Slip (Month 2)', required: false },
@@ -50,7 +50,7 @@ const DocumentUpload = ({ leadId, documents = [], onDocumentsChange }) => {
 
       if (res.data?.success) {
         const doc = res.data.document;
-        // Update local map immediately — tick shows right away
+        // Update local map immediately  tick shows right away
         setUploadedMap((prev) => ({ ...prev, [docType]: doc }));
         toast.success(`${DOC_TYPES.find(d => d.key === docType)?.label} uploaded!`);
         onDocumentsChange && onDocumentsChange(doc, docType);
@@ -70,7 +70,7 @@ const DocumentUpload = ({ leadId, documents = [], onDocumentsChange }) => {
     <div className="space-y-3">
       {/* Summary bar */}
       <div className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2 border border-gray-200">
-        <p className="text-xs text-gray-500">JPEG · PNG · PDF — max 10 MB each</p>
+        <p className="text-xs text-gray-500">JPEG  PNG  PDF  max 10 MB each</p>
         <div className="flex items-center gap-2 text-xs font-semibold">
           <span className="text-gray-600">{totalUploaded}/{DOC_TYPES.length} uploaded</span>
           {reqMissing > 0 && (
@@ -80,7 +80,7 @@ const DocumentUpload = ({ leadId, documents = [], onDocumentsChange }) => {
           )}
           {reqMissing === 0 && totalUploaded > 0 && (
             <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
-              Required docs ✓
+              Required docs 
             </span>
           )}
         </div>
@@ -116,7 +116,7 @@ const DocumentUpload = ({ leadId, documents = [], onDocumentsChange }) => {
                     {doc.required && <span className="text-red-500 ml-0.5">*</span>}
                   </p>
                   {uploaded
-                    ? <p className="text-xs text-green-600 truncate max-w-[140px]">✓ {uploaded.originalName}</p>
+                    ? <p className="text-xs text-green-600 truncate max-w-[140px]"> {uploaded.originalName}</p>
                     : <p className="text-xs text-gray-400">Not uploaded</p>
                   }
                 </div>
@@ -172,3 +172,4 @@ const DocumentUpload = ({ leadId, documents = [], onDocumentsChange }) => {
 };
 
 export default DocumentUpload;
+

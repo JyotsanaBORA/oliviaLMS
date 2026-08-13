@@ -1,8 +1,8 @@
-'use strict';
+﻿'use strict';
 const mongoose = require('mongoose');
 
 /**
- * DomLead — agent-worked lead.  Created when a domagent submits the full
+ * DomLead  agent-worked lead.  Created when a domagent submits the full
  * form after loading a DomWebsiteLead and calling the customer.
  * A lead can be edited after initial submission (e.g. correction of errors).
  */
@@ -77,7 +77,7 @@ const domLeadSchema = new mongoose.Schema(
       ref: 'DomUser',
     },
 
-    // ── Personal details ───────────────────────────────────────────────────
+    //  Personal details 
     name:     { type: String, trim: true, maxlength: 100 },
     dob:      { type: String, trim: true, maxlength: 20 },
     pan:      { type: String, trim: true, uppercase: true, maxlength: 10 },
@@ -91,7 +91,7 @@ const domLeadSchema = new mongoose.Schema(
     location:        { type: String, trim: true, maxlength: 100 },
     tcName:          { type: String, trim: true, maxlength: 100 },
 
-    // ── Contact details ────────────────────────────────────────────────────
+    //  Contact details 
     mobile:           { type: String, trim: true, maxlength: 20 },
     alternateMobile:  { type: String, trim: true, maxlength: 20 },
     email:            { type: String, trim: true, lowercase: true, maxlength: 100 },
@@ -118,7 +118,7 @@ const domLeadSchema = new mongoose.Schema(
     yearsAtCurrentJob:{ type: Number, min: 0 },
     totalJobExp:      { type: Number, min: 0 },
 
-    // ── References ─────────────────────────────────────────────────────────
+    //  References 
     ref1Name:    { type: String, trim: true, maxlength: 100 },
     ref1Contact: { type: String, trim: true, maxlength: 20 },
     ref1Address: { type: String, trim: true, maxlength: 300 },
@@ -126,8 +126,8 @@ const domLeadSchema = new mongoose.Schema(
     ref2Contact: { type: String, trim: true, maxlength: 20 },
     ref2Address: { type: String, trim: true, maxlength: 300 },
 
-    // ── Unique trackable reference ID (e.g. PL-260611-A3F7) ───────────────
-    // Prefix encodes the service, suffix is date+random — never changes once set.
+    //  Unique trackable reference ID (e.g. PL-260611-A3F7) 
+    // Prefix encodes the service, suffix is date+random  never changes once set.
     // If productType is updated the prefix is rewritten but the date+rand stays.
     leadRef: {
       type:      String,
@@ -138,7 +138,7 @@ const domLeadSchema = new mongoose.Schema(
       sparse:    true,
     },
 
-    // ── Loan / service details ─────────────────────────────────────────────
+    //  Loan / service details 
     productType: {
       type: String,
       enum: [
@@ -158,11 +158,11 @@ const domLeadSchema = new mongoose.Schema(
     },
     loanAmountRequired: { type: Number, min: 0 },
 
-    // ── Banking details ────────────────────────────────────────────────────
+    //  Banking details 
     existingBank:       { type: String, trim: true, maxlength: 100 },
     salaryAccountBank:  { type: String, trim: true, maxlength: 100 },
 
-    // ── Credit details ─────────────────────────────────────────────────────
+    //  Credit details 
     cibilScoreRange: {
       type: String,
       enum: ['below_600', '600_699', '700_749', '750_800', 'above_800', 'unknown', ''],
@@ -171,7 +171,7 @@ const domLeadSchema = new mongoose.Schema(
     existingLoans: [{ type: String, trim: true, maxlength: 100 }],
     existingEMI:   { type: Number, min: 0 },
 
-    // ── Call disposition ───────────────────────────────────────────────────
+    //  Call disposition 
     callOutcome: {
       type: String,
       enum: ['interested', 'not_interested', 'not_eligible', 'callback', 'not_reachable', 'wrong_number', 'not_answering', 'other', ''],
@@ -181,18 +181,22 @@ const domLeadSchema = new mongoose.Schema(
     notes:               { type: String, trim: true, maxlength: 3000 },
     customCallOutcome:   { type: String, trim: true, maxlength: 100 },
 
-    // ── Documents ──────────────────────────────────────────────────────────
+    //  Documents 
     documents: [documentSchema],
 
-    // ── Lead status ────────────────────────────────────────────────────────
-    // pending   → agent submitted form at least once but may still edit
-    // completed → admin/agent marks as fully processed
+    //  Lead status 
+    // pending    agent submitted form at least once but may still edit
+    // completed  admin/agent marks as fully processed
     status: {
       type: String,
       enum: ['pending', 'completed', 'rejected'],
       default: 'pending',
       index: true,
     },
+
+    //  Activity counters 
+    updateCount: { type: Number, default: 0, min: 0 }, // increments on every PATCH
+    callCount:   { type: Number, default: 0, min: 0 }, // increments when callOutcome is set/changed
   },
   { timestamps: true }
 );
@@ -204,3 +208,4 @@ domLeadSchema.index({ mobile: 1 });
 domLeadSchema.index({ name: 'text', mobile: 'text', leadRef: 'text' });
 
 module.exports = mongoose.model('DomLead', domLeadSchema);
+

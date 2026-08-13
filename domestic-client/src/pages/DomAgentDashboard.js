@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+﻿import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { io } from 'socket.io-client';
 import {
   LogOut, RefreshCw, FileText, CheckCircle,
@@ -27,15 +27,15 @@ const OUTCOME_MAP = {
 const CORE_DOCS_A     = ['aadhaar_front', 'aadhaar_back', 'pan_card'];
 const FINANCIAL_DOCS_A= ['salary_slip_1', 'bank_statement', 'itr', 'form_16', 'business_proof'];
 const getDocStatusA = (docs = []) => {
-  if (!docs || docs.length === 0) return { status: 'none',    count: 0, label: 'No Docs',   cls: 'bg-gray-100 text-gray-400 border-gray-200',   emoji: '📄' };
+  if (!docs || docs.length === 0) return { status: 'none',    count: 0, label: 'No Docs',   cls: 'bg-gray-100 text-gray-400 border-gray-200',   emoji: '' };
   const types = docs.map(d => d.docType);
   const coreCount = CORE_DOCS_A.filter(t => types.includes(t)).length;
   const hasFinancial = FINANCIAL_DOCS_A.some(t => types.includes(t));
-  if (coreCount >= 2 && hasFinancial) return { status: 'full',    count: docs.length, label: `Full (${docs.length})`,    cls: 'bg-emerald-100 text-emerald-700 border-emerald-200', emoji: '✅' };
-  return                                      { status: 'partial', count: docs.length, label: `Partial (${docs.length})`, cls: 'bg-amber-100  text-amber-700  border-amber-200',   emoji: '📎' };
+  if (coreCount >= 2 && hasFinancial) return { status: 'full',    count: docs.length, label: `Full (${docs.length})`,    cls: 'bg-emerald-100 text-emerald-700 border-emerald-200', emoji: '' };
+  return                                      { status: 'partial', count: docs.length, label: `Partial (${docs.length})`, cls: 'bg-amber-100  text-amber-700  border-amber-200',   emoji: '' };
 };
 
-const IST_MS = 5.5 * 60 * 60 * 1000; // UTC+5:30 — India has no DST
+const IST_MS = 5.5 * 60 * 60 * 1000; // UTC+5:30  India has no DST
 /** Returns today's date in IST as YYYY-MM-DD. offsetDays > 0 = days ago */
 const todayIST = (offsetDays = 0) => {
   const ist = new Date(Date.now() + IST_MS - offsetDays * 86400000);
@@ -97,7 +97,9 @@ const DomAgentDashboard = () => {
   const [followupDateFilter, setFollowupDateFilter] = useState(todayIST); // default = today in IST
   const [docFilter,          setDocFilter]          = useState('all'); // 'all'|'none'|'partial'|'full'
   const [cibilFilter,        setCibilFilter]        = useState(''); // '' = all CIBIL ranges (Assigned to Work + Worked tabs)
+  const [dispositionFilter,  setDispositionFilter]  = useState(''); // '' = all outcomes (Worked tab)
   const [followupCibilFilter,setFollowupCibilFilter]= useState(''); // '' = all CIBIL ranges (Follow-ups tab only)
+  const [followupDispositionFilter, setFollowupDispositionFilter] = useState(''); // '' = all outcomes (Follow-ups tab)
 
   useEffect(() => {
     const serverUrl = process.env.REACT_APP_DOM_API_URL || 'http://localhost:5009';
@@ -115,20 +117,20 @@ const DomAgentDashboard = () => {
     // New pool leads assigned to this agent via batch
     socket.on('pool_batch_assigned', (data) => {
       if (data.agentId && data.agentId !== user._id?.toString()) return; // not for this agent (double-check on client)
-      toast.success(data.message || `New batch leads assigned to you!`, { icon: '📦', duration: 6000 });
+      toast.success(data.message || `New batch leads assigned to you!`, { icon: '', duration: 6000 });
       fetchAssignedLeads();
     });
 
-    // A batch was deleted — refresh to remove cleared leads
+    // A batch was deleted  refresh to remove cleared leads
     socket.on('pool_batch_deleted', (data) => {
-      toast(`${data.message || 'A batch was removed from your queue.'}`, { icon: '🗑️', duration: 5000 });
+      toast(`${data.message || 'A batch was removed from your queue.'}`, { icon: '', duration: 5000 });
       fetchAssignedLeads();
     });
 
     // Single website lead assigned
     socket.on('lead_assigned_to_you', (data) => {
       if (data.agentId === socket.auth?.token) return;
-      toast.success(`Lead assigned to you: ${data.leadName || data.mobile || 'new lead'}`, { icon: '📋' });
+      toast.success(`Lead assigned to you: ${data.leadName || data.mobile || 'new lead'}`, { icon: '' });
       fetchMyLeads(true);
     });
     return () => socket.disconnect();
@@ -175,7 +177,7 @@ const DomAgentDashboard = () => {
     try {
       await api.patch('/domestic-api/auth/status', { agentStatus: newStatus });
       setAgentStatus(newStatus);
-      const labels = { available: 'Available ✅', break: 'On Break ☕', unavailable: 'Unavailable 🔴' };
+      const labels = { available: 'Available ', break: 'On Break ', unavailable: 'Unavailable ' };
       toast.success(`Status set to: ${labels[newStatus]}`);
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to update status.');
@@ -259,7 +261,7 @@ const DomAgentDashboard = () => {
         : (l.assignedAt || l.createdAt);
       const dateOk   = !dateFilter  || (d && toISTDateStr(d) === dateFilter);
       const searchOk = !q || (l.name||'').toLowerCase().includes(q) || (l.mobile||'').includes(q) || (l.city||'').toLowerCase().includes(q);
-      // CIBIL filter: pool leads use cibilScore (text); website leads have no score — pass through
+      // CIBIL filter: pool leads use cibilScore (text); website leads have no score  pass through
       const cibilOk  = !cibilFilter || l._src === 'website' ||
         cibilScoreToRange(l.cibilScore) === cibilFilter;
       return dateOk && searchOk && cibilOk;
@@ -280,9 +282,13 @@ const DomAgentDashboard = () => {
       const docOk = docFilter === 'all' || ds.status === docFilter;
       const leadCibil = l._src === 'website' ? (l.domLead?.cibilScoreRange || '') : (l.domLeadId?.cibilScoreRange || '');
       const cibilOk = !cibilFilter || leadCibil === cibilFilter;
-      return dateOk && searchOk && docOk && cibilOk;
+      const leadDisposition = l._src === 'website'
+        ? (l.domLead?.callOutcome || '')
+        : (l.callOutcome || l.workStatus || '');
+      const dispositionOk = !dispositionFilter || leadDisposition === dispositionFilter;
+      return dateOk && searchOk && docOk && cibilOk && dispositionOk;
     });
-  }, [workedLeads, dateFilter, searchQuery, docFilter, cibilFilter]);
+  }, [workedLeads, dateFilter, searchQuery, docFilter, cibilFilter, dispositionFilter]);
 
   const filteredFollowups = useMemo(() => {
     const q = searchQuery.toLowerCase();
@@ -290,9 +296,10 @@ const DomAgentDashboard = () => {
       const dateOk   = !followupDateFilter || (f.callbackDate && toISTDateStr(f.callbackDate) === followupDateFilter);
       const searchOk = !q || (f.name||'').toLowerCase().includes(q) || (f.mobile||'').includes(q);
       const cibilOk  = !followupCibilFilter || (f.cibilScoreRange || 'unknown') === followupCibilFilter;
-      return dateOk && searchOk && cibilOk;
+      const dispositionOk = !followupDispositionFilter || (f.callOutcome || '') === followupDispositionFilter;
+      return dateOk && searchOk && cibilOk && dispositionOk;
     });
-  }, [followups, followupDateFilter, searchQuery, followupCibilFilter]);
+  }, [followups, followupDateFilter, searchQuery, followupCibilFilter, followupDispositionFilter]);
 
   const STATUS_CONFIG = {
     available:   { label: 'Available',   dot: 'bg-emerald-500', activeBg: 'bg-emerald-500 text-white', badge: 'bg-emerald-100 text-emerald-700 border border-emerald-300' },
@@ -322,7 +329,7 @@ const DomAgentDashboard = () => {
               <img src={`${process.env.PUBLIC_URL}/mcb-logo.png`} alt="MCB" className="h-4 w-auto object-contain brightness-0 invert" />
             </div>
           )}
-          {/* Toggle button — white on green, clearly visible */}
+          {/* Toggle button  white on green, clearly visible */}
           <button
             onClick={() => setSidebarOpen(o => !o)}
             title={sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
@@ -357,7 +364,7 @@ const DomAgentDashboard = () => {
 
         {/* Navigation */}
         <nav className="flex-1 px-2 pt-3 pb-2 overflow-y-auto min-h-0">
-          {/* Mini stats — only when expanded */}
+          {/* Mini stats  only when expanded */}
           {sidebarOpen && (
             <div className="flex items-center gap-1 px-1 mb-3 flex-wrap">
               {[
@@ -455,7 +462,7 @@ const DomAgentDashboard = () => {
       <div className="flex-1 overflow-y-auto overflow-x-hidden min-w-0 scrollbar-app">
       <main className="px-4 sm:px-5 xl:px-7 py-4 xl:py-5 space-y-4 xl:space-y-5 min-w-0">
 
-        {/* ── ASSIGNED TO WORK ── */}
+        {/*  ASSIGNED TO WORK  */}
         {tab === 'assigned' && (
           <div className="space-y-4">
             {/* Header */}
@@ -465,7 +472,7 @@ const DomAgentDashboard = () => {
                   <div className="p-2.5 bg-orange-100 rounded-xl"><Database className="h-5 w-5 text-orange-600" /></div>
                   <div>
                     <h2 className="font-bold text-gray-800 text-base">Assigned to Work</h2>
-                    <p className="text-xs text-gray-400 mt-0.5">Leads waiting for you — call and fill the form</p>
+                    <p className="text-xs text-gray-400 mt-0.5">Leads waiting for you  call and fill the form</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -483,7 +490,7 @@ const DomAgentDashboard = () => {
               <div className="flex items-center gap-3 px-5 py-3 border-b border-gray-100 bg-gray-50/50 flex-wrap">
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 pointer-events-none" />
-                  <input type="text" placeholder="Search name, mobile, city…" value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+                  <input type="text" placeholder="Search name, mobile, city" value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
                     className="pl-9 pr-8 py-2 text-sm border border-gray-200 rounded-xl bg-white w-52 focus:outline-none focus:ring-2 focus:ring-[#065F36]/20 focus:border-[#065F36]" />
                   {searchQuery && <button onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500"><X className="h-3.5 w-3.5" /></button>}
                 </div>
@@ -498,11 +505,11 @@ const DomAgentDashboard = () => {
                 </div>
                 <select value={cibilFilter} onChange={e => setCibilFilter(e.target.value)}
                   className="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-[#065F36]/20 focus:border-[#065F36]">
-                  <option value="">📊 All CIBIL</option>
+                  <option value=""> All CIBIL</option>
                   <option value="below_600">&lt; 600 (Poor)</option>
-                  <option value="600_699">600–699 (Fair)</option>
-                  <option value="700_749">700–749 (Good)</option>
-                  <option value="750_800">750–800 (Very Good)</option>
+                  <option value="600_699">600699 (Fair)</option>
+                  <option value="700_749">700749 (Good)</option>
+                  <option value="750_800">750800 (Very Good)</option>
                   <option value="above_800">&gt; 800 (Excellent)</option>
                   <option value="unknown">Unknown</option>
                 </select>
@@ -530,7 +537,7 @@ const DomAgentDashboard = () => {
               {(loading || assignedLeadsLoading) ? (
                 <div className="flex flex-col items-center justify-center py-16 gap-3">
                   <span className="w-8 h-8 border-2 border-gray-200 border-t-orange-500 rounded-full animate-spin" />
-                  <span className="text-sm text-gray-400">Loading…</span>
+                  <span className="text-sm text-gray-400">Loading</span>
                 </div>
               ) : filteredToWork.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-16 gap-3 text-gray-400">
@@ -563,8 +570,8 @@ const DomAgentDashboard = () => {
                             <td className="pl-6 pr-3 py-3.5">
                               <div className="flex flex-col items-start gap-1">
                                 {isWebsite
-                                  ? <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-teal-500 text-white">🌐 Meta</span>
-                                  : <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-violet-100 text-violet-700 border border-violet-200">📊 Imported</span>}
+                                  ? <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-teal-500 text-white"> Meta</span>
+                                  : <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-violet-100 text-violet-700 border border-violet-200"> Imported</span>}
                                 {isWebsite && lead.source === 'meta' && (
                                   <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-[#1877F2] text-white">f Meta Ads</span>
                                 )}
@@ -574,19 +581,19 @@ const DomAgentDashboard = () => {
                               <div className="flex items-center gap-2">
                                 <span className="w-2 h-2 rounded-full bg-orange-400 animate-pulse flex-shrink-0" />
                                 <div>
-                                  <p className="font-semibold text-gray-800">{lead.name || '—'}</p>
+                                  <p className="font-semibold text-gray-800">{lead.name || ''}</p>
                                   <p className="text-xs text-gray-400">{lead.city || lead.state || ''}</p>
                                 </div>
                               </div>
                             </td>
-                            <td className="px-3 py-3.5 font-mono text-xs text-gray-600">{lead.mobile || '—'}</td>
+                            <td className="px-3 py-3.5 font-mono text-xs text-gray-600">{lead.mobile || ''}</td>
                             <td className="px-3 py-3.5">
                               {product
                                 ? <span className="bg-[#E8FFF5] text-[#065F36] border border-[#D1FAE5] px-2 py-0.5 rounded-full text-xs font-medium capitalize">{product.replace(/_/g,' ')}</span>
-                                : <span className="text-gray-300 text-xs">—</span>}
+                                : <span className="text-gray-300 text-xs"></span>}
                             </td>
                             <td className="px-3 py-3.5 text-gray-400 text-xs whitespace-nowrap">
-                              {date ? new Date(date).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' }) : '—'}
+                              {date ? new Date(date).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' }) : ''}
                             </td>
                             <td className="px-3 pr-6 py-3.5 text-right">
                               <button onClick={(e) => { e.stopPropagation(); isWebsite ? handleOpenLead(lead) : handleOpenImportedLead(lead); }}
@@ -610,7 +617,7 @@ const DomAgentDashboard = () => {
           </div>
         )}
 
-        {/* ── WORKED LEADS ── */}
+        {/*  WORKED LEADS  */}
         {tab === 'worked' && (
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
@@ -630,7 +637,7 @@ const DomAgentDashboard = () => {
             <div className="flex items-center gap-3 px-5 py-3 border-b border-gray-100 bg-gray-50/50 flex-wrap">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 pointer-events-none" />
-                <input type="text" placeholder="Search name or mobile…" value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+                <input type="text" placeholder="Search name or mobile" value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
                   className="pl-9 pr-8 py-2 text-sm border border-gray-200 rounded-xl bg-white w-52 focus:outline-none focus:ring-2 focus:ring-[#065F36]/20 focus:border-[#065F36]" />
                 {searchQuery && <button onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500"><X className="h-3.5 w-3.5" /></button>}
               </div>
@@ -645,35 +652,49 @@ const DomAgentDashboard = () => {
               </div>
               <select value={docFilter} onChange={e => setDocFilter(e.target.value)}
                 className="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-[#065F36]/20 focus:border-[#065F36]">
-                <option value="all">📁 All Docs</option>
-                <option value="none">📄 No Docs</option>
-                <option value="partial">📎 Partial Docs</option>
-                <option value="full">✅ Full Docs</option>
+                <option value="all"> All Docs</option>
+                <option value="none"> No Docs</option>
+                <option value="partial"> Partial Docs</option>
+                <option value="full"> Full Docs</option>
               </select>
               <select value={cibilFilter} onChange={e => setCibilFilter(e.target.value)}
                 className="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-[#065F36]/20 focus:border-[#065F36]">
-                <option value="">📊 All CIBIL</option>
+                <option value=""> All CIBIL</option>
                 <option value="below_600">&lt; 600 (Poor)</option>
-                <option value="600_699">600–699 (Fair)</option>
-                <option value="700_749">700–749 (Good)</option>
-                <option value="750_800">750–800 (Very Good)</option>
+                <option value="600_699">600699 (Fair)</option>
+                <option value="700_749">700749 (Good)</option>
+                <option value="750_800">750800 (Very Good)</option>
                 <option value="above_800">&gt; 800 (Excellent)</option>
                 <option value="unknown">Unknown</option>
               </select>
+              <select value={dispositionFilter} onChange={e => setDispositionFilter(e.target.value)}
+                className="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-[#065F36]/20 focus:border-[#065F36]">
+                <option value=""> All Dispositions</option>
+                <option value="interested">Interested</option>
+                <option value="not_interested">Not Interested</option>
+                <option value="not_eligible">Not Eligible</option>
+                <option value="callback">Callback</option>
+                <option value="not_reachable">Not Reachable</option>
+                <option value="not_answering">Not Answering</option>
+                <option value="wrong_number">Wrong Number</option>
+                <option value="other">Other</option>
+                <option value="in_progress">In Progress</option>
+                <option value="closed">Closed</option>
+              </select>
               <button
-                onClick={() => { setSearchQuery(''); setDateFilter(''); setDocFilter('all'); setCibilFilter(''); }}
+                onClick={() => { setSearchQuery(''); setDateFilter(''); setDocFilter('all'); setCibilFilter(''); setDispositionFilter(''); }}
                 className={`flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-bold border transition-all ${
-                  (searchQuery || dateFilter || docFilter !== 'all' || cibilFilter) ? 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100' : 'bg-gray-50 text-gray-300 border-gray-200 cursor-default'
+                  (searchQuery || dateFilter || docFilter !== 'all' || cibilFilter || dispositionFilter) ? 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100' : 'bg-gray-50 text-gray-300 border-gray-200 cursor-default'
                 }`} title="Clear all filters">
                 <X className="h-3.5 w-3.5" /> Clear
               </button>
-              {(searchQuery || dateFilter || docFilter !== 'all' || cibilFilter) && (
+              {(searchQuery || dateFilter || docFilter !== 'all' || cibilFilter || dispositionFilter) && (
                 <span className="text-xs text-gray-400">{filteredWorked.length} of {workedLeads.length} shown</span>
               )}
             </div>
 
             {/* Results count bar */}
-            {(searchQuery || dateFilter || docFilter !== 'all' || cibilFilter) && filteredWorked.length > 0 && (
+            {(searchQuery || dateFilter || docFilter !== 'all' || cibilFilter || dispositionFilter) && filteredWorked.length > 0 && (
               <div className="px-5 py-2.5 bg-emerald-50 border-b border-emerald-100 flex items-center gap-2">
                 <Search className="h-3.5 w-3.5 text-emerald-500 flex-shrink-0" />
                 <span className="text-sm font-bold text-emerald-700">{filteredWorked.length} lead{filteredWorked.length !== 1 ? 's' : ''} found</span>
@@ -696,6 +717,7 @@ const DomAgentDashboard = () => {
                       <th className="px-3 py-3.5">Customer</th>
                       <th className="px-3 py-3.5">Mobile</th>
                       <th className="px-3 py-3.5">Disposition</th>
+                      <th className="px-3 py-3.5">Tracker</th>
                       <th className="px-3 py-3.5">Docs</th>
                       <th className="px-3 py-3.5">Status</th>
                       <th className="px-3 pr-6 py-3.5 text-right">Action</th>
@@ -716,8 +738,8 @@ const DomAgentDashboard = () => {
                           <td className="pl-6 pr-3 py-3.5">
                             <div className="flex flex-col items-start gap-1">
                               {isWebsite
-                                ? <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-teal-500 text-white">🌐 Meta</span>
-                                : <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-violet-100 text-violet-700 border border-violet-200">📊 Imported</span>}
+                                ? <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-teal-500 text-white"> Meta</span>
+                                : <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-violet-100 text-violet-700 border border-violet-200"> Imported</span>}
                               {isWebsite && lead.source === 'meta' && (
                                 <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-[#1877F2] text-white">f Meta Ads</span>
                               )}
@@ -726,21 +748,36 @@ const DomAgentDashboard = () => {
                           <td className="px-3 py-3.5">
                             {isWebsite && lead.domLead?.leadRef
                               ? <span className="font-mono text-xs font-bold bg-gray-900 text-emerald-400 px-1.5 py-0.5 rounded">{lead.domLead.leadRef}</span>
-                              : <span className="text-gray-300 text-xs italic">—</span>}
+                              : <span className="text-gray-300 text-xs italic"></span>}
                           </td>
                           <td className="px-3 py-3.5">
                             <div className="flex items-center gap-2">
                               <span className="w-2 h-2 rounded-full bg-emerald-400 flex-shrink-0" />
-                              <p className="font-semibold text-gray-800">{lead.name || '—'}</p>
+                              <p className="font-semibold text-gray-800">{lead.name || ''}</p>
                             </div>
                           </td>
-                          <td className="px-3 py-3.5 font-mono text-xs text-gray-600">{lead.mobile || '—'}</td>
+                          <td className="px-3 py-3.5 font-mono text-xs text-gray-600">{lead.mobile || ''}</td>
                           <td className="px-3 py-3.5">
                             {outcome
                               ? <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${outcome.cls}`}>{outcome.label}</span>
                               : wsInfo
                                 ? <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${wsInfo}`}>{lead.workStatus?.replace(/_/g,' ')}</span>
-                                : <span className="text-gray-300 text-xs">—</span>}
+                                : <span className="text-gray-300 text-xs"></span>}
+                          </td>
+                          <td className="px-3 py-3.5">
+                            {(() => {
+                              const dl = isWebsite ? lead.domLead : lead.domLeadId;
+                              return (
+                                <div className="flex flex-col gap-1">
+                                  <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-semibold bg-blue-50 text-blue-700 border border-blue-200 whitespace-nowrap" title="Times called">
+                                     {dl?.callCount || 0}
+                                  </span>
+                                  <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-semibold bg-violet-50 text-violet-700 border border-violet-200 whitespace-nowrap" title="Times updated">
+                                     {dl?.updateCount || 0}
+                                  </span>
+                                </div>
+                              );
+                            })()}
                           </td>
                           <td className="px-3 py-3.5">
                             <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-semibold border ${docSt.cls}`}>
@@ -787,10 +824,10 @@ const DomAgentDashboard = () => {
             wrong_number:  'bg-gray-100 text-gray-600 border-gray-200',
           };
           const outcomeLabels = {
-            callback:      '📞 Callback',
-            not_reachable: '📵 Not Reachable',
+            callback:      ' Callback',
+            not_reachable: ' Not Reachable',
             wrong_number:  '? Wrong Number',
-            not_eligible:  '🚫 Not Eligible',
+            not_eligible:  ' Not Eligible',
           };
           const callbackD = parseDate(f.callbackDate);
           const isOverdue = callbackD && callbackD < today;
@@ -803,7 +840,7 @@ const DomAgentDashboard = () => {
               <div className="flex items-start justify-between gap-3">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-bold text-gray-800">{f.name || '—'}</span>
+                    <span className="font-bold text-gray-800">{f.name || ''}</span>
                     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border ${outcomeColors[f.callOutcome] || 'bg-gray-100 text-gray-500 border-gray-200'}`}>
                       {outcomeLabels[f.callOutcome] || f.callOutcome}
                     </span>
@@ -812,12 +849,12 @@ const DomAgentDashboard = () => {
                     )}
                   </div>
                   <div className="flex items-center gap-3 mt-1.5 text-sm text-gray-500 flex-wrap">
-                    <span className="font-mono font-semibold text-gray-700">{f.mobile || '—'}</span>
+                    <span className="font-mono font-semibold text-gray-700">{f.mobile || ''}</span>
                     {f.productType && <span className="text-xs bg-[#E8FFF5] text-[#065F36] border border-[#D1FAE5] px-2 py-0.5 rounded-full capitalize">{f.productType.replace(/_/g,' ')}</span>}
                     {callbackD && (
                       <span className={`flex items-center gap-1 text-xs font-semibold ${isOverdue ? 'text-red-600' : isToday ? 'text-amber-600' : 'text-gray-500'}`}>
                         <Calendar className="h-3 w-3" />
-                        {isOverdue ? '⚠️ Overdue · ' : isToday ? '🔔 Today · ' : ''}
+                        {isOverdue ? ' Overdue  ' : isToday ? ' Today  ' : ''}
                         {callbackD.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric' })}
                       </span>
                     )}
@@ -864,7 +901,7 @@ const DomAgentDashboard = () => {
                   </div>
                   <div>
                     <h2 className="font-bold text-gray-800 text-base">Follow-up Queue</h2>
-                    <p className="text-xs text-gray-400">Leads waiting for your call — sorted by urgency</p>
+                    <p className="text-xs text-gray-400">Leads waiting for your call  sorted by urgency</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
@@ -881,7 +918,7 @@ const DomAgentDashboard = () => {
               <div className="flex items-center gap-3 px-5 py-3 border-t border-gray-100 bg-gray-50/50 flex-wrap">
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 pointer-events-none" />
-                  <input type="text" placeholder="Search name or mobile…" value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+                  <input type="text" placeholder="Search name or mobile" value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
                     className="pl-9 pr-8 py-2 text-sm border border-gray-200 rounded-xl bg-white w-52 focus:outline-none focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400" />
                   {searchQuery && <button onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500"><X className="h-3.5 w-3.5" /></button>}
                 </div>
@@ -895,23 +932,35 @@ const DomAgentDashboard = () => {
                     </button>
                   )}
                 </div>
-                {(searchQuery || followupDateFilter || followupCibilFilter) && (
+                {(searchQuery || followupDateFilter || followupCibilFilter || followupDispositionFilter) && (
                   <span className="text-xs text-gray-400">{filteredFollowups.length} of {followups.length} shown</span>
                 )}
+                <select value={followupDispositionFilter} onChange={e => setFollowupDispositionFilter(e.target.value)}
+                  className="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400">
+                  <option value=""> All Dispositions</option>
+                  <option value="callback">Callback</option>
+                  <option value="not_reachable">Not Reachable</option>
+                  <option value="not_answering">Not Answering</option>
+                  <option value="wrong_number">Wrong Number</option>
+                  <option value="interested">Interested</option>
+                  <option value="not_interested">Not Interested</option>
+                  <option value="not_eligible">Not Eligible</option>
+                  <option value="other">Other</option>
+                </select>
                 <select value={followupCibilFilter} onChange={e => setFollowupCibilFilter(e.target.value)}
                   className="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400">
-                  <option value="">📊 All CIBIL</option>
+                  <option value=""> All CIBIL</option>
                   <option value="below_600">&lt; 600 (Poor)</option>
-                  <option value="600_699">600–699 (Fair)</option>
-                  <option value="700_749">700–749 (Good)</option>
-                  <option value="750_800">750–800 (Very Good)</option>
+                  <option value="600_699">600699 (Fair)</option>
+                  <option value="700_749">700749 (Good)</option>
+                  <option value="750_800">750800 (Very Good)</option>
                   <option value="above_800">&gt; 800 (Excellent)</option>
                   <option value="unknown">Unknown</option>
                 </select>
                 <button
-                  onClick={() => { setSearchQuery(''); setFollowupDateFilter(''); setFollowupCibilFilter(''); }}
+                  onClick={() => { setSearchQuery(''); setFollowupDateFilter(''); setFollowupCibilFilter(''); setFollowupDispositionFilter(''); }}
                   className={`flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-bold border transition-all ${
-                    (searchQuery || followupDateFilter || followupCibilFilter) ? 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100' : 'bg-gray-50 text-gray-300 border-gray-200 cursor-default'
+                    (searchQuery || followupDateFilter || followupCibilFilter || followupDispositionFilter) ? 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100' : 'bg-gray-50 text-gray-300 border-gray-200 cursor-default'
                   }`} title="Clear all filters">
                   <X className="h-3.5 w-3.5" /> Clear
                 </button>
@@ -921,30 +970,30 @@ const DomAgentDashboard = () => {
             {followupsLoading ? (
               <div className="flex flex-col items-center justify-center py-20 gap-3">
                 <div className="w-10 h-10 border-4 border-gray-100 border-t-amber-500 rounded-full animate-spin" />
-                <p className="text-gray-400 text-sm">Loading follow-ups…</p>
+                <p className="text-gray-400 text-sm">Loading follow-ups</p>
               </div>
             ) : followups.length === 0 ? (
               <div className="bg-white rounded-2xl border border-gray-100 shadow-sm flex flex-col items-center justify-center py-20 gap-4">
                 <div className="p-5 bg-emerald-100 rounded-3xl"><CheckCircle2 className="h-12 w-12 text-emerald-500" /></div>
                 <div className="text-center">
-                  <p className="font-bold text-gray-700 text-lg">All clear! 🎉</p>
+                  <p className="font-bold text-gray-700 text-lg">All clear! </p>
                   <p className="text-gray-400 text-sm mt-1">No pending callbacks or unreached leads.</p>
                 </div>
               </div>
             ) : (
               <div className="space-y-6">
                 {/* Results count bar */}
-                {(searchQuery || followupDateFilter || followupCibilFilter) && filteredFollowups.length > 0 && (
+                {(searchQuery || followupDateFilter || followupCibilFilter || followupDispositionFilter) && filteredFollowups.length > 0 && (
                   <div className="px-5 py-2.5 bg-amber-50 border border-amber-100 rounded-xl flex items-center gap-2">
                     <Search className="h-3.5 w-3.5 text-amber-500 flex-shrink-0" />
                     <span className="text-sm font-bold text-amber-700">{filteredFollowups.length} follow-up{filteredFollowups.length !== 1 ? 's' : ''} found</span>
                     <span className="text-xs text-amber-400 ml-1">of {followups.length} total</span>
                   </div>
                 )}
-                <Section title="Overdue Callbacks" color="bg-red-100 text-red-800"   icon="🔴" items={overdue} />
-                <Section title="Call Today"         color="bg-amber-100 text-amber-800" icon="🟡" items={todayList} />
-                <Section title="Upcoming"           color="bg-emerald-100 text-emerald-800" icon="🟢" items={upcoming} />
-                <Section title="Not Scheduled"      color="bg-gray-100 text-gray-700"  icon="📋" items={noDate} />
+                <Section title="Overdue Callbacks" color="bg-red-100 text-red-800"   icon="" items={overdue} />
+                <Section title="Call Today"         color="bg-amber-100 text-amber-800" icon="" items={todayList} />
+                <Section title="Upcoming"           color="bg-emerald-100 text-emerald-800" icon="" items={upcoming} />
+                <Section title="Not Scheduled"      color="bg-gray-100 text-gray-700"  icon="" items={noDate} />
               </div>
             )}
           </div>
@@ -960,7 +1009,7 @@ const DomAgentDashboard = () => {
         />
       )}
 
-      {/* Step 1: Show all imported lead data — agent reviews before calling */}
+      {/* Step 1: Show all imported lead data  agent reviews before calling */}
       {detailModalOpen && selectedImportedLead && (
         <ImportedLeadDetailModal
           lead={selectedImportedLead}
@@ -973,7 +1022,7 @@ const DomAgentDashboard = () => {
         />
       )}
 
-      {/* Step 2: Full work form — agent fills in call outcome, uploads docs, etc. */}
+      {/* Step 2: Full work form  agent fills in call outcome, uploads docs, etc. */}
       {importedModalOpen && (
         <LeadFormModal
           importedLead={selectedImportedLead}
@@ -1027,6 +1076,7 @@ const TabBtn = ({ active, onClick, badge, children }) => (
 );
 
 export default DomAgentDashboard;
+
 
 
 

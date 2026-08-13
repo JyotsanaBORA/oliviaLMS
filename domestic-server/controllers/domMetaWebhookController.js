@@ -1,14 +1,14 @@
-'use strict';
+﻿'use strict';
 /**
- * Meta Webhook Controller — domestic LMS.
+ * Meta Webhook Controller  domestic LMS.
  *
  * Routes:
- *   GET  /domestic-api/webhook/meta  — Meta one-time verification challenge
- *   POST /domestic-api/webhook/meta  — Meta lead notification events
+ *   GET  /domestic-api/webhook/meta   Meta one-time verification challenge
+ *   POST /domestic-api/webhook/meta   Meta lead notification events
  *
  * Flow:
- *   POST → ACK Meta immediately with 200 → process async in background
- *   Lead fetched from Graph API → parsed → saved as DomWebsiteLead (status=new)
+ *   POST  ACK Meta immediately with 200  process async in background
+ *   Lead fetched from Graph API  parsed  saved as DomWebsiteLead (status=new)
  *   Socket.io notifies connected agents of the new lead in real-time.
  *
  * Supports two Meta payload formats:
@@ -25,7 +25,7 @@ const DomWebsiteLead            = require('../models/DomWebsiteLead');
 const { fetchLeadFromGraph }    = require('../services/metaLeadService');
 const { parseDomMetaFieldData } = require('../utils/domMetaFieldParser');
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+//  Helpers 
 
 /** Meta test IDs are all the same digit repeated (e.g. 4444444444). */
 function isFakeLeadgenId(id) {
@@ -40,7 +40,7 @@ function extractLeadEvents(body) {
   const events = [];
   if (!body) return events;
 
-  // Format B — Developer Portal "Send to My Server" test button
+  // Format B  Developer Portal "Send to My Server" test button
   if (body.sample?.field === 'leadgen' && body.sample?.value) {
     const v = body.sample.value;
     events.push({
@@ -55,7 +55,7 @@ function extractLeadEvents(body) {
     return events;
   }
 
-  // Format A — production webhook
+  // Format A  production webhook
   if (body.object === 'page' && Array.isArray(body.entry)) {
     for (const entry of body.entry) {
       const pageIdFromEntry = String(entry.id || '');
@@ -78,7 +78,7 @@ function extractLeadEvents(body) {
   return events;
 }
 
-// ── Controller exports ────────────────────────────────────────────────────────
+//  Controller exports 
 
 /**
  * GET /domestic-api/webhook/meta
@@ -96,7 +96,7 @@ function verify(req, res) {
   const challenge = params['hub.challenge'];
   const expected  = process.env.DOM_META_VERIFY_TOKEN || process.env.META_VERIFY_TOKEN;
 
-  console.log(`[DomMetaWebhook] GET verify — mode="${mode}" match=${token === expected} env_set=${!!expected}`);
+  console.log(`[DomMetaWebhook] GET verify  mode="${mode}" match=${token === expected} env_set=${!!expected}`);
 
   if (!expected) {
     console.error('[DomMetaWebhook] DOM_META_VERIFY_TOKEN not set in .env');
@@ -104,11 +104,11 @@ function verify(req, res) {
   }
 
   if (mode === 'subscribe' && token === expected) {
-    console.log('[DomMetaWebhook] ✓ Verification successful');
+    console.log('[DomMetaWebhook]  Verification successful');
     return res.status(200).send(challenge);
   }
 
-  console.warn('[DomMetaWebhook] Verification failed — token mismatch or wrong mode');
+  console.warn('[DomMetaWebhook] Verification failed  token mismatch or wrong mode');
   return res.status(403).json({ error: 'Verification failed' });
 }
 
@@ -116,7 +116,7 @@ function verify(req, res) {
  * POST /domestic-api/webhook/meta
  * Receive Meta lead notification and process asynchronously.
  *
- * Always responds 200 immediately — Meta will retry if we don't ACK in 20 s.
+ * Always responds 200 immediately  Meta will retry if we don't ACK in 20 s.
  */
 function receive(req, res) {
   // ACK Meta before any async work
@@ -128,13 +128,13 @@ function receive(req, res) {
   });
 }
 
-// ── Async processing (runs after 200 already sent) ────────────────────────────
+//  Async processing (runs after 200 already sent) 
 
 async function processWebhookEvents(req, io) {
   const events = extractLeadEvents(req.body);
 
   if (!events.length) {
-    console.log('[DomMetaWebhook] POST received — no leadgen events. Body object:', req.body?.object || 'unknown');
+    console.log('[DomMetaWebhook] POST received  no leadgen events. Body object:', req.body?.object || 'unknown');
     return;
   }
 
@@ -154,14 +154,14 @@ async function processSingleEvent(event, io) {
   }
 
   try {
-    // ── 1. Duplicate check ────────────────────────────────────────────────
+    //  1. Duplicate check 
     const exists = await DomWebsiteLead.exists({ metaLeadgenId: leadgenId });
     if (exists) {
-      console.log(`[DomMetaWebhook] Duplicate — leadgenId ${leadgenId} already saved. Skipping.`);
+      console.log(`[DomMetaWebhook] Duplicate  leadgenId ${leadgenId} already saved. Skipping.`);
       return;
     }
 
-    // ── 2. Fetch / synthesise lead data ───────────────────────────────────
+    //  2. Fetch / synthesise lead data 
     let graphData    = null;
     let parsedFields = {};
     let schemaFields = {};
@@ -169,7 +169,7 @@ async function processSingleEvent(event, io) {
     const realId = !isTest && !isFakeLeadgenId(leadgenId);
 
     if (realId) {
-      console.log(`[DomMetaWebhook] Fetching from Graph API — ${tag}`);
+      console.log(`[DomMetaWebhook] Fetching from Graph API  ${tag}`);
       try {
         graphData = await fetchLeadFromGraph(leadgenId);
         console.log(`[DomMetaWebhook] Graph API fields: ${graphData.field_data?.length ?? 0}`);
@@ -182,13 +182,13 @@ async function processSingleEvent(event, io) {
       }
     } else {
       // Test / fake ID from Developer Portal
-      console.log(`[DomMetaWebhook] Test event — fake leadgen_id detected, skipping Graph API`);
+      console.log(`[DomMetaWebhook] Test event  fake leadgen_id detected, skipping Graph API`);
       schemaFields.name        = 'Meta Test Lead';
       schemaFields.customNotes = `Test event from Meta Developer Portal\nPage ID: ${pageId}\nForm ID: ${formId}`;
       parsedFields             = { _test: 'true', page_id: pageId, form_id: formId };
     }
 
-    // ── 3. Build DomWebsiteLead document ─────────────────────────────────
+    //  3. Build DomWebsiteLead document 
     // Synthesise name from first+last if only separate parts came through
     const fullName = schemaFields.name
       || [schemaFields.firstName, schemaFields.lastName].filter(Boolean).join(' ')
@@ -212,7 +212,7 @@ async function processSingleEvent(event, io) {
       ...(schemaFields.sourcePage    && { sourcePage:    schemaFields.sourcePage }),
       ...(schemaFields.customNotes   && { customNotes:   schemaFields.customNotes }),
 
-      // All raw Meta fields stored verbatim — never lose custom questions
+      // All raw Meta fields stored verbatim  never lose custom questions
       parsedFields,
 
       // Full audit trail
@@ -234,9 +234,9 @@ async function processSingleEvent(event, io) {
     };
 
     const lead = await DomWebsiteLead.create(doc);
-    console.log(`[DomMetaWebhook] ✓ Saved DomWebsiteLead ${lead._id} — name="${fullName || 'unknown'}" mobile="${schemaFields.mobile || '-'}" ${tag}`);
+    console.log(`[DomMetaWebhook]  Saved DomWebsiteLead ${lead._id}  name="${fullName || 'unknown'}" mobile="${schemaFields.mobile || '-'}" ${tag}`);
 
-    // ── 4. Real-time notification to agents ───────────────────────────────
+    //  4. Real-time notification to agents 
     if (io) {
       io.to('domagents').emit('new_website_lead', {
         _id:         lead._id,
@@ -255,3 +255,4 @@ async function processSingleEvent(event, io) {
 }
 
 module.exports = { verify, receive };
+

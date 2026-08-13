@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 const express          = require('express');
 const DomWebsiteLead   = require('../models/DomWebsiteLead');
 const DomNotification  = require('../models/DomNotification');
@@ -15,11 +15,11 @@ const router = express.Router();
  * then emits socket event `new_website_lead` to all connected agents.
  */
 router.post('/lead', apiKeyAuth, validateIntakeLead, async (req, res) => {
-  // Always respond quickly — socket processing is async
+  // Always respond quickly  socket processing is async
   try {
     const data = req.leadData;
 
-    // 5-minute dedup: same mobile number within 5 min → accept silently
+    // 5-minute dedup: same mobile number within 5 min  accept silently
     const fiveMinsAgo = new Date(Date.now() - 5 * 60 * 1000);
     const existing = await DomWebsiteLead.findOne(
       { mobile: data.mobile, createdAt: { $gte: fiveMinsAgo } },
@@ -82,3 +82,4 @@ router.post('/lead', apiKeyAuth, validateIntakeLead, async (req, res) => {
 });
 
 module.exports = router;
+

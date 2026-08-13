@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 /**
  * Meta Graph API service for the domestic server.
  *
@@ -65,7 +65,7 @@ async function fetchLeadFromGraph(leadgenId, maxRetries = 3) {
         if (retryable) {
           lastError = new Error(`Graph API transient (code ${code}): ${message}`);
           const backoff = attempt * 1500;
-          console.warn(`[DomMetaLeadService] Attempt ${attempt}/${maxRetries} — retrying in ${backoff}ms: ${message}`);
+          console.warn(`[DomMetaLeadService] Attempt ${attempt}/${maxRetries}  retrying in ${backoff}ms: ${message}`);
           await sleep(backoff);
           continue;
         }
@@ -78,7 +78,7 @@ async function fetchLeadFromGraph(leadgenId, maxRetries = 3) {
       lastError = err;
       if (attempt < maxRetries) {
         const backoff = attempt * 1500;
-        console.warn(`[DomMetaLeadService] Attempt ${attempt}/${maxRetries} network error — retrying in ${backoff}ms: ${err.message}`);
+        console.warn(`[DomMetaLeadService] Attempt ${attempt}/${maxRetries} network error  retrying in ${backoff}ms: ${err.message}`);
         await sleep(backoff);
       }
     }
@@ -88,3 +88,4 @@ async function fetchLeadFromGraph(leadgenId, maxRetries = 3) {
 }
 
 module.exports = { fetchLeadFromGraph };
+

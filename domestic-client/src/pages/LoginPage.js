@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+﻿import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import toast from 'react-hot-toast';
@@ -7,7 +7,7 @@ import { Eye, EyeOff, Mail, Lock, ArrowRight, Zap, Briefcase, Globe } from 'luci
 const INTL_URL   = process.env.REACT_APP_INTERNATIONAL_URL || 'http://localhost:3000';
 const TYPEWORDS  = ['Fast.', 'Secure.', 'Smart.', 'Reliable.', 'Scalable.'];
 
-/* ─── CSS injected once ──────────────────────────────────────────── */
+/*  CSS injected once  */
 const ANIM_CSS = `
 @keyframes dom-shimmer {
   0%   { background-position: -400% center; }
@@ -97,7 +97,7 @@ const ANIM_CSS = `
 @media (max-width:1023px) { .dom-mobile-brand { display:block !important; } }
 `;
 
-/* ─── Component ─────────────────────────────────────────────────── */
+/*  Component  */
 const LoginPage = () => {
   const { login, isAuthenticated, bootstrapping } = useAuth();
   const navigate = useNavigate();
@@ -196,7 +196,7 @@ const LoginPage = () => {
     return () => cancelAnimationFrame(borderRafRef.current);
   }, []);
 
-  /* mouse → parallax + constellation */
+  /* mouse  parallax + constellation */
   const handleWindowMouse = useCallback((e) => {
     if (rafRef.current) return;
     rafRef.current = requestAnimationFrame(() => {
@@ -262,7 +262,7 @@ const LoginPage = () => {
     }
   };
 
-  /* ─── render ─── */
+  /*  render  */
   return (
     <div style={{ minHeight:'100vh', display:'flex', overflow:'hidden', background:'#04090f', fontFamily:"'Inter','Segoe UI',system-ui,sans-serif" }}>
 
@@ -290,7 +290,7 @@ const LoginPage = () => {
           <div style={{ position:'absolute', width:100, height:100, borderRadius:'50%', border:'1px solid rgba(22,163,74,0.16)', transform:'translate(-50%,-50%)', animation:'dom-glow-breathe 3.5s ease-in-out infinite' }} />
         </div>
 
-        {/* brand — top-left */}
+        {/* brand  top-left */}
         <div style={{ position:'absolute', top:32, left:40, zIndex:6, display:'flex', alignItems:'center', gap:10 }}>
           <div style={{ width:36, height:36, borderRadius:10, flexShrink:0, background:'linear-gradient(135deg,rgba(22,163,74,0.16),rgba(74,222,128,0.12))', border:'1px solid rgba(22,163,74,0.32)', display:'flex', alignItems:'center', justifyContent:'center', backdropFilter:'blur(10px)', boxShadow:'0 0 18px rgba(22,163,74,0.14)', animation:'dom-float-y 4s ease-in-out infinite' }}>
             <Zap style={{ width:16, height:16, color:'#22c55e' }} />
@@ -310,7 +310,7 @@ const LoginPage = () => {
             </span>
           </h2>
           <p style={{ color:'rgba(148,163,184,0.65)', fontSize:14, lineHeight:1.75, maxWidth:360, margin:'0 0 28px' }}>
-            India-first loan management for agents and admins — real-time leads, seamless workflows, and secure access.
+            India-first loan management for agents and admins  real-time leads, seamless workflows, and secure access.
           </p>
           <div style={{ display:'flex', gap:28 }}>
             {[['Live','Real-time leads'],['Secure','256-bit encrypted'],['Fast','Sub-second response']].map(([v,l]) => (
@@ -384,7 +384,7 @@ const LoginPage = () => {
                     <Lock style={{ position:'absolute', left:13, top:'50%', transform:'translateY(-50%)', width:16, height:16, color:'rgba(22,163,74,0.5)', pointerEvents:'none' }} />
                     <input
                       type={showPass ? 'text' : 'password'} name="password" value={form.password} onChange={handleChange}
-                      placeholder="••••••••" required autoComplete="current-password"
+                      placeholder="" required autoComplete="current-password"
                       className="dom-input" style={{ paddingRight:44 }}
                     />
                     <button type="button" onClick={() => setShowPass(v => !v)}
@@ -415,7 +415,7 @@ const LoginPage = () => {
                   Switch to International LMS
                 </a>
                 <p style={{ color:'rgba(100,116,139,0.35)', fontSize:10, margin:'18px 0 0' }}>
-                  © 2026 IMMERGIX — Reddington Global
+                   2026 IMMERGIX  Reddington Global
                 </p>
               </div>
 
@@ -428,3 +428,4 @@ const LoginPage = () => {
 };
 
 export default LoginPage;
+

@@ -4,13 +4,13 @@ import api from '../utils/axios';
 import toast from 'react-hot-toast';
 
 const fmtTime = (d) =>
-  d ? new Date(d).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
+  d ? new Date(d).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
 
 /**
  * NotificationPanel
  * Shows unread website lead notifications for the logged-in agent.
  * Real-time updates via Socket.io (socket prop passed from parent).
- * Each card has a "Load" button — clicking it claims the lead exclusively.
+ * Each card has a "Load" button  clicking it claims the lead exclusively.
  */
 const NotificationPanel = ({ socket, onLeadLoaded }) => {
   const [notifications, setNotifications] = useState([]);
@@ -36,7 +36,7 @@ const NotificationPanel = ({ socket, onLeadLoaded }) => {
   useEffect(() => {
     if (!socket) return;
 
-    // New lead arrived — add to notification list
+    // New lead arrived  add to notification list
     socket.on('new_website_lead', (lead) => {
       setNotifications((prev) => [{
         _id:       `socket-${lead.leadId}`,
@@ -52,14 +52,14 @@ const NotificationPanel = ({ socket, onLeadLoaded }) => {
         createdAt: new Date().toISOString(),
       }, ...prev]);
 
-      toast(`New lead: ${lead.name} — ${lead.productType}`, {
-        icon: '🔔',
+      toast(`New lead: ${lead.name}  ${lead.productType}`, {
+        icon: '',
         duration: 6000,
         style: { fontWeight: 'bold' },
       });
     });
 
-    // Lead was loaded by someone — remove from all panels
+    // Lead was loaded by someone  remove from all panels
     socket.on('lead_loaded', ({ leadId }) => {
       setNotifications((prev) =>
         prev.filter((n) => n.websiteLead?._id?.toString() !== leadId.toString())
@@ -79,7 +79,7 @@ const NotificationPanel = ({ socket, onLeadLoaded }) => {
     try {
       const res = await api.post(`/domestic-api/website-leads/${leadId}/load`);
       if (res.data?.success) {
-        // Remove from notifications locally — socket will also fire
+        // Remove from notifications locally  socket will also fire
         setNotifications((prev) =>
           prev.filter((n) => n.websiteLead?._id?.toString() !== leadId.toString())
         );
@@ -100,7 +100,7 @@ const NotificationPanel = ({ socket, onLeadLoaded }) => {
     return (
       <div className="flex items-center justify-center py-10 text-gray-400">
         <span className="w-5 h-5 border-2 border-gray-300 border-t-[#065F36] rounded-full animate-spin mr-2" />
-        Loading notifications…
+        Loading notifications
       </div>
     );
   }
@@ -153,7 +153,7 @@ const NotificationPanel = ({ socket, onLeadLoaded }) => {
               </div>
               <div className="min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <p className="font-bold text-gray-800 truncate">{lead.name || '—'}</p>
+                  <p className="font-bold text-gray-800 truncate">{lead.name || ''}</p>
                   <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse flex-shrink-0" />
                   {lead.source === 'meta' && (
                     <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-[#1877F2] text-white leading-none">f Meta Ads</span>
@@ -180,7 +180,7 @@ const NotificationPanel = ({ socket, onLeadLoaded }) => {
               ) : (
                 <Download className="h-3.5 w-3.5" />
               )}
-              {isLoading ? 'Loading…' : 'Load Lead'}
+              {isLoading ? 'Loading' : 'Load Lead'}
             </button>
           </div>
         );
@@ -190,4 +190,5 @@ const NotificationPanel = ({ socket, onLeadLoaded }) => {
 };
 
 export default NotificationPanel;
+
 

@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 const https   = require('https');
 const express = require('express');
 const router  = express.Router();
@@ -8,7 +8,7 @@ const { protect, authorize } = require('../middleware/auth');
  * POST /domestic-api/cibil/check
  *
  * Proxies a CIBIL consumer-report request to Signzy.
- * The API token (SIGNZY_AUTH_TOKEN) is stored only in .env — never exposed to
+ * The API token (SIGNZY_AUTH_TOKEN) is stored only in .env  never exposed to
  * the browser.  Set SIGNZY_ENV=production to hit the live endpoint.
  *
  * Body fields (all required):
@@ -26,7 +26,7 @@ router.post(
       dateOfBirth, pincode, address,
     } = req.body;
 
-    // ── Validation ────────────────────────────────────────────────────────
+    //  Validation 
     const REQUIRED = ['firstName', 'lastName', 'gender', 'phoneNumber',
                       'panNumber', 'dateOfBirth', 'pincode', 'address'];
     const missing = REQUIRED.filter(k => !req.body[k] || !String(req.body[k]).trim());
@@ -45,8 +45,8 @@ router.post(
       });
     }
 
-    // ── Sanitise inputs ───────────────────────────────────────────────────
-    // Strip IPv6-mapped IPv4 prefix (::ffff:1.2.3.4 → 1.2.3.4)
+    //  Sanitise inputs 
+    // Strip IPv6-mapped IPv4 prefix (::ffff:1.2.3.4  1.2.3.4)
     const rawIp    = req.ip || '0.0.0.0';
     const clientIp = rawIp.startsWith('::ffff:') ? rawIp.slice(7) : rawIp;
 
@@ -67,7 +67,7 @@ router.post(
       },
     });
 
-    // ── Determine endpoint ────────────────────────────────────────────────
+    //  Determine endpoint 
     const useProduction = process.env.SIGNZY_ENV === 'production';
     const hostname      = useProduction
       ? 'api.signzy.app'
@@ -85,7 +85,7 @@ router.post(
       timeout: 30000,
     };
 
-    // ── Proxy call ────────────────────────────────────────────────────────
+    //  Proxy call 
     try {
       const result = await new Promise((resolve, reject) => {
         const outReq = https.request(options, (inRes) => {
@@ -125,3 +125,4 @@ router.post(
 );
 
 module.exports = router;
+

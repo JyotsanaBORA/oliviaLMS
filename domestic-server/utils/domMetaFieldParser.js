@@ -1,23 +1,23 @@
-'use strict';
+﻿'use strict';
 /**
  * Universal Meta Lead field parser for the domestic LMS.
  *
  * Meta Instant Forms can send ANY combination of standard and custom fields.
  * This parser produces two outputs:
  *
- *  parsedFields — flat { metaFieldName: value } for EVERY field Meta sent.
+ *  parsedFields  flat { metaFieldName: value } for EVERY field Meta sent.
  *                 Stored verbatim so zero data is ever lost.
  *
- *  schemaFields — values mapped to DomWebsiteLead schema columns so leads
+ *  schemaFields  values mapped to DomWebsiteLead schema columns so leads
  *                 render correctly in the CRM.
  *
  * Unknown / custom fields are appended to schemaFields.notes so admins
  * always see all answers even from forms never seen before.
  */
 
-// ── Meta field name → DomWebsiteLead column ───────────────────────────────
+//  Meta field name  DomWebsiteLead column 
 const FIELD_MAP = {
-  // ── Name ────────────────────────────────────────────────────────────────
+  //  Name 
   full_name:                    'name',
   name:                         'name',
   your_name:                    'name',
@@ -29,7 +29,7 @@ const FIELD_MAP = {
   lastname:                     'lastName',
   surname:                      'lastName',
 
-  // ── Mobile / Phone ───────────────────────────────────────────────────────
+  //  Mobile / Phone 
   mobile:                       'mobile',
   mobile_number:                'mobile',
   phone:                        'mobile',
@@ -40,13 +40,13 @@ const FIELD_MAP = {
   whatsapp_number:              'mobile',
   mobile_no:                    'mobile',
 
-  // ── Email ────────────────────────────────────────────────────────────────
+  //  Email 
   email:                        'email',
   email_address:                'email',
   work_email:                   'email',
   personal_email:               'email',
 
-  // ── City / Location ──────────────────────────────────────────────────────
+  //  City / Location 
   city:                         'city',
   location:                     'city',
   district:                     'city',
@@ -54,7 +54,7 @@ const FIELD_MAP = {
   current_city:                 'city',
   resident_city:                'city',
 
-  // ── Monthly Income ───────────────────────────────────────────────────────
+  //  Monthly Income 
   monthly_income:               'monthlyIncome',
   monthly_salary:               'monthlyIncome',
   income:                       'monthlyIncome',
@@ -66,7 +66,7 @@ const FIELD_MAP = {
   ctc:                          'monthlyIncome',
   annual_ctc:                   'monthlyIncome',
 
-  // ── Employment ───────────────────────────────────────────────────────────
+  //  Employment 
   employment_type:              'employment',
   employment_status:            'employment',
   employment:                   'employment',
@@ -78,7 +78,7 @@ const FIELD_MAP = {
   current_employment:           'employment',
   salaried_or_self_employed:    'employment',
 
-  // ── Product / Loan type ──────────────────────────────────────────────────
+  //  Product / Loan type 
   product_type:                 'productType',
   loan_type:                    'productType',
   product:                      'productType',
@@ -90,14 +90,14 @@ const FIELD_MAP = {
   loan_category:                'productType',
   requirement:                  'productType',
 
-  // ── PAN ──────────────────────────────────────────────────────────────────
+  //  PAN 
   pan:                          'pan',
   pan_number:                   'pan',
   pan_card:                     'pan',
   pan_card_number:              'pan',
   permanent_account_number:     'pan',
 
-  // ── UTM / source tracking ────────────────────────────────────────────────
+  //  UTM / source tracking 
   utm_source:                   'utmSource',
   utm_medium:                   'utmMedium',
   utm_campaign:                 'utmCampaign',
@@ -113,7 +113,7 @@ const FIELD_MAP = {
 function parseDomMetaFieldData(fieldData) {
   const parsedFields = {};   // every field verbatim
   const schemaFields = {};   // mapped to DomWebsiteLead columns
-  const customExtras = [];   // unrecognised fields → appended to notes
+  const customExtras = [];   // unrecognised fields  appended to notes
 
   if (!Array.isArray(fieldData) || !fieldData.length) {
     return { parsedFields, schemaFields };
@@ -189,7 +189,7 @@ function parseDomMetaFieldData(fieldData) {
           break;
       }
     } else {
-      // Unknown custom field — keep it visible
+      // Unknown custom field  keep it visible
       customExtras.push(`${rawKey}: ${value}`);
     }
   }
@@ -208,3 +208,4 @@ function parseDomMetaFieldData(fieldData) {
 }
 
 module.exports = { parseDomMetaFieldData };
+

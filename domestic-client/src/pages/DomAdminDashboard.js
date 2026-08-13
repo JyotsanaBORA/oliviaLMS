@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+﻿import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   LogOut, RefreshCw, Users, TrendingUp, BarChart2, Search,
   Eye, X, Hash, Globe, Briefcase, CheckCircle2, Clock,
@@ -11,7 +11,7 @@ import api   from '../utils/axios';
 import toast from 'react-hot-toast';
 import CibilCheckModal from '../components/CibilCheckModal';
 
-const IST_MS = 5.5 * 60 * 60 * 1000; // UTC+5:30 — India has no DST
+const IST_MS = 5.5 * 60 * 60 * 1000; // UTC+5:30  India has no DST
 /** Returns today's date in IST as YYYY-MM-DD. offsetDays > 0 = days ago */
 const localDateStr = (offsetDays = 0) => {
   const ist = new Date(Date.now() + IST_MS - offsetDays * 86400000);
@@ -19,7 +19,7 @@ const localDateStr = (offsetDays = 0) => {
 };
 
 const fmtDate = (d) =>
-  d ? new Date(d).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
+  d ? new Date(d).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
 
 const fmtShort = (d) =>
   d ? new Date(d).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric' }) : 'Never';
@@ -47,11 +47,11 @@ const cibilScoreToRange = (score) => {
   return 'above_800';
 };
 
-// ── Lead Source colour system ── applied consistently everywhere
+//  Lead Source colour system  applied consistently everywhere
 const SOURCE_META = {
-  website:  { label: 'Website',  emoji: '🌐', badge: 'bg-teal-100 text-teal-700 border border-teal-300',     dot: 'bg-teal-500',   borderL: 'border-l-4 border-l-teal-500',   rowHover: 'hover:bg-teal-50/40'   },
-  imported: { label: 'Imported', emoji: '📊', badge: 'bg-violet-100 text-violet-700 border border-violet-300', dot: 'bg-violet-500', borderL: 'border-l-4 border-l-violet-500', rowHover: 'hover:bg-violet-50/40' },
-  manual:   { label: 'Manual',   emoji: '✍️', badge: 'bg-gray-100 text-gray-600 border border-gray-300',       dot: 'bg-gray-400',   borderL: 'border-l-4 border-l-gray-300',   rowHover: 'hover:bg-gray-50/40'   },
+  website:  { label: 'Website',  emoji: '', badge: 'bg-teal-100 text-teal-700 border border-teal-300',     dot: 'bg-teal-500',   borderL: 'border-l-4 border-l-teal-500',   rowHover: 'hover:bg-teal-50/40'   },
+  imported: { label: 'Imported', emoji: '', badge: 'bg-violet-100 text-violet-700 border border-violet-300', dot: 'bg-violet-500', borderL: 'border-l-4 border-l-violet-500', rowHover: 'hover:bg-violet-50/40' },
+  manual:   { label: 'Manual',   emoji: '', badge: 'bg-gray-100 text-gray-600 border border-gray-300',       dot: 'bg-gray-400',   borderL: 'border-l-4 border-l-gray-300',   rowHover: 'hover:bg-gray-50/40'   },
 };
 const getSourceMeta = (lead) =>
   lead?.sourceWebsiteLead  ? SOURCE_META.website  :
@@ -88,13 +88,13 @@ const StatusBadge = ({ status }) => {
   const m = STATUS_META[status];
   return m
     ? <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold ${m.cls}`}>{m.label}</span>
-    : <span className="inline-block px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-500">{status || '—'}</span>;
+    : <span className="inline-block px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-500">{status || ''}</span>;
 };
 
 const LeadRefBadge = ({ code }) =>
   code
     ? <span className="font-mono text-xs font-bold bg-gray-900 text-emerald-400 px-2 py-0.5 rounded-md tracking-wider whitespace-nowrap border border-gray-700">{code}</span>
-    : <span className="text-gray-300 text-xs italic">—</span>;
+    : <span className="text-gray-300 text-xs italic"></span>;
 
 const TABS = ['overview', 'website_leads', 'dom_leads', 'agents', 'lead_pool', 'assigned_leads'];
 const TAB_META = {
@@ -139,6 +139,10 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
 
   const [agents,        setAgents]        = useState([]);
   const [agentsLoading, setAgentsLoading] = useState(false);
+  const [assignmentDate, setAssignmentDate] = useState(() => localDateStr());
+  const [dailyAssignments, setDailyAssignments] = useState([]);
+  const [dailyAssignmentTotals, setDailyAssignmentTotals] = useState({ website: 0, imported: 0, total: 0 });
+  const [dailyAssignmentsLoading, setDailyAssignmentsLoading] = useState(false);
 
   const [viewLead,    setViewLead]    = useState(null);
   const [viewDomLead, setViewDomLead] = useState(null);
@@ -177,14 +181,14 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
   const [domAgentFilter,  setDomAgentFilter]  = useState(''); // '' = all agents
   const [domCibilFilter,  setDomCibilFilter]  = useState(''); // '' = all CIBIL ranges
 
-  // Bulk select — website leads
+  // Bulk select  website leads
   const [webSelectedIds,  setWebSelectedIds]  = useState(new Set());
   const [webDateFrom,     setWebDateFrom]     = useState('');
   const [webDateTo,       setWebDateTo]       = useState('');
   const [webSourceFilter, setWebSourceFilter] = useState('');
   const [webBulkModal,    setWebBulkModal]    = useState(false);
 
-  // Bulk select — imported / pool leads
+  // Bulk select  imported / pool leads
   const [poolSelectedIds, setPoolSelectedIds] = useState(new Set());
   const [poolBulkModal,   setPoolBulkModal]   = useState(false);
 
@@ -192,7 +196,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
   const [reassignModal,   setReassignModal]   = useState(null); // the lead being reassigned
   const [reassigning,     setReassigning]     = useState(false);
 
-  // ── Bulk Transfer (reassign DomLeads by disposition) ──────────────────────
+  //  Bulk Transfer (reassign DomLeads by disposition) 
   const [btSourceAgent,   setBtSourceAgent]   = useState('');
   const [btOutcomeFilter, setBtOutcomeFilter] = useState('all');
   const [btLeads,         setBtLeads]         = useState([]);
@@ -213,7 +217,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
   const [agentLeadDetail,       setAgentLeadDetail]       = useState(null);
   const [agentsDateFrom,        setAgentsDateFrom]        = useState('');
   const [agentsDateTo,          setAgentsDateTo]          = useState('');
-  // Agent Leads Explorer — per-agent filterable leads panel
+  // Agent Leads Explorer  per-agent filterable leads panel
   const [agentExpLeads,    setAgentExpLeads]    = useState([]);
   const [agentExpLoading,  setAgentExpLoading]  = useState(false);
   const [agentExpDateFrom, setAgentExpDateFrom] = useState('');
@@ -270,7 +274,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
     finally { setStatsRefreshing(false); }
   }, []);
 
-  // Stable callbacks — read filter values from refs, not from closure state
+  // Stable callbacks  read filter values from refs, not from closure state
   const fetchLeads = useCallback(async (page = 1) => {
     setLeadsLoading(true);
     try {
@@ -335,6 +339,19 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
     finally { setAgentsLoading(false); }
   }, []);
 
+  const fetchDailyAssignments = useCallback(async (date = assignmentDate) => {
+    setDailyAssignmentsLoading(true);
+    try {
+      const res = await api.get(`/domestic-api/admin/daily-assignments?date=${encodeURIComponent(date)}`);
+      setDailyAssignments(res.data?.data || []);
+      setDailyAssignmentTotals(res.data?.totals || { website: 0, imported: 0, total: 0 });
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to load daily assignments.');
+    } finally {
+      setDailyAssignmentsLoading(false);
+    }
+  }, [assignmentDate]);
+
   const fetchAgentExpLeads = useCallback(async (agentId, dateFrom, dateTo, search, source, disp = '') => {
     if (!agentId) return;
     setAgentExpLoading(true);
@@ -387,7 +404,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
         api.get(`/domestic-api/import-leads?agentId=${agent._id}&limit=100`).catch(() => ({ data: { data: [] } })),
         api.get(`/domestic-api/leads?agentId=${agent._id}&limit=200&dateFrom=${today}&dateTo=${today}`),
       ]);
-      // Pool leads worked today — filter client-side by workedAt
+      // Pool leads worked today  filter client-side by workedAt
       const allPool = poolRes.data?.data || [];
       const todayPoolWorked = allPool.filter(l => {
         if (!l.workedAt || l.workStatus === 'new') return false;
@@ -442,7 +459,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
 
   const handleExportPoolLeads = useCallback(async () => {
     try {
-      toast.loading('Exporting…', { id: 'pool-export' });
+      toast.loading('Exporting', { id: 'pool-export' });
       const q = new URLSearchParams();
       if (poolBatchFilter)  q.set('batchId', poolBatchFilter);
       if (poolStatusFilter) q.set('status',  poolStatusFilter);
@@ -517,7 +534,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
       const limit = anyFilter ? 500 : 50;
 
       // Website leads (assigned = status 'loaded')
-      // NOTE: dateFrom/dateTo are NOT sent to the API — that route filters by createdAt (submission date).
+      // NOTE: dateFrom/dateTo are NOT sent to the API  that route filters by createdAt (submission date).
       // We need to filter by loadedAt (assignment date), so we do it client-side below.
       if (sourceType === 'all' || sourceType === 'website') {
         const wq = new URLSearchParams({ page, limit, status: 'loaded' });
@@ -530,7 +547,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
       }
 
       // Imported leads (assigned = status 'assigned')
-      // Same reason — filter client-side by assignedAt, not createdAt.
+      // Same reason  filter client-side by assignedAt, not createdAt.
       if (sourceType === 'all' || sourceType === 'imported') {
         const iq = new URLSearchParams({ page, limit, status: 'assigned' });
         if (search.trim()) iq.set('search', search.trim());
@@ -566,7 +583,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
     finally { setAssignedLeadsLoading(false); }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Bulk Transfer helpers ──────────────────────────────────────────────
+  //  Bulk Transfer helpers 
   const fetchBtLeads = useCallback(async () => {
     if (!btSourceAgent) return;
     setBtLeadsLoading(true);
@@ -597,11 +614,11 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
     }
   }, [btSelected, btTargetAgent, fetchBtLeads]);
 
-  // Load tab data only on tab switch — not on filter changes
+  // Load tab data only on tab switch  not on filter changes
   useEffect(() => {
     if (tab === 'website_leads') { fetchLeads(1); fetchProductTypes(); fetchAgents(); }
     if (tab === 'dom_leads')     { fetchDomLeads(1); fetchAgents(); fetchPoolBatches(); }
-    if (tab === 'agents')        fetchAgents();
+    if (tab === 'agents')        { fetchAgents(); fetchDailyAssignments(); }
     if (tab === 'lead_pool')     { fetchPoolStats(); fetchPoolLeads(1); fetchPoolBatches(); fetchAgents(); }
     if (tab === 'assigned_leads') { fetchAssignedLeadsData(1); fetchAgents(); }
     if (tab === 'bulk_transfer')  fetchAgents();
@@ -638,7 +655,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
 
   const handleDownloadZip = useCallback(async (leadId, leadRef) => {
     try {
-      toast.loading('Preparing download…', { id: 'dl' });
+      toast.loading('Preparing download', { id: 'dl' });
       const token = localStorage.getItem('dom_token');
       const res   = await fetch(`/domestic-api/leads/${leadId}/download`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -717,7 +734,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
     } finally { setReassigning(false); }
   }, [reassignModal, fetchPoolLeads, poolPage, poolStatusFilter, poolBatchFilter, fetchPoolStats]);
 
-  // Drag & drop — drop a lead onto an agent
+  // Drag & drop  drop a lead onto an agent
   const handleDrop = useCallback(async (agentId, agentName) => {
     if (!dragItem) return;
     setDropAgent(null);
@@ -726,7 +743,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
     try {
       if (item.type === 'website') {
         await api.post(`/domestic-api/website-leads/${item.id}/assign`, { agentId });
-        toast.success(`"${item.name}" → ${agentName}`);
+        toast.success(`"${item.name}"  ${agentName}`);
         fetchLeads(leadsPage);
       } else {
         const res = await api.post('/domestic-api/import-leads/assign', { agentId, leadIds: [item.id] });
@@ -744,7 +761,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
     if (newStatus === currentStatus) return;
     try {
       await api.patch(`/domestic-api/leads/${leadId}/status`, { status: newStatus });
-      const labels = { completed: 'Completed ✅', pending: 'Pending', rejected: 'Rejected ❌' };
+      const labels = { completed: 'Completed ', pending: 'Pending', rejected: 'Rejected ' };
       toast.success(`Lead marked as ${labels[newStatus]}`);
       fetchDomLeads(domLeadsPage);
     } catch (err) {
@@ -754,7 +771,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
 
   const handleExportExcel = useCallback(async () => {
     try {
-      toast.loading('Exporting Excel…', { id: 'csv' });
+      toast.loading('Exporting Excel', { id: 'csv' });
       const q = new URLSearchParams();
       if (domSearchRef.current.trim())  q.set('search',      domSearchRef.current.trim());
       if (domStatusRef.current)         q.set('status',      domStatusRef.current);
@@ -786,7 +803,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
 
   const handleExportWithDocs = useCallback(async () => {
     try {
-      toast.loading('Building ZIP with documents… This may take a moment.', { id: 'exzip' });
+      toast.loading('Building ZIP with documents This may take a moment.', { id: 'exzip' });
       const q = new URLSearchParams();
       if (domSearchRef.current.trim())  q.set('search',      domSearchRef.current.trim());
       if (domStatusRef.current)         q.set('status',      domStatusRef.current);
@@ -813,7 +830,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
     } catch (err) { toast.error(`Export failed: ${err.message}`, { id: 'exzip' }); }
   }, []);
 
-  // Client-side CSV export helper — used for website leads and assigned leads
+  // Client-side CSV export helper  used for website leads and assigned leads
   const downloadCSV = useCallback((rows, filename) => {
     const csv = rows.map(r => r.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
@@ -870,7 +887,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50">
 
-      {/* ════ ADMIN SIDEBAR ════ */}
+      {/*  ADMIN SIDEBAR  */}
       <aside className={`${sidebarOpen ? 'w-[210px]' : 'w-14'} flex-shrink-0 flex flex-col h-screen bg-white border-r border-gray-200 shadow-sm transition-all duration-300 overflow-hidden`}>
         {/* Brand strip */}
         <div className="bg-[#065F36] px-3 py-3 flex-shrink-0 flex items-center gap-2">
@@ -982,14 +999,14 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
         </div>
       </aside>
 
-      {/* ════ CONTENT ════ */}
+      {/*  CONTENT  */}
       <div className="flex-1 overflow-y-auto overflow-x-hidden min-w-0 scrollbar-app">
         <main className="px-4 sm:px-6 xl:px-8 py-4 xl:py-6 space-y-4 xl:space-y-6 min-w-0">
 
         {/* OVERVIEW */}
         {tab === 'overview' && stats && (
           <>
-            {/* ── Today's Summary bar ── */}
+            {/*  Today's Summary bar  */}
             <div className="bg-[#065F36] rounded-2xl px-5 py-4 text-white flex items-center justify-between flex-wrap gap-3 shadow-sm">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-white/15 rounded-xl"><Calendar className="h-5 w-5" /></div>
@@ -1014,12 +1031,12 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                   </div>
                 ))}
                 <button onClick={() => setTab('website_leads')} className="flex items-center gap-1.5 bg-white text-[#065F36] text-xs font-bold px-4 py-2.5 rounded-xl hover:bg-[#E8FFF5] transition-colors shadow-sm">
-                  View Meta Allocation →
+                  View Meta Allocation 
                 </button>
               </div>
             </div>
 
-            {/* ── 4 Allocation cards ── */}
+            {/*  4 Allocation cards  */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
 
               {/* Meta Allocation */}
@@ -1048,7 +1065,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                 <p className="text-4xl font-black text-gray-800">{stats.assigned.importedLeads}</p>
                 <p className="text-sm font-bold text-gray-600 mt-1">Leads Assigned to Agents</p>
                 <div className="flex items-center gap-3 mt-3 pt-3 border-t border-gray-100">
-                  <span className="text-xs text-violet-600 font-bold">From Data Pool · Currently active</span>
+                  <span className="text-xs text-violet-600 font-bold">From Data Pool  Currently active</span>
                 </div>
               </div>
 
@@ -1077,12 +1094,12 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                 <p className="text-4xl font-black text-gray-800">{stats.agents.active}</p>
                 <p className="text-sm font-bold text-gray-600 mt-1">Active Agents</p>
                 <div className="flex items-center gap-3 mt-3 pt-3 border-t border-gray-100">
-                  <span className="text-xs text-gray-500 font-bold">{stats.agents.total} total · {stats.agents.active} online now</span>
+                  <span className="text-xs text-gray-500 font-bold">{stats.agents.total} total  {stats.agents.active} online now</span>
                 </div>
               </div>
             </div>
 
-            {/* ── Quick stats row ── */}
+            {/*  Quick stats row  */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {[
                 { icon: <TrendingUp className="h-4 w-4 text-emerald-600" />, bg: 'bg-emerald-50', label: 'Conversion Rate',    val: `${stats.conversionRate}%`, sub: 'Meta leads completed' },
@@ -1101,14 +1118,14 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
               ))}
             </div>
 
-            {/* ── Lead Pipeline ── */}
+            {/*  Lead Pipeline  */}
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
               <div className="flex items-center justify-between mb-5">
                 <div className="flex items-center gap-3">
                   <div className="p-2 bg-[#E8FFF5] rounded-xl"><TrendingUp className="h-4 w-4 text-[#065F36]" /></div>
                   <div>
                     <h3 className="font-bold text-gray-800 text-sm">Lead Pipeline</h3>
-                    <p className="text-xs text-gray-400">How leads flow through each stage — from received to completed</p>
+                    <p className="text-xs text-gray-400">How leads flow through each stage  from received to completed</p>
                   </div>
                 </div>
                 <button onClick={fetchStats} className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-[#065F36] border border-gray-200 rounded-xl px-3 py-1.5 transition-all">
@@ -1154,7 +1171,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                 <div className="p-2 bg-teal-100 rounded-xl"><Globe className="h-5 w-5 text-teal-600" /></div>
                 <div>
                   <h2 className="font-bold text-gray-800">Meta Allocation</h2>
-                  <p className="text-xs text-gray-400">Website + Meta leads — assign unassigned leads to agents</p>
+                  <p className="text-xs text-gray-400">Website + Meta leads  assign unassigned leads to agents</p>
                 </div>
               </div>
               {/* Sub-tab toggle */}
@@ -1181,7 +1198,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                 <Search className="h-4 w-4 text-gray-400" />
                 <input type="text" value={search} onChange={(e) => { setSearch(e.target.value); searchRef.current = e.target.value; }}
                   onKeyDown={(e) => e.key === 'Enter' && fetchLeads(1)}
-                  placeholder="Search by name, mobile, city…"
+                  placeholder="Search by name, mobile, city"
                   className="flex-1 text-sm bg-transparent outline-none text-gray-700 placeholder-gray-400" />
               </div>
               <select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); statusFilterRef.current = e.target.value; fetchLeads(1); }}
@@ -1196,7 +1213,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                 onChange={(e) => { setProductTypeFilter(e.target.value); productTypeRef.current = e.target.value; fetchLeads(1); }}
                 className="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white text-gray-700">
                 <option value="">All Services</option>
-                <optgroup label="─ Loans ─">
+                <optgroup label=" Loans ">
                   <option value="personal_loan">Personal Loan</option>
                   <option value="home_loan">Home Loan</option>
                   <option value="car_loan">Car Loan</option>
@@ -1205,16 +1222,16 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                   <option value="education_loan">Education Loan</option>
                   <option value="gold_loan">Gold Loan</option>
                 </optgroup>
-                <optgroup label="─ Cards ─">
+                <optgroup label=" Cards ">
                   <option value="credit_card">Credit Card</option>
                 </optgroup>
-                <optgroup label="─ Insurance ─">
+                <optgroup label=" Insurance ">
                   <option value="health_insurance">Health Insurance</option>
                   <option value="life_insurance">Life Insurance</option>
                   <option value="motor_insurance">Motor Insurance</option>
                   <option value="travel_insurance">Travel Insurance</option>
                 </optgroup>
-                <optgroup label="─ Investments ─">
+                <optgroup label=" Investments ">
                   <option value="mutual_fund">Mutual Fund</option>
                   <option value="sip">SIP</option>
                   <option value="demat">Demat Account</option>
@@ -1224,10 +1241,10 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
               <select value={webSourceFilter}
                 onChange={(e) => { setWebSourceFilter(e.target.value); webSourceRef.current = e.target.value; fetchLeads(1); }}
                 className="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white text-gray-700">
-                <option value="">🌐 All Sources</option>
-                <option value="meta">📘 Meta Ads only</option>
-                <option value="website">🌐 Website Form only</option>
-                <option value="manual">✍️ Manual only</option>
+                <option value=""> All Sources</option>
+                <option value="meta"> Meta Ads only</option>
+                <option value="website"> Website Form only</option>
+                <option value="manual"> Manual only</option>
               </select>
               <button onClick={() => fetchLeads(1)}
                 className="flex items-center gap-2 text-sm bg-[#065F36] text-white px-4 py-2 rounded-xl hover:bg-[#054A2E] font-semibold">
@@ -1353,20 +1370,20 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                           </td>
                           <td className="pl-2 pr-3 py-3.5">
                             <div className="flex items-center gap-1.5">
-                              {isNew && <span className="text-gray-300 cursor-grab text-base leading-none select-none" title="Drag to assign">⠿</span>}
-                              <span className="font-semibold text-gray-800">{lead.name || '—'}</span>
+                              {isNew && <span className="text-gray-300 cursor-grab text-base leading-none select-none" title="Drag to assign"></span>}
+                              <span className="font-semibold text-gray-800">{lead.name || ''}</span>
                             </div>
                           </td>
-                          <td className="px-3 py-3.5 font-mono text-xs text-gray-600 tracking-wide">{lead.mobile || '—'}</td>
-                          <td className="px-3 py-3.5 text-gray-500">{lead.city || '—'}</td>
+                          <td className="px-3 py-3.5 font-mono text-xs text-gray-600 tracking-wide">{lead.mobile || ''}</td>
+                          <td className="px-3 py-3.5 text-gray-500">{lead.city || ''}</td>
                           <td className="px-3 py-3.5">
                             {lead.productType
                               ? <span className="bg-[#E8FFF5] text-[#065F36] border border-[#D1FAE5] px-2 py-0.5 rounded-full text-xs font-medium capitalize">{lead.productType.replace(/_/g,' ')}</span>
-                              : <span className="text-gray-300 text-xs">—</span>}
+                              : <span className="text-gray-300 text-xs"></span>}
                           </td>
                           <td className="px-3 py-3.5">
                             <div className="flex flex-col items-start gap-1">
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-teal-100 text-teal-700 border border-teal-200">🌐 Website</span>
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-teal-100 text-teal-700 border border-teal-200"> Website</span>
                               {lead.source === 'meta' && (
                                 <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-[#1877F2] text-white">f Meta Ads</span>
                               )}
@@ -1424,7 +1441,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
               <div>
                 <h2 className="font-bold text-gray-800">Worked Leads</h2>
                 <p className="text-xs text-gray-400">
-                  All leads processed by agents — searchable by Lead ID (e.g.{' '}
+                  All leads processed by agents  searchable by Lead ID (e.g.{' '}
                   <span className="font-mono text-[#065F36] font-semibold">PL-260611-XXXX</span>)
                 </p>
               </div>
@@ -1434,7 +1451,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                 <Hash className="h-4 w-4 text-[#065F36]/50" />
                 <input type="text" value={domSearch} onChange={(e) => { setDomSearch(e.target.value); domSearchRef.current = e.target.value; }}
                   onKeyDown={(e) => e.key === 'Enter' && fetchDomLeads(1)}
-                  placeholder="Search by Lead ID, name, mobile, city…"
+                  placeholder="Search by Lead ID, name, mobile, city"
                   className="flex-1 text-sm bg-transparent outline-none text-gray-700 placeholder-gray-400" />
                 {domSearch && (
                   <button onClick={() => { setDomSearch(''); domSearchRef.current = ''; }} className="text-gray-400 hover:text-gray-600">
@@ -1445,28 +1462,28 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
               <select value={domStatusFilter} onChange={(e) => { setDomStatusFilter(e.target.value); domStatusRef.current = e.target.value; fetchDomLeads(1); }}
                 className="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white text-gray-700">
                 <option value="">All Statuses</option>
-                <option value="pending">⏳ Pending</option>
-                <option value="completed">✅ Completed</option>
-                <option value="rejected">❌ Rejected</option>
+                <option value="pending"> Pending</option>
+                <option value="completed"> Completed</option>
+                <option value="rejected"> Rejected</option>
               </select>
               {/* Disposition / Call Outcome filter */}
               <select value={domOutcomeFilter} onChange={(e) => { setDomOutcomeFilter(e.target.value); domOutcomeRef.current = e.target.value; fetchDomLeads(1); }}
                 className="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white text-gray-700 font-medium">
-                <option value="">🗂 All Dispositions</option>
-                <option value="none">— Not Called Yet</option>
-                <option value="interested">✅ Interested</option>
-                <option value="not_interested">❌ Not Interested</option>
-                <option value="not_eligible">🚫 Not Eligible</option>
-                <option value="callback">📞 Callback</option>
-                <option value="not_reachable">📵 Not Reachable</option>
-                <option value="not_answering">🔕 Not Answering</option>
-                <option value="wrong_number">❓ Wrong Number</option>
-                <option value="other">✏️ Other</option>
+                <option value=""> All Dispositions</option>
+                <option value="none"> Not Called Yet</option>
+                <option value="interested"> Interested</option>
+                <option value="not_interested"> Not Interested</option>
+                <option value="not_eligible"> Not Eligible</option>
+                <option value="callback"> Callback</option>
+                <option value="not_reachable"> Not Reachable</option>
+                <option value="not_answering"> Not Answering</option>
+                <option value="wrong_number"> Wrong Number</option>
+                <option value="other"> Other</option>
               </select>
               {/* Agent filter */}
               <select value={domAgentFilter} onChange={(e) => { setDomAgentFilter(e.target.value); domAgentRef.current = e.target.value; fetchDomLeads(1); }}
                 className="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white text-gray-700">
-                <option value="">👤 All Agents</option>
+                <option value=""> All Agents</option>
                 {[...agents].filter(a => a.isActive).sort((a,b) => a.name.localeCompare(b.name)).map(a => (
                   <option key={a._id} value={a._id}>{a.name}</option>
                 ))}
@@ -1474,7 +1491,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
               <select value={domProductFilter} onChange={(e) => { setDomProductFilter(e.target.value); domProductRef.current = e.target.value; fetchDomLeads(1); }}
                 className="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white text-gray-700">
                 <option value="">All Services</option>
-                <optgroup label="── Loans ──">
+                <optgroup label=" Loans ">
                   <option value="personal_loan">Personal Loan</option>
                   <option value="home_loan">Home Loan</option>
                   <option value="car_loan">Car Loan</option>
@@ -1483,16 +1500,16 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                   <option value="education_loan">Education Loan</option>
                   <option value="gold_loan">Gold Loan</option>
                 </optgroup>
-                <optgroup label="── Cards ──">
+                <optgroup label=" Cards ">
                   <option value="credit_card">Credit Card</option>
                 </optgroup>
-                <optgroup label="── Insurance ──">
+                <optgroup label=" Insurance ">
                   <option value="health_insurance">Health Insurance</option>
                   <option value="life_insurance">Life Insurance</option>
                   <option value="motor_insurance">Motor Insurance</option>
                   <option value="travel_insurance">Travel Insurance</option>
                 </optgroup>
-                <optgroup label="── Investments ──">
+                <optgroup label=" Investments ">
                   <option value="mutual_fund">Mutual Fund</option>
                   <option value="sip">SIP</option>
                   <option value="demat">Demat Account</option>
@@ -1501,22 +1518,22 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
               {/* CIBIL Score Range filter */}
               <select value={domCibilFilter} onChange={(e) => { setDomCibilFilter(e.target.value); domCibilRef.current = e.target.value; fetchDomLeads(1); }}
                 className="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white text-gray-700">
-                <option value="">📊 All CIBIL</option>
+                <option value=""> All CIBIL</option>
                 <option value="below_600">{'< 600 (Poor)'}</option>
-                <option value="600_699">600–699 (Fair)</option>
-                <option value="700_749">700–749 (Good)</option>
-                <option value="750_800">750–800 (Very Good)</option>
+                <option value="600_699">600699 (Fair)</option>
+                <option value="700_749">700749 (Good)</option>
+                <option value="750_800">750800 (Very Good)</option>
                 <option value="above_800">{'>  800 (Excellent)'}</option>
                 <option value="unknown">Unknown</option>
               </select>
-              {/* Batch filter — only for imported batch leads */}
+              {/* Batch filter  only for imported batch leads */}
               {poolBatches.length > 0 && (
                 <select
                   value={domBatchFilter}
                   onChange={(e) => { setDomBatchFilter(e.target.value); domBatchRef.current = e.target.value; fetchDomLeads(1); }}
                   className="text-sm border border-indigo-200 rounded-xl px-3 py-2 bg-indigo-50 text-indigo-700 font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-300"
                 >
-                  <option value="">📁 All Batches</option>
+                  <option value=""> All Batches</option>
                   {poolBatches.map((b) => (
                     <option key={b._id} value={b._id}>
                       {b.batchName || b._id} ({b.total})
@@ -1542,10 +1559,10 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
               {/* Doc status filter */}
               <select value={domDocFilter} onChange={e => { setDomDocFilter(e.target.value); domDocFilterRef.current = e.target.value; fetchDomLeads(1); }}
                 className="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#065F36]/20 focus:border-[#065F36]">
-                <option value="all">📁 All Docs</option>
-                <option value="none">📄 No Docs</option>
-                <option value="partial">📎 Partial Docs</option>
-                <option value="full">✅ Full Docs</option>
+                <option value="all"> All Docs</option>
+                <option value="none"> No Docs</option>
+                <option value="partial"> Partial Docs</option>
+                <option value="full"> Full Docs</option>
               </select>
               {(user.role === 'dom_superadmin' || user.role === 'dom_admin') && (
                 <>
@@ -1617,7 +1634,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                       <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${s.badge}`}>{s.emoji} {s.label}</span>
                     </div>
                   ))}
-                  <span className="text-xs text-gray-400 ml-auto">← left border colour = source type</span>
+                  <span className="text-xs text-gray-400 ml-auto"> left border colour = source type</span>
                 </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -1631,6 +1648,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                       <th className="px-3 py-3.5 text-left">Source</th>
                       <th className="px-3 py-3.5 text-left">Handled By</th>
                       <th className="px-3 py-3.5 text-left">Call Outcome</th>
+                      <th className="px-3 py-3.5 text-left">Tracker</th>
                       <th className="px-3 py-3.5 text-left">Docs</th>
                       <th className="px-3 py-3.5 text-left">Status</th>
                       <th className="px-3 py-3.5 text-left">Created</th>
@@ -1654,27 +1672,37 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                       return (
                         <tr key={dl._id} className={`transition-colors group ${src.borderL} ${src.rowHover}`}>
                           <td className="pl-6 pr-3 py-3.5"><LeadRefBadge code={dl.leadRef} /></td>
-                          <td className="px-3 py-3.5 font-semibold text-gray-800">{dl.name || '—'}</td>
-                          <td className="px-3 py-3.5 font-mono text-xs text-gray-600 tracking-wide">{dl.mobile || '—'}</td>
-                          <td className="px-3 py-3.5 text-gray-500">{dl.city || '—'}</td>
+                          <td className="px-3 py-3.5 font-semibold text-gray-800">{dl.name || ''}</td>
+                          <td className="px-3 py-3.5 font-mono text-xs text-gray-600 tracking-wide">{dl.mobile || ''}</td>
+                          <td className="px-3 py-3.5 text-gray-500">{dl.city || ''}</td>
                           <td className="px-3 py-3.5">
                             {dl.productType
                               ? <span className="bg-[#E8FFF5] text-[#065F36] border border-[#D1FAE5] px-2 py-0.5 rounded-full text-xs font-medium capitalize">{dl.productType.replace(/_/g,' ')}</span>
-                              : <span className="text-gray-300 text-xs">—</span>}
+                              : <span className="text-gray-300 text-xs"></span>}
                           </td>
                           <td className="px-3 py-3.5">
                             <SourceBadge lead={dl} />
                           </td>
-                          <td className="px-3 py-3.5 text-gray-700 text-sm">{dl.assignedTo?.name || '—'}</td>
+                          <td className="px-3 py-3.5 text-gray-700 text-sm">{dl.assignedTo?.name || ''}</td>
                           <td className="px-3 py-3.5">
                             {outcome
                               ? <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${outcome.cls}`}>{outcome.label}</span>
                               : <span className="text-gray-300 text-xs">Not called</span>}
                           </td>
+                          <td className="px-3 py-3.5">
+                            <div className="flex flex-col gap-1">
+                              <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-semibold bg-blue-50 text-blue-700 border border-blue-200 whitespace-nowrap" title="Total times this lead was called">
+                                 {dl.callCount || 0} calls
+                              </span>
+                              <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-semibold bg-violet-50 text-violet-700 border border-violet-200 whitespace-nowrap" title="Total times this lead was updated">
+                                 {dl.updateCount || 0} updates
+                              </span>
+                            </div>
+                          </td>
                           <td className="px-3 py-3.5 text-center">
                             {(() => { const ds = getDocStatus(dl.documents); return (
                               <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-semibold border ${ds.cls}`}>
-                                {ds.status === 'full' ? '✅' : ds.status === 'partial' ? '📎' : '📄'} {ds.label}
+                                {ds.status === 'full' ? '' : ds.status === 'partial' ? '' : ''} {ds.label}
                               </span>
                             ); })()}
                           </td>
@@ -1697,7 +1725,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                                 <button
                                   onClick={(e) => { e.stopPropagation(); handleLeadStatusChange(dl._id, 'completed', dl.status); }}
                                   className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 font-semibold shadow-sm"
-                                  title="Mark as Completed — loan processed / case closed">
+                                  title="Mark as Completed  loan processed / case closed">
                                   <CheckCircle2 className="h-3.5 w-3.5" /> Complete
                                 </button>
                               )}
@@ -1742,11 +1770,67 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
         {tab === 'agents' && (
           <div className="space-y-5">
 
-            {/* ── When no agent is selected: show rankings list ── */}
+            {/*  When no agent is selected: show rankings list  */}
             {!selectedAgent && (
               <div className="flex flex-col gap-5">
 
-              {/* Top 3 hero cards — only when no agent selected */}
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-3 flex-wrap">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-gradient-to-br from-indigo-500 to-violet-600 rounded-xl shadow-sm">
+                      <Calendar className="h-5 w-5 text-white" />
+                    </div>
+                    <div>
+                      <h2 className="font-bold text-gray-800">Daily Assignment Tracker</h2>
+                      <p className="text-xs text-gray-400">Leads assigned to each agent, based on India Standard Time (IST)</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input type="date" value={assignmentDate} onChange={e => setAssignmentDate(e.target.value)}
+                      className="border border-gray-200 rounded-lg px-2.5 py-2 text-xs focus:outline-none focus:border-indigo-500" />
+                    <button onClick={() => fetchDailyAssignments()}
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors">
+                      <RefreshCw className={`h-3.5 w-3.5 ${dailyAssignmentsLoading ? 'animate-spin' : ''}`} /> Apply
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-px bg-gray-100 border-b border-gray-100">
+                  {[
+                    { label: 'Website / Meta', value: dailyAssignmentTotals.website, color: 'text-blue-600' },
+                    { label: 'Imported Pool', value: dailyAssignmentTotals.imported, color: 'text-violet-600' },
+                    { label: 'Total Assigned', value: dailyAssignmentTotals.total, color: 'text-indigo-700' },
+                  ].map(item => (
+                    <div key={item.label} className="bg-white px-4 py-3 text-center">
+                      <p className={`text-xl font-black ${item.color}`}>{item.value}</p>
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">{item.label}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {dailyAssignmentsLoading ? <Spinner /> : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50 text-gray-400 text-[10px] uppercase tracking-wider">
+                        <tr><th className="text-left px-5 py-3 font-bold">Agent</th><th className="text-center px-4 py-3 font-bold">Website / Meta</th><th className="text-center px-4 py-3 font-bold">Imported Pool</th><th className="text-center px-5 py-3 font-bold">Total</th></tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-50">
+                        {dailyAssignments.map(agent => (
+                          <tr key={agent._id} className="hover:bg-indigo-50/30">
+                            <td className="px-5 py-3"><div className="font-semibold text-gray-800">{agent.name}</div><div className="text-xs text-gray-400">{agent.email}{!agent.isActive ? '  Inactive' : ''}</div></td>
+                            <td className="px-4 py-3 text-center font-bold text-blue-600">{agent.website}</td>
+                            <td className="px-4 py-3 text-center font-bold text-violet-600">{agent.imported}</td>
+                            <td className="px-5 py-3 text-center"><span className="inline-flex min-w-8 justify-center rounded-lg bg-indigo-100 px-2 py-1 font-black text-indigo-700">{agent.total}</span></td>
+                          </tr>
+                        ))}
+                        {dailyAssignments.length === 0 && <tr><td colSpan="4" className="px-5 py-8 text-center text-sm text-gray-400">No agents found.</td></tr>}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              {/* Top 3 hero cards  only when no agent selected */}
               {!selectedAgent && !agentsLoading && agents.filter(a => a.isActive).length > 0 && (() => {
                 const sorted = [...agents.filter(a => a.isActive)].sort((a, b) => getAgentTier(b).score - getAgentTier(a).score);
                 const top3 = sorted.slice(0, 3);
@@ -1755,7 +1839,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                     {top3.map((a, i) => {
                       const tier = getAgentTier(a);
                       const conv = a.leadsLoaded > 0 ? Math.round((a.leadsCompleted / a.leadsLoaded) * 100) : 0;
-                      const podium = ['🥇', '🥈', '🥉'][i];
+                      const podium = ['', '', ''][i];
                       const gradients = [
                         'from-amber-400 via-orange-400 to-amber-500',
                         'from-slate-400 via-gray-400 to-slate-500',
@@ -1814,10 +1898,10 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                       <Users className="h-5 w-5 text-white" />
                     </div>
                     <div>
-                      <h2 className="font-bold text-gray-800">All Agents — Performance Ranking</h2>
+                      <h2 className="font-bold text-gray-800">All Agents  Performance Ranking</h2>
                       <p className="text-xs text-gray-400">
                         {(agentsDateFrom || agentsDateTo)
-                          ? `Stats for ${agentsDateFrom || '…'} – ${agentsDateTo || '…'}`
+                          ? `Stats for ${agentsDateFrom || ''}  ${agentsDateTo || ''}`
                           : 'Filter by date or search by name / email'}
                       </p>
                     </div>
@@ -1859,7 +1943,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                   </div>
                 </div>
 
-                {/* Date filter — single filter bar */}
+                {/* Date filter  single filter bar */}
                 <div className="px-5 py-3 bg-gray-50 border-b border-gray-100 flex items-center gap-2 flex-wrap">
                   <Calendar className="h-3.5 w-3.5 text-gray-400 flex-shrink-0" />
                   <span className="text-xs font-semibold text-gray-500">Disposition date:</span>
@@ -1958,7 +2042,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                                       a.agentStatus === 'unavailable' ? 'bg-red-500' :
                                                                          'bg-emerald-500 animate-pulse'
                                     }`} />
-                                    {a.agentStatus === 'break' ? '☕ Break' : a.agentStatus === 'unavailable' ? '🔴 Off' : '✅ Live'}
+                                    {a.agentStatus === 'break' ? ' Break' : a.agentStatus === 'unavailable' ? ' Off' : ' Live'}
                                   </span>
                                 )}
                               </div>
@@ -2013,10 +2097,10 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
               </div>
             )}
 
-            {/* ── Agent full-page detail (replaces list when agent selected) ── */}
+            {/*  Agent full-page detail (replaces list when agent selected)  */}
             {selectedAgent && (
               <div className="space-y-5">
-                {/* Back button — top left breadcrumb */}
+                {/* Back button  top left breadcrumb */}
                 <button onClick={() => { setSelectedAgent(null); setAgentActivity({ workedLeads: [], poolLeads: [] }); }}
                   className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 text-xs font-bold transition-colors shadow-sm">
                   <ChevronLeft className="h-4 w-4" /> Back to Agents
@@ -2049,7 +2133,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                               selectedAgent.agentStatus === 'unavailable' ? 'bg-red-500' :
                                                                              'bg-emerald-500 animate-pulse'
                             }`} />
-                            {selectedAgent.agentStatus === 'break' ? '☕ On Break' : selectedAgent.agentStatus === 'unavailable' ? '🔴 Unavailable' : '✅ Available'}
+                            {selectedAgent.agentStatus === 'break' ? ' On Break' : selectedAgent.agentStatus === 'unavailable' ? ' Unavailable' : ' Available'}
                           </span>
                         </div>
                       </div>
@@ -2083,11 +2167,11 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                 {agentActivityLoading ? (
                   <div className="flex items-center justify-center py-16 gap-3 bg-white rounded-2xl border border-gray-100">
                     <div className="w-8 h-8 border-4 border-gray-100 border-t-[#065F36] rounded-full animate-spin" />
-                    <span className="text-sm text-gray-400">Loading activity…</span>
+                    <span className="text-sm text-gray-400">Loading activity</span>
                   </div>
                 ) : (
                   <>
-                    {/* ── TODAY'S DISPOSITIONS ── */}
+                    {/*  TODAY'S DISPOSITIONS  */}
                     {(() => {
                       const tl = agentActivity.todayLeads || [];
                       const OUTCOME_CFG2 = {
@@ -2167,11 +2251,11 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                                           <span className="font-mono text-[10px] font-bold bg-gray-900 text-emerald-400 px-1.5 py-0.5 rounded flex-shrink-0">{l.leadRef}</span>
                                         )}
                                         {l._isPool && (
-                                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700 border border-violet-200 flex-shrink-0">📊 Pool</span>
+                                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700 border border-violet-200 flex-shrink-0"> Pool</span>
                                         )}
-                                        <span className="font-semibold text-sm text-gray-800 truncate">{l.name || '—'}</span>
+                                        <span className="font-semibold text-sm text-gray-800 truncate">{l.name || ''}</span>
                                       </div>
-                                      <p className="text-xs text-gray-400 mt-0.5 truncate">{l.mobile} · {(l.productType || l.loanType || '').replace(/_/g,' ')}</p>
+                                      <p className="text-xs text-gray-400 mt-0.5 truncate">{l.mobile}  {(l.productType || l.loanType || '').replace(/_/g,' ')}</p>
                                     </div>
                                     <div className="flex flex-col items-end gap-1 flex-shrink-0">
                                       {outcome ? (
@@ -2191,7 +2275,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                         </div>
                       );
                     })()}
-                    {/* ── ALL LEADS EXPLORER ── */}
+                    {/*  ALL LEADS EXPLORER  */}
                     {(() => {
                       const OUTCOME_CLR = {
                         interested:     'bg-emerald-100 text-emerald-700 border-emerald-200',
@@ -2216,7 +2300,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                             <div className="flex items-center gap-3">
                               <div className="p-2 bg-gradient-to-br from-[#065F36] to-emerald-600 rounded-xl"><FileText className="h-4 w-4 text-white" /></div>
                               <div>
-                                <h3 className="font-bold text-gray-800 text-sm">All Leads — Explorer</h3>
+                                <h3 className="font-bold text-gray-800 text-sm">All Leads  Explorer</h3>
                                 <p className="text-xs text-gray-400">{agentExpLeads.length} leads &middot; filter by date, source &amp; search</p>
                               </div>
                             </div>
@@ -2248,7 +2332,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                             <input type="date" value={agentExpDateFrom}
                               onChange={e => { setAgentExpDateFrom(e.target.value); if (e.target.value && agentExpDateTo) fetchAgentExpLeads(selectedAgent._id, e.target.value, agentExpDateTo, agentExpSearch, agentExpSource, agentExpDisp); }}
                               className="border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-[#065F36]" />
-                            <span className="text-gray-400 text-xs">–</span>
+                            <span className="text-gray-400 text-xs"></span>
                             <input type="date" value={agentExpDateTo}
                               onChange={e => { setAgentExpDateTo(e.target.value); if (e.target.value && agentExpDateFrom) fetchAgentExpLeads(selectedAgent._id, agentExpDateFrom, e.target.value, agentExpSearch, agentExpSource, agentExpDisp); }}
                               className="border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-[#065F36]" />
@@ -2258,7 +2342,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                           <div className="px-5 py-2.5 border-b border-gray-100 flex items-center gap-2 flex-wrap">
                             <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1.5 flex-1 min-w-[140px]">
                               <Search className="h-3 w-3 text-gray-400 flex-shrink-0" />
-                              <input type="text" placeholder="Name or mobile…" value={agentExpSearch}
+                              <input type="text" placeholder="Name or mobile" value={agentExpSearch}
                                 onChange={e => setAgentExpSearch(e.target.value)}
                                 onKeyDown={e => e.key === 'Enter' && fetchAgentExpLeads(selectedAgent._id, agentExpDateFrom, agentExpDateTo, agentExpSearch, agentExpSource, agentExpDisp)}
                                 className="flex-1 text-xs outline-none bg-transparent" />
@@ -2268,19 +2352,19 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                             <select value={agentExpDisp}
                               onChange={e => { setAgentExpDisp(e.target.value); fetchAgentExpLeads(selectedAgent._id, agentExpDateFrom, agentExpDateTo, agentExpSearch, agentExpSource, e.target.value); }}
                               className="text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white text-gray-700 focus:outline-none focus:border-[#065F36]">
-                              <option value="">🎯 All Dispositions</option>
-                              <option value="interested">✅ Interested</option>
-                              <option value="not_interested">❌ Not Interested</option>
-                              <option value="not_eligible">🚫 Not Eligible</option>
-                              <option value="callback">📞 Callback</option>
-                              <option value="not_reachable">📵 Not Reachable</option>
-                              <option value="not_answering">🔕 Not Answering</option>
-                              <option value="wrong_number">❓ Wrong Number</option>
-                              <option value="other">✏️ Other</option>
-                              <option value="none">⏳ Not Called</option>
+                              <option value=""> All Dispositions</option>
+                              <option value="interested"> Interested</option>
+                              <option value="not_interested"> Not Interested</option>
+                              <option value="not_eligible"> Not Eligible</option>
+                              <option value="callback"> Callback</option>
+                              <option value="not_reachable"> Not Reachable</option>
+                              <option value="not_answering"> Not Answering</option>
+                              <option value="wrong_number"> Wrong Number</option>
+                              <option value="other"> Other</option>
+                              <option value="none"> Not Called</option>
                             </select>
                             <div className="flex bg-gray-100 rounded-lg p-0.5 gap-0.5">
-                              {[{v:'all',l:'All'},{v:'website',l:'🌐 Web'},{v:'pool',l:'📊 Pool'}].map(s => (
+                              {[{v:'all',l:'All'},{v:'website',l:' Web'},{v:'pool',l:' Pool'}].map(s => (
                                 <button key={s.v}
                                   onClick={() => { setAgentExpSource(s.v); fetchAgentExpLeads(selectedAgent._id, agentExpDateFrom, agentExpDateTo, agentExpSearch, s.v, agentExpDisp); }}
                                   className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all ${agentExpSource===s.v?'bg-white shadow-sm text-gray-800':'text-gray-500 hover:text-gray-700'}`}>
@@ -2312,7 +2396,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                           {agentExpLoading ? (
                             <div className="flex items-center justify-center py-10 gap-2">
                               <div className="w-5 h-5 border-2 border-gray-200 border-t-[#065F36] rounded-full animate-spin" />
-                              <span className="text-xs text-gray-400">Loading…</span>
+                              <span className="text-xs text-gray-400">Loading</span>
                             </div>
                           ) : agentExpLeads.length === 0 ? (
                             <div className="flex flex-col items-center justify-center py-10 gap-2 text-gray-400">
@@ -2328,7 +2412,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                                 const lbl = OUTCOME_LBL[outcome]||(outcome==='new'?'Not Called':(outcome?.replace(/_/g,' ')||'No Disp.'));
                                 const cls = OUTCOME_CLR[outcome]||'bg-gray-100 text-gray-500 border-gray-200';
                                 const dt  = isPool ? new Date(l.workedAt||l.assignedAt||l.createdAt) : new Date(l.createdAt);
-                                const dtStr = isNaN(dt)?'—':dt.toLocaleString('en-IN',{timeZone:'Asia/Kolkata',day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
+                                const dtStr = isNaN(dt)?'':dt.toLocaleString('en-IN',{timeZone:'Asia/Kolkata',day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
                                 return (
                                   <div key={l._id}
                                     onClick={() => !isPool && setAgentLeadDetail(l)}
@@ -2336,12 +2420,12 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                                     <div className="flex-1 min-w-0">
                                       <div className="flex items-center gap-1.5 flex-wrap">
                                         <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 ${isPool?'bg-violet-100 text-violet-700 border border-violet-200':'bg-teal-100 text-teal-700 border border-teal-200'}`}>
-                                          {isPool?'📊 Pool':'🌐 Web'}
+                                          {isPool?' Pool':' Web'}
                                         </span>
                                         {!isPool && l.leadRef && <span className="font-mono text-[10px] font-bold bg-gray-900 text-emerald-400 px-1.5 py-0.5 rounded flex-shrink-0">{l.leadRef}</span>}
-                                        <span className="font-semibold text-sm text-gray-800 truncate">{l.name||'—'}</span>
+                                        <span className="font-semibold text-sm text-gray-800 truncate">{l.name||''}</span>
                                       </div>
-                                      <p className="text-xs text-gray-400 mt-0.5 truncate">{l.mobile} · {(l.productType||l.loanType||'').replace(/_/g,' ')}</p>
+                                      <p className="text-xs text-gray-400 mt-0.5 truncate">{l.mobile}  {(l.productType||l.loanType||'').replace(/_/g,' ')}</p>
                                     </div>
                                     <div className="flex flex-col items-end gap-1 flex-shrink-0">
                                       <span className={`text-xs px-2 py-0.5 rounded-full font-semibold border ${cls}`}>{lbl}</span>
@@ -2360,7 +2444,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
               </div>
             )}
 
-            {/* ── Transfer Leads Modal ── */}
+            {/*  Transfer Leads Modal  */}
             {transferModal && selectedAgent && (
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
                 <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
@@ -2401,7 +2485,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                         value={transferToAgent}
                         onChange={e => setTransferToAgent(e.target.value)}
                         className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-amber-400/40 focus:border-amber-400">
-                        <option value="">— Select target agent —</option>
+                        <option value=""> Select target agent </option>
                         {agents.filter(a => a._id !== selectedAgent._id && a.isActive).map(a => (
                           <option key={a._id} value={a._id}>{a.name} ({a.email})</option>
                         ))}
@@ -2415,7 +2499,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                         {[
                           { key: 'website', label: 'Website / Meta Leads', sub: 'Unworked website leads loaded by this agent', color: 'teal' },
                           { key: 'pool',    label: 'Pool / Imported Leads (Unworked)', sub: 'Imported data leads not yet called', color: 'violet' },
-                          { key: 'worked',  label: 'Worked Cases (DomLeads)', sub: 'Already-filled lead forms — reassign ownership', color: 'orange' },
+                          { key: 'worked',  label: 'Worked Cases (DomLeads)', sub: 'Already-filled lead forms  reassign ownership', color: 'orange' },
                         ].map(({ key, label, sub, color }) => (
                           <label key={key} className={`flex items-start gap-3 px-4 py-3 rounded-xl border cursor-pointer transition-all ${
                             transferTypes[key]
@@ -2452,7 +2536,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                     <button onClick={handleTransferLeads} disabled={!transferToAgent || transferring}
                       className="flex items-center gap-2 px-5 py-2 text-sm font-bold text-white bg-amber-500 hover:bg-amber-600 disabled:bg-gray-300 disabled:cursor-not-allowed rounded-xl shadow-sm transition-colors">
                       {transferring
-                        ? <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Transferring…</>
+                        ? <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Transferring</>
                         : <><Send className="h-4 w-4" /> Confirm Transfer</>}
                     </button>
                   </div>
@@ -2460,22 +2544,22 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
               </div>
             )}
 
-            {/* ── Lead Disposition Detail Modal ── */}
+            {/*  Lead Disposition Detail Modal  */}
             {agentLeadDetail && (() => {
               const l = agentLeadDetail;
               const OUTCOME_CFG = {
-                interested:     { label: 'Interested',     cls: 'bg-emerald-100 text-emerald-700 border-emerald-300', icon: '✅' },
-                not_interested: { label: 'Not Interested', cls: 'bg-red-100 text-red-700 border-red-300',             icon: '❌' },
-                not_eligible:   { label: 'Not Eligible',   cls: 'bg-rose-100 text-rose-700 border-rose-300',           icon: '🚫' },
-                callback:       { label: 'Callback',       cls: 'bg-amber-100 text-amber-700 border-amber-300',       icon: '📞' },
-                not_reachable:  { label: 'Not Reachable',  cls: 'bg-orange-100 text-orange-700 border-orange-300',    icon: '📵' },
-                not_answering:  { label: 'Not Answering',  cls: 'bg-slate-100 text-slate-700 border-slate-300',       icon: '🔕' },
-                wrong_number:   { label: 'Wrong Number',   cls: 'bg-gray-100 text-gray-600 border-gray-300',          icon: '❓' },
-                other:          { label: 'Other',          cls: 'bg-purple-100 text-purple-700 border-purple-300',    icon: '✏️' },
+                interested:     { label: 'Interested',     cls: 'bg-emerald-100 text-emerald-700 border-emerald-300', icon: '' },
+                not_interested: { label: 'Not Interested', cls: 'bg-red-100 text-red-700 border-red-300',             icon: '' },
+                not_eligible:   { label: 'Not Eligible',   cls: 'bg-rose-100 text-rose-700 border-rose-300',           icon: '' },
+                callback:       { label: 'Callback',       cls: 'bg-amber-100 text-amber-700 border-amber-300',       icon: '' },
+                not_reachable:  { label: 'Not Reachable',  cls: 'bg-orange-100 text-orange-700 border-orange-300',    icon: '' },
+                not_answering:  { label: 'Not Answering',  cls: 'bg-slate-100 text-slate-700 border-slate-300',       icon: '' },
+                wrong_number:   { label: 'Wrong Number',   cls: 'bg-gray-100 text-gray-600 border-gray-300',          icon: '' },
+                other:          { label: 'Other',          cls: 'bg-purple-100 text-purple-700 border-purple-300',    icon: '' },
               };
-              const oc  = OUTCOME_CFG[l.callOutcome] || { label: l.callOutcome || 'No Disposition', cls: 'bg-gray-100 text-gray-500 border-gray-200', icon: '—' };
-              const fmt = (d) => d ? new Date(d).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '—';
-              const CIBIL_LABEL = { below_600:'< 600 (Poor)', '600_699':'600–699 (Fair)', '700_749':'700–749 (Good)', '750_800':'750–800 (Very Good)', above_800:'> 800 (Excellent)', unknown:'Unknown' };
+              const oc  = OUTCOME_CFG[l.callOutcome] || { label: l.callOutcome || 'No Disposition', cls: 'bg-gray-100 text-gray-500 border-gray-200', icon: '' };
+              const fmt = (d) => d ? new Date(d).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '';
+              const CIBIL_LABEL = { below_600:'< 600 (Poor)', '600_699':'600699 (Fair)', '700_749':'700749 (Good)', '750_800':'750800 (Very Good)', above_800:'> 800 (Excellent)', unknown:'Unknown' };
 
               return (
                 <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-4"
@@ -2498,16 +2582,16 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                         <div>
                           <div className="flex items-center gap-2 flex-wrap mb-1">
                             <span className="text-2xl">{oc.icon}</span>
-                            <span className="text-xl font-black">{l.name || '—'}</span>
+                            <span className="text-xl font-black">{l.name || ''}</span>
                             {l.leadRef && (
                               <span className="font-mono text-xs font-bold bg-white/20 text-white px-2 py-0.5 rounded-lg tracking-widest">{l.leadRef}</span>
                             )}
                           </div>
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="text-white/80 text-sm">{l.mobile}</span>
-                            {(l.city || l.state) && <span className="text-white/60 text-xs">· {[l.city, l.state].filter(Boolean).join(', ')}</span>}
+                            {(l.city || l.state) && <span className="text-white/60 text-xs"> {[l.city, l.state].filter(Boolean).join(', ')}</span>}
                             <span className="text-xs bg-white/20 text-white px-2 py-0.5 rounded-full font-bold border border-white/30">
-                              {l.sourceWebsiteLead ? '🌐 Website' : l.sourceImportedLead ? '📊 Imported' : '✍️ Manual'}
+                              {l.sourceWebsiteLead ? ' Website' : l.sourceImportedLead ? ' Imported' : ' Manual'}
                             </span>
                           </div>
                         </div>
@@ -2537,11 +2621,11 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                             l.status === 'rejected'  ? 'bg-red-100 text-red-700 border-red-300' :
                                                        'bg-blue-100 text-blue-700 border-blue-300'
                           }`}>
-                            {l.status === 'completed' ? '✔ Completed' : l.status === 'rejected' ? '✖ Rejected' : '⏳ Pending'}
+                            {l.status === 'completed' ? ' Completed' : l.status === 'rejected' ? ' Rejected' : ' Pending'}
                           </span>
                           {l.callbackDate && (
                             <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-bold bg-violet-100 text-violet-700 border border-violet-300">
-                              📅 Callback: {l.callbackDate}
+                               Callback: {l.callbackDate}
                             </span>
                           )}
                         </div>
@@ -2557,16 +2641,16 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
 
                       {/* Info grid */}
                       <div>
-                        <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Lead Details — Agent Filled</p>
+                        <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Lead Details  Agent Filled</p>
                         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                           {[
                             { label: 'Product / Service', val: l.productType?.replace(/_/g,' '), bold: true },
-                            { label: 'Loan Amount',        val: l.loanAmountRequired ? `₹${l.loanAmountRequired.toLocaleString('en-IN')}` : null },
+                            { label: 'Loan Amount',        val: l.loanAmountRequired ? `${l.loanAmountRequired.toLocaleString('en-IN')}` : null },
                             { label: 'Employment Type',    val: l.employmentType?.replace(/_/g,' ') },
                             { label: 'Company',            val: l.companyName },
-                            { label: 'Monthly Salary',     val: l.monthlySalary ? `₹${l.monthlySalary.toLocaleString('en-IN')}` : null },
+                            { label: 'Monthly Salary',     val: l.monthlySalary ? `${l.monthlySalary.toLocaleString('en-IN')}` : null },
                             { label: 'CIBIL Score Range',  val: CIBIL_LABEL[l.cibilScoreRange] || l.cibilScoreRange },
-                            { label: 'Existing EMI',       val: l.existingEMI ? `₹${l.existingEMI.toLocaleString('en-IN')}/mo` : null },
+                            { label: 'Existing EMI',       val: l.existingEMI ? `${l.existingEMI.toLocaleString('en-IN')}/mo` : null },
                             { label: 'Existing Bank',      val: l.existingBank },
                             { label: 'City / State',       val: [l.city, l.state].filter(Boolean).join(', ') || null },
                           ].filter(r => r.val).map(({ label, val, bold }) => (
@@ -2588,7 +2672,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                         )}
                       </div>
 
-                      {/* ── Original Imported Data ── */}
+                      {/*  Original Imported Data  */}
                       {l.sourceImportedLead && (() => {
                         const imp = l.sourceImportedLead;
                         return (
@@ -2596,7 +2680,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                             <div className="flex items-center gap-2 mb-3">
                               <div className="p-1.5 bg-violet-100 rounded-lg"><Database className="h-4 w-4 text-violet-600" /></div>
                               <div>
-                                <p className="text-xs font-bold text-violet-700 uppercase tracking-wide">Original Imported Data — Excel Source</p>
+                                <p className="text-xs font-bold text-violet-700 uppercase tracking-wide">Original Imported Data  Excel Source</p>
                                 <p className="text-xs text-violet-500">Data from the uploaded Excel batch before agent worked this lead</p>
                               </div>
                             </div>
@@ -2657,19 +2741,19 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
             <div className="grid grid-cols-3 gap-4">
               <div className="relative overflow-hidden bg-gradient-to-br from-[#065F36] to-[#00874A] rounded-2xl p-5 text-white shadow-lg shadow-green-200">
                 <p className="text-sm font-semibold text-white/70">Total in Pool</p>
-                <p className="text-4xl font-black mt-1">{poolStats?.stats?.total ?? '—'}</p>
+                <p className="text-4xl font-black mt-1">{poolStats?.stats?.total ?? ''}</p>
                 <p className="text-white/60 text-xs mt-1">All imported leads</p>
                 <div className="absolute -right-4 -bottom-4 w-20 h-20 rounded-full bg-white/10" />
               </div>
               <div className="relative overflow-hidden bg-gradient-to-br from-amber-400 to-orange-500 rounded-2xl p-5 text-white shadow-lg shadow-amber-200">
                 <p className="text-sm font-semibold text-white/70">Available to Assign</p>
-                <p className="text-4xl font-black mt-1">{poolStats?.stats?.available ?? '—'}</p>
+                <p className="text-4xl font-black mt-1">{poolStats?.stats?.available ?? ''}</p>
                 <p className="text-white/60 text-xs mt-1">Not yet assigned to any agent</p>
                 <div className="absolute -right-4 -bottom-4 w-20 h-20 rounded-full bg-white/10" />
               </div>
               <div className="relative overflow-hidden bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl p-5 text-white shadow-lg shadow-emerald-200">
                 <p className="text-sm font-semibold text-white/70">Assigned to Agents</p>
-                <p className="text-4xl font-black mt-1">{poolStats?.stats?.assigned ?? '—'}</p>
+                <p className="text-4xl font-black mt-1">{poolStats?.stats?.assigned ?? ''}</p>
                 <p className="text-white/60 text-xs mt-1">Total across ALL agents (cumulative)</p>
                 <div className="absolute -right-4 -bottom-4 w-20 h-20 rounded-full bg-white/10" />
               </div>
@@ -2707,7 +2791,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                 </div>
                 <div>
                   <h2 className="font-bold text-gray-800">Assign Leads to Agents</h2>
-                  <p className="text-xs text-gray-400">Based on agent performance — enter the number of leads to assign</p>
+                  <p className="text-xs text-gray-400">Based on agent performance  enter the number of leads to assign</p>
                 </div>
               </div>
               {agentsLoading ? <Spinner /> : agents.filter(a => a.isActive).length === 0 ? (
@@ -2757,7 +2841,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                                     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold border ${tierCls}`}>
                                       {tier.emoji} {tier.label}
                                     </span>
-                                    {tier.tier === 5 && <span className="text-xs text-amber-600 font-bold">✨ Recommended</span>}
+                                    {tier.tier === 5 && <span className="text-xs text-amber-600 font-bold"> Recommended</span>}
                                   </div>
                                   {isDropTarget
                                     ? <p className="text-xs text-[#065F36] font-bold animate-pulse">Drop to assign!</p>
@@ -2813,7 +2897,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                   <div className="p-2 bg-violet-100 rounded-xl"><Database className="h-5 w-5 text-violet-600" /></div>
                   <div>
                     <h2 className="font-bold text-gray-800">Import Allocation Pool</h2>
-                    <p className="text-xs text-gray-400">Imported Excel leads — track unassigned vs assigned</p>
+                    <p className="text-xs text-gray-400">Imported Excel leads  track unassigned vs assigned</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
@@ -2950,11 +3034,11 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                           </td>
                           <td className="pl-2 pr-3 py-3.5">
                             <div className="flex items-center gap-1.5">
-                              {isUnassigned && <span className="text-gray-300 text-base leading-none select-none" title="Drag to assign">⠿</span>}
-                              <span className="font-semibold text-gray-800">{l.name || '—'}</span>
+                              {isUnassigned && <span className="text-gray-300 text-base leading-none select-none" title="Drag to assign"></span>}
+                              <span className="font-semibold text-gray-800">{l.name || ''}</span>
                             </div>
                           </td>
-                          <td className="px-3 py-3.5 font-mono text-xs text-gray-600 tracking-wide">{l.mobile || '—'}</td>
+                          <td className="px-3 py-3.5 font-mono text-xs text-gray-600 tracking-wide">{l.mobile || ''}</td>
                           <td className="px-3 py-3.5">
                             {l.importBatchName ? (
                               <button
@@ -2962,25 +3046,25 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                                 className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 transition-colors max-w-[130px] truncate"
                                 title={`Filter by batch: ${l.importBatchName}`}
                               >
-                                📁 {l.importBatchName}
+                                 {l.importBatchName}
                               </button>
-                            ) : <span className="text-gray-300 text-xs">—</span>}
+                            ) : <span className="text-gray-300 text-xs"></span>}
                           </td>
-                          <td className="px-3 py-3.5 text-gray-500">{l.city || '—'}</td>
+                          <td className="px-3 py-3.5 text-gray-500">{l.city || ''}</td>
                           <td className="px-3 py-3.5">
                             {l.productType
                               ? <span className="bg-[#E8FFF5] text-[#065F36] border border-[#D1FAE5] px-2 py-0.5 rounded-full text-xs font-medium capitalize">{l.productType.replace(/_/g,' ')}</span>
-                              : <span className="text-gray-300 text-xs">—</span>}
+                              : <span className="text-gray-300 text-xs"></span>}
                           </td>
                           <td className="px-3 py-3.5">
                             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-violet-100 text-violet-700 border border-violet-200">
-                              📊 Import
+                               Import
                             </span>
                           </td>
-                          <td className="px-3 py-3.5 text-gray-500 text-xs">{l.monthlyIncome || '—'}</td>
+                          <td className="px-3 py-3.5 text-gray-500 text-xs">{l.monthlyIncome || ''}</td>
                           <td className="px-3 py-3.5 text-gray-700 text-sm">{l.assignedTo?.name || <span className="text-amber-500 text-xs font-medium">Unassigned</span>}</td>
                           <td className="px-3 py-3.5">
-                            {/* Show actual callOutcome disposition — not the mapped workStatus */}
+                            {/* Show actual callOutcome disposition  not the mapped workStatus */}
                             {l.callOutcome ? (
                               <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold border ${
                                 l.callOutcome === 'interested'     ? 'bg-emerald-100 text-emerald-700 border-emerald-200' :
@@ -2992,14 +3076,14 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                                 l.callOutcome === 'other'          ? 'bg-purple-100 text-purple-700 border-purple-200' :
                                 'bg-gray-100 text-gray-400 border-gray-200'
                               }`}>
-                                {l.callOutcome === 'interested'     ? '✅ Interested' :
-                                 l.callOutcome === 'not_interested' ? '❌ Not Interested' :
-                                 l.callOutcome === 'not_eligible'   ? '🚫 Not Eligible' :
-                                 l.callOutcome === 'callback'       ? '📞 Callback' :
-                                 l.callOutcome === 'not_reachable'  ? '📵 Not Reachable' :
-                                 l.callOutcome === 'not_answering'  ? '🔕 Not Answering' :
-                                 l.callOutcome === 'wrong_number'   ? '❓ Wrong No.' :
-                                 l.callOutcome === 'other'          ? `✏️ ${l.customCallOutcome || 'Other'}` :
+                                {l.callOutcome === 'interested'     ? ' Interested' :
+                                 l.callOutcome === 'not_interested' ? ' Not Interested' :
+                                 l.callOutcome === 'not_eligible'   ? ' Not Eligible' :
+                                 l.callOutcome === 'callback'       ? ' Callback' :
+                                 l.callOutcome === 'not_reachable'  ? ' Not Reachable' :
+                                 l.callOutcome === 'not_answering'  ? ' Not Answering' :
+                                 l.callOutcome === 'wrong_number'   ? ' Wrong No.' :
+                                 l.callOutcome === 'other'          ? ` ${l.customCallOutcome || 'Other'}` :
                                  l.callOutcome.replace(/_/g,' ')}
                               </span>
                             ) : (
@@ -3015,7 +3099,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                               }`}>
                                 {l.status === 'assigned' ? 'Assigned' : 'Available'}
                               </span>
-                              {/* Reassign button — only for already-assigned leads */}
+                              {/* Reassign button  only for already-assigned leads */}
                               {l.status === 'assigned' && (
                                 <button
                                   onClick={(e) => { e.stopPropagation(); setReassignModal(l); }}
@@ -3053,7 +3137,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                   <div className="p-2 bg-amber-100 rounded-xl"><UserCheck className="h-5 w-5 text-amber-600" /></div>
                   <div>
                     <h2 className="font-bold text-gray-800">Assigned Leads Tracker</h2>
-                    <p className="text-xs text-gray-400">All leads currently assigned to agents — website + imported</p>
+                    <p className="text-xs text-gray-400">All leads currently assigned to agents  website + imported</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -3061,8 +3145,8 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                   <div className="flex items-center bg-gray-100 rounded-xl p-1 gap-0.5">
                     {[
                       { val: 'all',      label: 'All',            dot: 'bg-gray-400'    },
-                      { val: 'website',  label: '🌐 Meta Leads',  dot: 'bg-teal-500'    },
-                      { val: 'imported', label: '📊 Imported',    dot: 'bg-violet-500'  },
+                      { val: 'website',  label: ' Meta Leads',  dot: 'bg-teal-500'    },
+                      { val: 'imported', label: ' Imported',    dot: 'bg-violet-500'  },
                     ].map(s => (
                       <button key={s.val}
                         onClick={() => { setAssignedSourceType(s.val); fetchAssignedLeadsData(1, assignedSearch, assignedDateFrom, assignedDateTo, s.val); }}
@@ -3088,7 +3172,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
               <div className="px-5 py-3 bg-gray-50 border-b border-gray-100 flex items-center gap-2 flex-wrap">
                 <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3 py-2 flex-1 min-w-[200px] max-w-xs">
                   <Search className="h-3.5 w-3.5 text-gray-400 flex-shrink-0" />
-                  <input type="text" placeholder="Search name or mobile…" value={assignedSearch}
+                  <input type="text" placeholder="Search name or mobile" value={assignedSearch}
                     onChange={e => setAssignedSearch(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && fetchAssignedLeadsData(1, assignedSearch, assignedDateFrom, assignedDateTo, assignedSourceType)}
                     className="flex-1 text-sm outline-none bg-transparent min-w-0" />
@@ -3117,7 +3201,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                 {/* Agent filter */}
                 <select value={assignedAgentFilter} onChange={e => { setAssignedAgentFilter(e.target.value); assignedAgentRef.current = e.target.value; fetchAssignedLeadsData(1, assignedSearch, assignedDateFrom, assignedDateTo, assignedSourceType); }}
                   className="text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400">
-                  <option value="">👤 All Agents</option>
+                  <option value=""> All Agents</option>
                   {agents.map(a => (
                     <option key={a._id} value={a._id}>{a.name}</option>
                   ))}
@@ -3125,12 +3209,12 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                 {/* Doc status filter */}
                 <select value={assignedDocFilter} onChange={e => { setAssignedDocFilter(e.target.value); assignedDocFilterRef.current = e.target.value; fetchAssignedLeadsData(1, assignedSearch, assignedDateFrom, assignedDateTo, assignedSourceType); }}
                   className="text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400">
-                  <option value="all">📁 All Docs</option>
-                  <option value="none">📄 No Docs</option>
-                  <option value="partial">📎 Partial</option>
-                  <option value="full">✅ Full Docs</option>
+                  <option value="all"> All Docs</option>
+                  <option value="none"> No Docs</option>
+                  <option value="partial"> Partial</option>
+                  <option value="full"> Full Docs</option>
                 </select>
-                {/* Clear all — always visible, red when active */}
+                {/* Clear all  always visible, red when active */}
                 <button
                   onClick={() => { setAssignedSearch(''); setAssignedDateFrom(''); setAssignedDateTo(''); setAssignedDocFilter('all'); assignedDocFilterRef.current='all'; setAssignedAgentFilter(''); assignedAgentRef.current=''; setAssignedSourceType('all'); fetchAssignedLeadsData(1); }}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
@@ -3216,22 +3300,22 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                             <td className="pl-6 pr-3 py-3.5">
                               <div className="flex flex-col items-start gap-1">
                                 {isWebsite
-                                  ? <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-teal-500 text-white">🌐 Meta</span>
-                                  : <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-violet-100 text-violet-700 border border-violet-200">📊 Imported</span>}
+                                  ? <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-teal-500 text-white"> Meta</span>
+                                  : <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-violet-100 text-violet-700 border border-violet-200"> Imported</span>}
                                 {isWebsite && l.source === 'meta' && (
                                   <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-[#1877F2] text-white">f Meta Ads</span>
                                 )}
                               </div>
                             </td>
                             <td className="px-3 py-3.5">
-                              <p className="font-semibold text-gray-800">{l.name || '—'}</p>
+                              <p className="font-semibold text-gray-800">{l.name || ''}</p>
                               <p className="text-xs text-gray-400">{l.city || l.state || ''}</p>
                             </td>
-                            <td className="px-3 py-3.5 font-mono text-xs text-gray-600">{l.mobile || '—'}</td>
+                            <td className="px-3 py-3.5 font-mono text-xs text-gray-600">{l.mobile || ''}</td>
                             <td className="px-3 py-3.5">
                               {product
                                 ? <span className={`px-2 py-0.5 rounded-full text-xs font-medium capitalize border ${isWebsite ? 'bg-teal-50 text-teal-700 border-teal-200' : 'bg-violet-100 text-violet-700 border-violet-200'}`}>{product.replace(/_/g,' ')}</span>
-                                : <span className="text-gray-300 text-xs">—</span>}
+                                : <span className="text-gray-300 text-xs"></span>}
                             </td>
                             <td className="px-3 py-3.5">
                               {agentName ? (
@@ -3247,17 +3331,17 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                               ) : <span className="text-amber-500 text-xs font-medium">Unassigned</span>}
                             </td>
                             <td className="px-3 py-3.5 text-gray-400 text-xs whitespace-nowrap">
-                              {assignedOn ? new Date(assignedOn).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day:'2-digit', month:'short', year:'numeric' }) : '—'}
+                              {assignedOn ? new Date(assignedOn).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day:'2-digit', month:'short', year:'numeric' }) : ''}
                             </td>
                             <td className="px-3 py-3.5">
                               <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-semibold border ${docStat.cls}`}>
-                                {docStat.status === 'full' ? '✅' : docStat.status === 'partial' ? '📎' : '📄'} {docStat.label}
+                                {docStat.status === 'full' ? '' : docStat.status === 'partial' ? '' : ''} {docStat.label}
                               </span>
                               {(l.callOutcome === 'interested' || l.workStatus === 'interested') && docStat.status === 'full' && (
-                                <div className="mt-0.5 text-[10px] font-bold text-emerald-600">🔥 Ready</div>
+                                <div className="mt-0.5 text-[10px] font-bold text-emerald-600"> Ready</div>
                               )}
                               {(l.callOutcome === 'interested' || l.workStatus === 'interested') && docStat.status === 'partial' && (
-                                <div className="mt-0.5 text-[10px] font-bold text-amber-600">⚠️ Docs needed</div>
+                                <div className="mt-0.5 text-[10px] font-bold text-amber-600"> Docs needed</div>
                               )}
                             </td>
                             <td className="px-3 pr-6 py-3.5">
@@ -3303,7 +3387,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
         )}
       </main>
 
-      {/* ── Floating drag-drop agent panel ──────────────────────────────── */}
+      {/*  Floating drag-drop agent panel  */}
       {dragItem && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] pointer-events-none w-full max-w-2xl px-4">
           <div className="bg-gray-900/95 backdrop-blur-md rounded-2xl p-4 shadow-2xl border border-white/10 pointer-events-auto">
@@ -3337,7 +3421,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
         </div>
       )}
 
-      {/* ── Website Leads Bulk Assign Modal ──────────────────────────────── */}
+      {/*  Website Leads Bulk Assign Modal  */}
       {webBulkModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
@@ -3352,7 +3436,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
               <div className="bg-teal-50 border border-teal-200 rounded-xl px-4 py-3 flex items-center gap-3">
                 <span className="text-2xl font-black text-teal-700">{webSelectedIds.size}</span>
                 <div>
-                  <p className="text-sm font-semibold text-teal-800">🌐 Website leads selected</p>
+                  <p className="text-sm font-semibold text-teal-800"> Website leads selected</p>
                   <p className="text-xs text-teal-600">Pick an agent to assign all of them at once</p>
                 </div>
               </div>
@@ -3366,7 +3450,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                     </div>
                     <div className="flex-1">
                       <p className="font-semibold text-gray-800 text-sm">{a.name}</p>
-                      <p className="text-xs text-gray-400">{a.leadsLoaded || 0} loaded · {a.leadsCompleted || 0} done</p>
+                      <p className="text-xs text-gray-400">{a.leadsLoaded || 0} loaded  {a.leadsCompleted || 0} done</p>
                     </div>
                     {assigningWebLead && <span className="w-4 h-4 border-2 border-teal-400 border-t-teal-700 rounded-full animate-spin" />}
                   </button>
@@ -3379,7 +3463,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
         </div>
       )}
 
-      {/* ── Pool Leads Bulk Assign Modal ─────────────────────────────────── */}
+      {/*  Pool Leads Bulk Assign Modal  */}
       {poolBulkModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
@@ -3394,7 +3478,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
               <div className="bg-violet-50 border border-violet-200 rounded-xl px-4 py-3 flex items-center gap-3">
                 <span className="text-2xl font-black text-violet-700">{poolSelectedIds.size}</span>
                 <div>
-                  <p className="text-sm font-semibold text-violet-800">📊 Imported leads selected</p>
+                  <p className="text-sm font-semibold text-violet-800"> Imported leads selected</p>
                   <p className="text-xs text-violet-600">Pick an agent to assign all of them at once</p>
                 </div>
               </div>
@@ -3408,7 +3492,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                     </div>
                     <div className="flex-1">
                       <p className="font-semibold text-gray-800 text-sm">{a.name}</p>
-                      <p className="text-xs text-gray-400">{a.leadsLoaded || 0} loaded · {a.leadsCompleted || 0} done</p>
+                      <p className="text-xs text-gray-400">{a.leadsLoaded || 0} loaded  {a.leadsCompleted || 0} done</p>
                     </div>
                   </button>
                 ))}
@@ -3420,7 +3504,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
         </div>
       )}
 
-      {/* ── Reassign Imported Lead Modal ─────────────────────────────────── */}
+      {/*  Reassign Imported Lead Modal  */}
       {reassignModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
@@ -3434,11 +3518,11 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
             <div className="p-6 space-y-4">
               {/* Lead info */}
               <div className="bg-orange-50 border border-orange-200 rounded-xl px-4 py-3">
-                <p className="text-sm font-semibold text-orange-900">{reassignModal.name || '—'}</p>
+                <p className="text-sm font-semibold text-orange-900">{reassignModal.name || ''}</p>
                 <p className="text-xs text-orange-600 mt-0.5">
                   {reassignModal.mobile}
-                  {reassignModal.loanType && ` · ${reassignModal.loanType}`}
-                  {reassignModal.state && ` · ${reassignModal.state}`}
+                  {reassignModal.loanType && `  ${reassignModal.loanType}`}
+                  {reassignModal.state && `  ${reassignModal.state}`}
                 </p>
                 {reassignModal.assignedTo && (
                   <p className="text-xs text-orange-500 mt-1 font-medium">
@@ -3450,7 +3534,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
               <div>
                 <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">
                   Select New Agent <span className="text-red-500">*</span>
-                  <span className="ml-2 normal-case font-normal text-gray-400">— Sorted by performance</span>
+                  <span className="ml-2 normal-case font-normal text-gray-400"> Sorted by performance</span>
                 </p>
                 {agents.filter(a => a.isActive).length === 0 ? (
                   <p className="text-sm text-gray-400">No active agents available.</p>
@@ -3488,7 +3572,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                               </span>
                               {isCurrent && <span className="text-xs text-gray-400 font-medium">(current)</span>}
                             </div>
-                            <p className="text-xs text-gray-400 mt-0.5">{conv}% conv · {a.leadsLoaded || 0} loaded</p>
+                            <p className="text-xs text-gray-400 mt-0.5">{conv}% conv  {a.leadsLoaded || 0} loaded</p>
                           </div>
                           {reassigning && <span className="w-4 h-4 border-2 border-orange-300 border-t-orange-600 rounded-full animate-spin flex-shrink-0" />}
                         </button>
@@ -3523,9 +3607,9 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
               <div className="bg-[#E8FFF5] rounded-xl px-4 py-3 border border-[#D1FAE5]">
                 <p className="text-sm font-semibold text-[#065F36]">{assignLeadModal.name}</p>
                 <p className="text-xs text-gray-500 mt-0.5">
-                  🌐 Website Lead · {assignLeadModal.mobile}
-                  {assignLeadModal.productType && ` · ${assignLeadModal.productType.replace(/_/g,' ')}`}
-                  {assignLeadModal.city && ` · ${assignLeadModal.city}`}
+                   Website Lead  {assignLeadModal.mobile}
+                  {assignLeadModal.productType && `  ${assignLeadModal.productType.replace(/_/g,' ')}`}
+                  {assignLeadModal.city && `  ${assignLeadModal.city}`}
                 </p>
               </div>
               <div>
@@ -3574,17 +3658,17 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                               </span>
                             </div>
                             <p className="text-xs mt-0.5">
-                              <span className="text-gray-400">{conv}% conv · {a.leadsLoaded || 0} loaded</span>
+                              <span className="text-gray-400">{conv}% conv  {a.leadsLoaded || 0} loaded</span>
                               {a.agentStatus !== 'available' && (
                                 <span className={`ml-2 font-semibold ${a.agentStatus === 'break' ? 'text-amber-600' : 'text-red-600'}`}>
-                                  {a.agentStatus === 'break' ? '☕ On Break' : '🔴 Unavailable'}
+                                  {a.agentStatus === 'break' ? ' On Break' : ' Unavailable'}
                                 </span>
                               )}
                             </p>
                           </div>
                           {tier.tier === 5 && a.agentStatus === 'available' && (
                             <span className="text-xs font-bold text-amber-600 bg-amber-100 px-2 py-1 rounded-lg flex-shrink-0">
-                              Best ✨
+                              Best 
                             </span>
                           )}
                         </button>
@@ -3611,7 +3695,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
             <div className="px-6 py-3 bg-[#F0FFF8] border-b border-[#D1FAE5] flex items-center justify-between">
               <span className="text-xs text-gray-500 flex items-center gap-2">
                 Lead ID: <LeadRefBadge code={viewDomLead.leadRef} />
-                {viewDomLead.documents?.length ? ` · ${viewDomLead.documents.length} doc(s)` : ''}
+                {viewDomLead.documents?.length ? `  ${viewDomLead.documents.length} doc(s)` : ''}
               </span>
               {user.role === 'dom_superadmin' && (
                 <button onClick={() => handleDownloadZip(viewDomLead._id, viewDomLead.leadRef)}
@@ -3641,7 +3725,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                 <Section label="Agent's Worked Lead Details">
                   <Row2 label="Call Outcome" value={viewDomLead.callOutcome?.replace(/_/g,' ')} />
                   <Row2 label="Service"      value={viewDomLead.productType?.replace(/_/g,' ')} />
-                  <Row2 label="Loan Amount"  value={viewDomLead.loanAmountRequired ? `₹${viewDomLead.loanAmountRequired.toLocaleString('en-IN')}` : null} />
+                  <Row2 label="Loan Amount"  value={viewDomLead.loanAmountRequired ? `${viewDomLead.loanAmountRequired.toLocaleString('en-IN')}` : null} />
                   <Row2 label="Notes"        value={viewDomLead.notes} />
                 </Section>
               )}
@@ -3663,7 +3747,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
           title="Worked Lead Details"
           subtitle={
             <span className="flex items-center gap-2 flex-wrap">
-              Agent: {viewDL.assignedTo?.name || '—'}
+              Agent: {viewDL.assignedTo?.name || ''}
               <LeadRefBadge code={viewDL.leadRef} />
               {/* Source badge in modal header */}
               <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold border ${
@@ -3671,9 +3755,9 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                 viewDL.sourceImportedLead ? 'bg-violet-900/30 text-violet-200 border-violet-400' :
                                              'bg-gray-800/30 text-gray-200 border-gray-500'
               }`}>
-                {viewDL.sourceWebsiteLead  ? '🌐 Website' :
-                 viewDL.sourceImportedLead ? '📊 Imported' :
-                                             '✍️ Manual'}
+                {viewDL.sourceWebsiteLead  ? ' Website' :
+                 viewDL.sourceImportedLead ? ' Imported' :
+                                             ' Manual'}
               </span>
             </span>
           }
@@ -3709,12 +3793,12 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                 <Row2 label="Service"         value={viewDL.productType?.replace(/_/g,' ')} />
                 <Row2 label="Employment"      value={viewDL.employmentType?.replace(/_/g,' ')} />
                 <Row2 label="Company"         value={viewDL.companyName} />
-                <Row2 label="Monthly Salary"  value={viewDL.monthlySalary ? `₹${viewDL.monthlySalary.toLocaleString('en-IN')}` : null} />
-                <Row2 label="Loan Required"   value={viewDL.loanAmountRequired ? `₹${viewDL.loanAmountRequired.toLocaleString('en-IN')}` : null} />
+                <Row2 label="Monthly Salary"  value={viewDL.monthlySalary ? `${viewDL.monthlySalary.toLocaleString('en-IN')}` : null} />
+                <Row2 label="Loan Required"   value={viewDL.loanAmountRequired ? `${viewDL.loanAmountRequired.toLocaleString('en-IN')}` : null} />
                 <Row2 label="Existing Bank"   value={viewDL.existingBank} />
                 <Row2 label="Salary Bank"     value={viewDL.salaryAccountBank} />
                 <Row2 label="CIBIL Range"     value={viewDL.cibilScoreRange?.replace(/_/g,' ')} />
-                <Row2 label="Existing EMI"    value={viewDL.existingEMI ? `₹${viewDL.existingEMI.toLocaleString('en-IN')}` : null} />
+                <Row2 label="Existing EMI"    value={viewDL.existingEMI ? `${viewDL.existingEMI.toLocaleString('en-IN')}` : null} />
               </Section>
               <Section label="Call & Status">
                 <Row2 label="Call Outcome"  value={viewDL.callOutcome?.replace(/_/g,' ')} />
@@ -3738,7 +3822,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
         <CibilCheckModal onClose={() => setCibilModalOpen(false)} />
       )}
 
-      {/* ══ BULK TRANSFER tab ══════════════════════════════════════════════ */}
+      {/*  BULK TRANSFER tab  */}
       {tab === 'bulk_transfer' && (
         <div className="space-y-4 px-6 py-6">
 
@@ -3759,13 +3843,13 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
 
           <div className="grid grid-cols-1 lg:grid-cols-[290px_1fr] gap-4 items-start">
 
-            {/* ── Left: Controls ── */}
+            {/*  Left: Controls  */}
             <div className="space-y-4">
 
               {/* Step 1: Source + filter */}
               <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 space-y-3">
                 <p className="text-[11px] font-extrabold text-violet-500 uppercase tracking-wider">
-                  Step 1 — Source Agent &amp; Filter
+                  Step 1  Source Agent &amp; Filter
                 </p>
 
                 <div>
@@ -3774,7 +3858,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                     value={btSourceAgent}
                     onChange={e => { setBtSourceAgent(e.target.value); setBtLeads([]); setBtSelected(new Set()); setBtShowConfirm(false); }}
                     className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white">
-                    <option value="">— Select agent —</option>
+                    <option value=""> Select agent </option>
                     {agents.map(a => (
                       <option key={a._id} value={a._id}>{a.name}</option>
                     ))}
@@ -3788,14 +3872,14 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                     onChange={e => setBtOutcomeFilter(e.target.value)}
                     className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white">
                     <option value="all">All Dispositions</option>
-                    <option value="not_interested">❌ Not Interested</option>
-                    <option value="not_eligible">🚫 Not Eligible</option>
-                    <option value="not_reachable">📵 Not Reachable</option>
-                    <option value="callback">📞 Callback</option>
-                    <option value="not_answering">🔕 Not Answering</option>
-                    <option value="wrong_number">❓ Wrong Number</option>
-                    <option value="interested">✅ Interested</option>
-                    <option value="other">✏️ Other</option>
+                    <option value="not_interested"> Not Interested</option>
+                    <option value="not_eligible"> Not Eligible</option>
+                    <option value="not_reachable"> Not Reachable</option>
+                    <option value="callback"> Callback</option>
+                    <option value="not_answering"> Not Answering</option>
+                    <option value="wrong_number"> Wrong Number</option>
+                    <option value="interested"> Interested</option>
+                    <option value="other"> Other</option>
                   </select>
                 </div>
 
@@ -3806,7 +3890,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                   {btLeadsLoading
                     ? <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
                     : <Search className="h-4 w-4" />}
-                  {btLeadsLoading ? 'Loading…' : 'Load Leads'}
+                  {btLeadsLoading ? 'Loading' : 'Load Leads'}
                 </button>
               </div>
 
@@ -3814,7 +3898,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
               {btLeads.length > 0 && (
                 <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 space-y-3">
                   <p className="text-[11px] font-extrabold text-emerald-600 uppercase tracking-wider">
-                    Step 2 — Target Agent
+                    Step 2  Target Agent
                   </p>
 
                   <div>
@@ -3823,7 +3907,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                       value={btTargetAgent}
                       onChange={e => setBtTargetAgent(e.target.value)}
                       className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white">
-                      <option value="">— Select agent —</option>
+                      <option value=""> Select agent </option>
                       {agents.filter(a => a._id !== btSourceAgent).map(a => (
                         <option key={a._id} value={a._id}>{a.name}</option>
                       ))}
@@ -3833,7 +3917,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                   {btSelected.size > 0 && btTargetAgent && (
                     <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
                       <p className="text-sm font-semibold text-emerald-800">
-                        {btSelected.size} lead{btSelected.size !== 1 ? 's' : ''} → <strong>{agents.find(a => a._id === btTargetAgent)?.name}</strong>
+                        {btSelected.size} lead{btSelected.size !== 1 ? 's' : ''}  <strong>{agents.find(a => a._id === btTargetAgent)?.name}</strong>
                       </p>
                     </div>
                   )}
@@ -3842,7 +3926,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                   {btShowConfirm ? (
                     <div className="space-y-2">
                       <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800 font-medium">
-                        ⚠️ This will permanently reassign {btSelected.size} lead{btSelected.size !== 1 ? 's' : ''} to{' '}
+                         This will permanently reassign {btSelected.size} lead{btSelected.size !== 1 ? 's' : ''} to{' '}
                         <strong>{agents.find(a => a._id === btTargetAgent)?.name}</strong>. Are you sure?
                       </div>
                       <div className="flex gap-2">
@@ -3853,7 +3937,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                           {btReassigning
                             ? <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
                             : <ArrowLeftRight className="h-4 w-4" />}
-                          {btReassigning ? 'Reassigning…' : 'Yes, Reassign'}
+                          {btReassigning ? 'Reassigning' : 'Yes, Reassign'}
                         </button>
                         <button
                           onClick={() => setBtShowConfirm(false)}
@@ -3875,12 +3959,12 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
               )}
             </div>
 
-            {/* ── Right: Leads table ── */}
+            {/*  Right: Leads table  */}
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
               {btLeadsLoading ? (
                 <div className="flex flex-col items-center justify-center py-20 gap-3">
                   <span className="w-8 h-8 border-2 border-gray-200 border-t-violet-500 rounded-full animate-spin" />
-                  <span className="text-sm text-gray-400">Loading leads…</span>
+                  <span className="text-sm text-gray-400">Loading leads</span>
                 </div>
               ) : btLeads.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-20 gap-3 text-gray-400">
@@ -3916,7 +4000,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                     <table className="w-full text-sm">
                       <thead className="bg-gray-50 sticky top-0 z-10">
                         <tr className="text-left text-xs font-bold text-gray-500 uppercase tracking-wider border-b border-gray-100">
-                          <th className="pl-4 pr-2 py-3 w-8">✓</th>
+                          <th className="pl-4 pr-2 py-3 w-8"></th>
                           <th className="px-3 py-3">Lead ID</th>
                           <th className="px-3 py-3">Customer</th>
                           <th className="px-3 py-3">Mobile</th>
@@ -3954,26 +4038,26 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                               <td className="px-3 py-3">
                                 {lead.leadRef
                                   ? <span className="font-mono text-xs font-bold bg-gray-900 text-emerald-400 px-1.5 py-0.5 rounded">{lead.leadRef}</span>
-                                  : <span className="text-gray-300 text-xs">—</span>}
+                                  : <span className="text-gray-300 text-xs"></span>}
                               </td>
-                              <td className="px-3 py-3 font-semibold text-gray-800">{lead.name || '—'}</td>
-                              <td className="px-3 py-3 font-mono text-xs text-gray-600">{lead.mobile || '—'}</td>
+                              <td className="px-3 py-3 font-semibold text-gray-800">{lead.name || ''}</td>
+                              <td className="px-3 py-3 font-mono text-xs text-gray-600">{lead.mobile || ''}</td>
                               <td className="px-3 py-3">
                                 {oc
                                   ? <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${oc.cls}`}>{oc.lbl}</span>
-                                  : <span className="text-gray-300 text-xs">—</span>}
+                                  : <span className="text-gray-300 text-xs"></span>}
                               </td>
                               <td className="px-3 py-3">
                                 {lead.productType
                                   ? <span className="text-xs bg-[#E8FFF5] text-[#065F36] border border-[#D1FAE5] px-2 py-0.5 rounded-full capitalize">
                                       {lead.productType.replace(/_/g, ' ')}
                                     </span>
-                                  : <span className="text-gray-300 text-xs">—</span>}
+                                  : <span className="text-gray-300 text-xs"></span>}
                               </td>
                               <td className="px-3 py-3 text-gray-400 text-xs whitespace-nowrap">
                                 {lead.updatedAt
                                   ? new Date(lead.updatedAt).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short' })
-                                  : '—'}
+                                  : ''}
                               </td>
                             </tr>
                           );
@@ -3992,7 +4076,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
   );
 };
 
-/* ── Shared UI sub-components ── */
+/*  Shared UI sub-components  */
 
 /**
  * Performance tier calculator.
@@ -4001,7 +4085,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
  */
 const getAgentTier = (agent) => {
   if (!agent.isActive) {
-    return { tier: 0, emoji: '💤', label: 'Inactive',       color: 'gray',   score: -1, ring: 'border-gray-200',   bg: 'bg-gray-50' };
+    return { tier: 0, emoji: '', label: 'Inactive',       color: 'gray',   score: -1, ring: 'border-gray-200',   bg: 'bg-gray-50' };
   }
   const loaded    = agent.leadsLoaded    || 0;
   const completed = agent.leadsCompleted || 0;
@@ -4011,21 +4095,21 @@ const getAgentTier = (agent) => {
   const score     = (conv * 0.6) + (Math.min(worked, 60) * 0.8);
 
   if (loaded < 2) {
-    return { tier: 1, emoji: '🆕', label: 'New Agent',       color: 'sky',    score, ring: 'border-sky-200',    bg: 'bg-sky-50/60' };
+    return { tier: 1, emoji: '', label: 'New Agent',       color: 'sky',    score, ring: 'border-sky-200',    bg: 'bg-sky-50/60' };
   }
   if (conv >= 65 && worked >= 5) {
-    return { tier: 5, emoji: '🏆', label: 'Top Performer',   color: 'amber',  score, ring: 'border-amber-300',  bg: 'bg-amber-50' };
+    return { tier: 5, emoji: '', label: 'Top Performer',   color: 'amber',  score, ring: 'border-amber-300',  bg: 'bg-amber-50' };
   }
   if (conv >= 45 || (conv >= 35 && worked >= 8)) {
-    return { tier: 4, emoji: '⭐', label: 'Star Agent',       color: 'violet', score, ring: 'border-violet-300', bg: 'bg-violet-50/60' };
+    return { tier: 4, emoji: '', label: 'Star Agent',       color: 'violet', score, ring: 'border-violet-300', bg: 'bg-violet-50/60' };
   }
   if (conv >= 25 || worked >= 5) {
-    return { tier: 3, emoji: '👍', label: 'Good Agent',       color: 'emerald',score, ring: 'border-emerald-200',bg: 'bg-emerald-50/50' };
+    return { tier: 3, emoji: '', label: 'Good Agent',       color: 'emerald',score, ring: 'border-emerald-200',bg: 'bg-emerald-50/50' };
   }
   if (loaded >= 5 && conv < 15) {
-    return { tier: 2, emoji: '⚠️', label: 'Needs Coaching',  color: 'orange', score, ring: 'border-orange-200', bg: 'bg-orange-50/50' };
+    return { tier: 2, emoji: '', label: 'Needs Coaching',  color: 'orange', score, ring: 'border-orange-200', bg: 'bg-orange-50/50' };
   }
-  return   { tier: 2, emoji: '✅', label: 'Active',           color: 'teal',   score, ring: 'border-teal-200',   bg: 'bg-teal-50/40' };
+  return   { tier: 2, emoji: '', label: 'Active',           color: 'teal',   score, ring: 'border-teal-200',   bg: 'bg-teal-50/40' };
 };
 
 const TIER_STYLES = {
@@ -4080,7 +4164,7 @@ const Spinner = () => (
       <div className="absolute inset-0 rounded-full border-4 border-gray-100" />
       <div className="absolute inset-0 rounded-full border-4 border-t-[#065F36] border-r-[#00A651] animate-spin" />
     </div>
-    <span className="text-sm text-gray-400 font-medium">Loading data…</span>
+    <span className="text-sm text-gray-400 font-medium">Loading data</span>
   </div>
 );
 
@@ -4098,7 +4182,7 @@ const Pagination = ({ total, page, perPage, count, onPrev, onNext }) => {
   return (
     <div className="flex items-center justify-between px-6 py-3.5 border-t border-gray-100 bg-gray-50/80">
       <span className="text-sm text-gray-500">
-        Showing <strong className="text-gray-700">{((page - 1) * perPage) + 1}–{Math.min(page * perPage, total)}</strong> of <strong className="text-gray-700">{total}</strong>
+        Showing <strong className="text-gray-700">{((page - 1) * perPage) + 1}{Math.min(page * perPage, total)}</strong> of <strong className="text-gray-700">{total}</strong>
       </span>
       <div className="flex items-center gap-1.5">
         <button onClick={onPrev} disabled={page === 1}
@@ -4235,4 +4319,5 @@ const DocumentsGrid = ({ documents }) => {
 };
 
 export default DomAdminDashboard;
+
 

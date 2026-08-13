@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 const express        = require('express');
 const path           = require('path');
 const fs             = require('fs');
@@ -13,7 +13,7 @@ const router = express.Router();
 
 const UPLOAD_DIR = path.join(__dirname, '..', process.env.UPLOAD_PATH || 'uploads');
 
-// Map callOutcome → workStatus for imported leads
+// Map callOutcome  workStatus for imported leads
 const OUTCOME_TO_WORK_STATUS = {
   interested:     'interested',
   not_interested: 'not_interested',
@@ -25,13 +25,13 @@ const OUTCOME_TO_WORK_STATUS = {
   other:          'in_progress',
 };
 
-// ── POST /domestic-api/leads ───────────────────────────────────────────────
-// Domagent submits a worked lead — from a website lead, imported lead, or manual entry
+//  POST /domestic-api/leads 
+// Domagent submits a worked lead  from a website lead, imported lead, or manual entry
 router.post('/', protect, authorize('domagent', 'dom_admin', 'dom_superadmin'), async (req, res) => {
   try {
     const { sourceWebsiteLead, sourceImportedLead, ...fields } = req.body;
 
-    // ── Website-lead path ──────────────────────────────────────────────────
+    //  Website-lead path 
     if (sourceWebsiteLead) {
       const websiteLead = await DomWebsiteLead.findById(sourceWebsiteLead).lean();
       if (!websiteLead) {
@@ -77,7 +77,7 @@ router.post('/', protect, authorize('domagent', 'dom_admin', 'dom_superadmin'), 
       return res.status(201).json({ success: true, data: domLead });
     }
 
-    // ── Imported-lead path ─────────────────────────────────────────────────
+    //  Imported-lead path 
     if (sourceImportedLead) {
       const importedLead = await DomImportedLead.findById(sourceImportedLead).lean();
       if (!importedLead) {
@@ -127,7 +127,7 @@ router.post('/', protect, authorize('domagent', 'dom_admin', 'dom_superadmin'), 
       return res.status(201).json({ success: true, data: domLead });
     }
 
-    // ── Manual lead path (no website lead, no imported lead) ──────────────
+    //  Manual lead path (no website lead, no imported lead) 
     const sanitizedManual = sanitizeLeadFields(fields);
     const domLead = await DomLead.create({
       assignedTo:    req.user._id,
@@ -145,7 +145,7 @@ router.post('/', protect, authorize('domagent', 'dom_admin', 'dom_superadmin'), 
   }
 });
 
-// ── PATCH /domestic-api/leads/:id ─────────────────────────────────────────
+//  PATCH /domestic-api/leads/:id 
 // Domagent edits their worked lead (corrections, additional info)
 router.patch('/:id', protect, authorize('domagent', 'dom_admin', 'dom_superadmin'), async (req, res) => {
   try {
@@ -165,15 +165,15 @@ router.patch('/:id', protect, authorize('domagent', 'dom_admin', 'dom_superadmin
       lastUpdatedBy: req.user._id,
     };
 
-    // ── Auto-status logic based on call outcome ────────────────────────────
+    //  Auto-status logic based on call outcome 
     // Agents/admins set callOutcome; we auto-drive the status field so the
     // admin table always reflects the true state without manual intervention.
     if (updates.callOutcome) {
       if (['not_interested', 'wrong_number', 'not_eligible'].includes(updates.callOutcome)) {
-        // Customer closed — mark as rejected (no further work needed)
+        // Customer closed  mark as rejected (no further work needed)
         updates.status = 'rejected';
       } else if (['interested', 'callback', 'not_reachable', 'not_answering', 'other'].includes(updates.callOutcome)) {
-        // Still active — keep/restore to pending so it stays in the work queue
+        // Still active  keep/restore to pending so it stays in the work queue
         // (only if it was previously rejected, e.g. agent changes their mind)
         if (lead.status === 'rejected') updates.status = 'pending';
       }
@@ -188,10 +188,16 @@ router.patch('/:id', protect, authorize('domagent', 'dom_admin', 'dom_superadmin
       updates.leadRef = generateLeadRef(updates.productType || lead.productType || '');
     }
 
-    const updated = await DomLead.findByIdAndUpdate(req.params.id, updates, {
-      new: true,
-      runValidators: true,
-    })
+    //  Activity counters 
+    // Always bump updateCount; bump callCount only when callOutcome is provided
+    const inc = { updateCount: 1 };
+    if (updates.callOutcome) inc.callCount = 1;
+
+    const updated = await DomLead.findByIdAndUpdate(
+      req.params.id,
+      { $set: updates, $inc: inc },
+      { new: true, runValidators: true }
+    )
       .populate('assignedTo', 'name email')
       .lean();
 
@@ -212,7 +218,7 @@ router.patch('/:id', protect, authorize('domagent', 'dom_admin', 'dom_superadmin
   }
 });
 
-// ── GET /domestic-api/leads/followups ─────────────────────────────────────
+//  GET /domestic-api/leads/followups 
 // Agent: get all leads requiring a follow-up call (callback / not_reachable / wrong_number)
 // Sorted by callbackDate ascending (overdue first), then updatedAt desc
 router.get('/followups', protect, authorize('domagent', 'dom_admin', 'dom_superadmin'), async (req, res) => {
@@ -238,7 +244,7 @@ router.get('/followups', protect, authorize('domagent', 'dom_admin', 'dom_supera
   }
 });
 
-// ── GET /domestic-api/leads ────────────────────────────────────────────────
+//  GET /domestic-api/leads 
 // Domagent: their own leads. Admin/SuperAdmin: all leads with filters.
 router.get('/', protect, async (req, res) => {
   try {
@@ -259,7 +265,7 @@ router.get('/', protect, async (req, res) => {
 
     if (req.query.isManual === 'true') filter.isManual = true;
 
-    // Date range filter — parse as LOCAL date (handles India/IST timezone correctly)
+    // Date range filter  parse as LOCAL date (handles India/IST timezone correctly)
     if (req.query.dateFrom || req.query.dateTo) {
       filter.createdAt = {};
       if (req.query.dateFrom) {
@@ -278,7 +284,7 @@ router.get('/', protect, async (req, res) => {
       filter.status = status;
     }
     if (req.query.productType) filter.productType = req.query.productType;
-    // Filter by import batch — resolve batch IDs to sourceImportedLead IDs
+    // Filter by import batch  resolve batch IDs to sourceImportedLead IDs
     if (req.query.batchId) {
       const batchLeadIds = await DomImportedLead.distinct('_id', { importBatchId: req.query.batchId });
       filter.sourceImportedLead = { $in: batchLeadIds };
@@ -348,7 +354,7 @@ router.get('/', protect, async (req, res) => {
   }
 });
 
-// ── PATCH /domestic-api/leads/:id/status ──────────────────────────────────
+//  PATCH /domestic-api/leads/:id/status 
 // Admin / SuperAdmin: change a lead's status directly.
 // Body: { status: 'pending' | 'completed' | 'rejected' }
 router.patch('/:id/status', protect, authorize('dom_admin', 'dom_superadmin'), async (req, res) => {
@@ -390,7 +396,7 @@ function buildDocStatusFilter(docStatus) {
   return null;
 }
 
-// ── GET /domestic-api/leads/export ────────────────────────────────────────
+//  GET /domestic-api/leads/export 
 // SuperAdmin only: export all filtered leads as Excel download.
 router.get('/export', protect, authorize('dom_admin', 'dom_superadmin'), async (req, res) => {
   try {
@@ -449,13 +455,14 @@ router.get('/export', protect, authorize('dom_admin', 'dom_superadmin'), async (
       'Mobile', 'Alt Mobile', 'Email', 'Official Email',
       'Current Address', 'City', 'State', 'Pincode', 'Residence Type', 'Years at Residence',
       'Permanent Address', 'PA Contact',
-      'Employment', 'Company', 'Monthly Salary (₹)', 'Office Address', 'Office Landline',
+      'Employment', 'Company', 'Monthly Salary ()', 'Office Address', 'Office Landline',
       'Years at Job', 'Total Exp',
-      'Product', 'Loan Amount (₹)', 'Existing Bank', 'Salary Bank', 'CIBIL Range', 'Existing EMI (₹)',
+      'Product', 'Loan Amount ()', 'Existing Bank', 'Salary Bank', 'CIBIL Range', 'Existing EMI ()',
       'Ref1 Name', 'Ref1 Contact', 'Ref1 Address',
       'Ref2 Name', 'Ref2 Contact', 'Ref2 Address',
       'Disposition', 'Custom Disposition', 'Callback Date', 'Notes',
       'Status', 'Agent', 'Agent Email',
+      'Times Called', 'Times Updated',
       'Docs Count', 'Doc Types', 'Created On',
     ];
 
@@ -483,6 +490,7 @@ router.get('/export', protect, authorize('dom_admin', 'dom_superadmin'), async (
       (l.callOutcome || '').replace(/_/g, ' '), l.customCallOutcome || '',
       l.callbackDate || '', l.notes || '',
       l.status || '', l.assignedTo?.name || '', l.assignedTo?.email || '',
+      l.callCount || 0, l.updateCount || 0,
       (l.documents || []).length,
       (l.documents || []).map((d) => d.docType.replace(/_/g, ' ')).join('; '),
       l.createdAt ? new Date(l.createdAt).toLocaleString('en-IN', { hour12: true }) : '',
@@ -514,8 +522,8 @@ router.get('/export', protect, authorize('dom_admin', 'dom_superadmin'), async (
   }
 });
 
-// ── GET /domestic-api/leads/export-zip ────────────────────────────────────
-// SuperAdmin only: bulk ZIP — master Excel with all filtered leads + every
+//  GET /domestic-api/leads/export-zip 
+// SuperAdmin only: bulk ZIP  master Excel with all filtered leads + every
 // lead's uploaded documents organised in per-lead subfolders.
 router.get('/export-zip', protect, authorize('dom_superadmin'), async (req, res) => {
   try {
@@ -552,7 +560,7 @@ router.get('/export-zip', protect, authorize('dom_superadmin'), async (req, res)
         { city:    { $regex: search, $options: 'i' } },
       ]});
     }
-    // Doc status filter — when partial/full, only leads with matching doc set
+    // Doc status filter  when partial/full, only leads with matching doc set
     const dsf = buildDocStatusFilter(docStatus);
     if (dsf) {
       if (dsf.$and) andConditions.push(...dsf.$and);
@@ -581,20 +589,21 @@ router.get('/export-zip', protect, authorize('dom_superadmin'), async (req, res)
     });
     archive.pipe(res);
 
-    // ── Master Excel sheet (all fields) ──────────────────────────────────
+    //  Master Excel sheet (all fields) 
     const headers = [
       'Lead ID', 'Segment', 'Location', 'TC Name',
       'Name', 'Father Name', 'Mother Name', 'DOB', 'PAN', 'Aadhaar', 'Education', 'Marital Status', 'Spouse Name',
       'Mobile', 'Alt Mobile', 'Email', 'Official Email',
       'Current Address', 'City', 'State', 'Pincode', 'Residence Type', 'Years at Residence',
       'Permanent Address', 'PA Contact',
-      'Employment', 'Company', 'Monthly Salary (₹)', 'Office Address', 'Office Landline',
+      'Employment', 'Company', 'Monthly Salary ()', 'Office Address', 'Office Landline',
       'Years at Job', 'Total Exp',
-      'Product', 'Loan Amount (₹)', 'Existing Bank', 'Salary Bank', 'CIBIL Range', 'Existing EMI (₹)',
+      'Product', 'Loan Amount ()', 'Existing Bank', 'Salary Bank', 'CIBIL Range', 'Existing EMI ()',
       'Ref1 Name', 'Ref1 Contact', 'Ref1 Address',
       'Ref2 Name', 'Ref2 Contact', 'Ref2 Address',
       'Disposition', 'Custom Disposition', 'Callback Date', 'Notes',
       'Status', 'Agent', 'Agent Email',
+      'Times Called', 'Times Updated',
       'Docs Count', 'Doc Types', 'Created On',
     ];
     const rows = leads.map((l) => [
@@ -621,6 +630,7 @@ router.get('/export-zip', protect, authorize('dom_superadmin'), async (req, res)
       (l.callOutcome || '').replace(/_/g, ' '), l.customCallOutcome || '',
       l.callbackDate || '', l.notes || '',
       l.status || '', l.assignedTo?.name || '', l.assignedTo?.email || '',
+      l.callCount || 0, l.updateCount || 0,
       (l.documents || []).length,
       (l.documents || []).map((d) => d.docType.replace(/_/g, ' ')).join('; '),
       l.createdAt ? new Date(l.createdAt).toLocaleString('en-IN', { hour12: true }) : '',
@@ -632,7 +642,7 @@ router.get('/export-zip', protect, authorize('dom_superadmin'), async (req, res)
     const masterBuf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
     archive.append(masterBuf, { name: `All-Leads-${dateTag}.xlsx` });
 
-    // ── Per-lead document folders ─────────────────────────────────────────
+    //  Per-lead document folders 
     for (const lead of leads) {
       if (!(lead.documents || []).length) continue;
       const safeName = (lead.leadRef || lead._id.toString()).replace(/[^A-Za-z0-9\-_]/g, '_');
@@ -656,7 +666,7 @@ router.get('/export-zip', protect, authorize('dom_superadmin'), async (req, res)
   }
 });
 
-// ── GET /domestic-api/leads/:id/download ──────────────────────────────────
+//  GET /domestic-api/leads/:id/download 
 // Admin/SuperAdmin: download a ZIP containing lead info (CSV) + all uploaded documents.
 router.get('/:id/download', protect, authorize('dom_admin', 'dom_superadmin'), async (req, res) => {
   try {
@@ -698,13 +708,13 @@ router.get('/:id/download', protect, authorize('dom_admin', 'dom_superadmin'), a
       ['Pincode',              lead.pincode || ''],
       ['Employment Type',      (lead.employmentType || '').replace(/_/g, ' ')],
       ['Company Name',         lead.companyName || ''],
-      ['Monthly Salary (₹)',   lead.monthlySalary ? Number(lead.monthlySalary) : ''],
+      ['Monthly Salary ()',   lead.monthlySalary ? Number(lead.monthlySalary) : ''],
       ['Product / Service',    (lead.productType || '').replace(/_/g, ' ')],
-      ['Loan Amount (₹)',      lead.loanAmountRequired ? Number(lead.loanAmountRequired) : ''],
+      ['Loan Amount ()',      lead.loanAmountRequired ? Number(lead.loanAmountRequired) : ''],
       ['Existing Bank',        lead.existingBank || ''],
       ['Salary Account Bank',  lead.salaryAccountBank || ''],
       ['CIBIL Score Range',    (lead.cibilScoreRange || '').replace(/_/g, ' ')],
-      ['Existing EMI (₹)',     lead.existingEMI ? Number(lead.existingEMI) : ''],
+      ['Existing EMI ()',     lead.existingEMI ? Number(lead.existingEMI) : ''],
       ['Call Outcome',         (lead.callOutcome || '').replace(/_/g, ' ')],
       ['Callback Date',        lead.callbackDate || ''],
       ['Notes',                lead.notes || ''],
@@ -747,7 +757,7 @@ router.get('/:id/download', protect, authorize('dom_admin', 'dom_superadmin'), a
   }
 });
 
-// ── GET /domestic-api/leads/:id ────────────────────────────────────────────
+//  GET /domestic-api/leads/:id 
 router.get('/:id', protect, async (req, res) => {
   try {
     const lead = await DomLead.findById(req.params.id)
@@ -769,7 +779,7 @@ router.get('/:id', protect, async (req, res) => {
   }
 });
 
-// ── Lead Reference ID helpers ──────────────────────────────────────────────
+//  Lead Reference ID helpers 
 // Format: {PREFIX}-{YYMMDD}-{4CHAR}
 // e.g. PL-260611-A3F7, HL-260611-B9XK, CC-260611-M2QW
 // The date+random suffix is immutable; prefix updates if productType changes.
@@ -810,7 +820,7 @@ function generateLeadRef(productType) {
 function swapLeadRefPrefix(existingRef, newProductType) {
   if (!existingRef) return generateLeadRef(newProductType);
   const parts = existingRef.split('-');
-  // parts: [PREFIX, DATE(6), RAND(4)] — but PREFIX could be multi-char (LAP, SIP)
+  // parts: [PREFIX, DATE(6), RAND(4)]  but PREFIX could be multi-char (LAP, SIP)
   // Last two segments are always DATE and RAND, everything before is the prefix
   if (parts.length < 3) return generateLeadRef(newProductType);
   const suffix    = parts.slice(-2).join('-');        // "YYMMDD-XXXX"
@@ -818,7 +828,7 @@ function swapLeadRefPrefix(existingRef, newProductType) {
   return `${newPrefix}-${suffix}`;
 }
 
-// ── Helper: whitelist allowed fields ──────────────────────────────────────
+//  Helper: whitelist allowed fields 
 // Also normalizes employmentType and productType to lowercase enum values
 // so that intake leads from mycashbridge (which may use different casing/names)
 // don't fail Mongoose validation.
@@ -934,3 +944,4 @@ function sanitizeLeadFields(body) {
 }
 
 module.exports = router;
+

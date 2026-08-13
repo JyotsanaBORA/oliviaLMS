@@ -1,8 +1,8 @@
-import React from 'react';
+﻿import React from 'react';
 import { Phone, MapPin, Briefcase, Clock } from 'lucide-react';
 
 const fmtDate = (d) =>
-  d ? new Date(d).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
+  d ? new Date(d).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
 
 const LeadCard = ({ lead, onOpen }) => {
   const isWorked   = lead.isWorked;
@@ -30,7 +30,7 @@ const LeadCard = ({ lead, onOpen }) => {
           <div className={`mt-1.5 w-2.5 h-2.5 rounded-full flex-shrink-0 ${dotClass}`} />
 
           <div className="min-w-0">
-            <p className="font-semibold text-gray-800 truncate">{lead.name || '—'}</p>
+            <p className="font-semibold text-gray-800 truncate">{lead.name || ''}</p>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-sm text-gray-600">
               <span className="flex items-center gap-1">
                 <Phone className="h-3 w-3" />
@@ -73,3 +73,4 @@ const LeadCard = ({ lead, onOpen }) => {
 };
 
 export default LeadCard;
+

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { X, ShieldCheck, CheckCircle, AlertCircle, FileText } from 'lucide-react';
 import api from '../utils/axios';
 import toast from 'react-hot-toast';
@@ -66,7 +66,7 @@ const CibilCheckModal = ({ onClose }) => {
     }
   };
 
-  // ── Result display ─────────────────────────────────────────────────────
+  //  Result display 
   const renderResult = () => {
     const cibilData  = result?.data;
     const report     = cibilData?.CIBILReport;
@@ -97,7 +97,7 @@ const CibilCheckModal = ({ onClose }) => {
                 : scoreVal >= 700 ? 'text-emerald-600'
                 : scoreVal >= 600 ? 'text-amber-600'
                 : 'text-red-600'
-            }`}>{scoreVal !== null ? scoreVal : '—'}</p>
+            }`}>{scoreVal !== null ? scoreVal : ''}</p>
             {reportName && <p className="text-xs text-gray-400 mt-1">{reportName}</p>}
           </div>
           <div className="text-right space-y-2">
@@ -116,8 +116,8 @@ const CibilCheckModal = ({ onClose }) => {
             {[
               { label: 'Total Accounts',   val: acctSumm.totalAccounts },
               { label: 'Overdue Accounts', val: acctSumm.overdueAccounts,  warn: acctSumm.overdueAccounts > 0 },
-              { label: 'Current Balance',  val: acctSumm.currentBalance  != null ? `₹${acctSumm.currentBalance.toLocaleString('en-IN')}` : null },
-              { label: 'Overdue Balance',  val: acctSumm.overdueBalance  != null ? `₹${acctSumm.overdueBalance.toLocaleString('en-IN')}` : null, warn: acctSumm.overdueBalance > 0 },
+              { label: 'Current Balance',  val: acctSumm.currentBalance  != null ? `${acctSumm.currentBalance.toLocaleString('en-IN')}` : null },
+              { label: 'Overdue Balance',  val: acctSumm.overdueBalance  != null ? `${acctSumm.overdueBalance.toLocaleString('en-IN')}` : null, warn: acctSumm.overdueBalance > 0 },
               { label: 'Enquiries (30d)',  val: inqSumm.inquiryPast30Days },
               { label: 'Enquiries (12m)',  val: inqSumm.inquiryPast12Months },
               { label: 'Total Enquiries',  val: inqSumm.totalInquiry },
@@ -160,7 +160,7 @@ const CibilCheckModal = ({ onClose }) => {
             </div>
             <div>
               <h2 className="text-base font-bold text-white">Live CIBIL Score Check</h2>
-              <p className="text-indigo-200 text-xs mt-0.5">Powered by Signzy — real-time credit bureau check</p>
+              <p className="text-indigo-200 text-xs mt-0.5">Powered by Signzy  real-time credit bureau check</p>
             </div>
           </div>
           <button onClick={onClose} className="text-white/70 hover:text-white transition-colors">
@@ -243,7 +243,7 @@ const CibilCheckModal = ({ onClose }) => {
               {checking
                 ? <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
                 : <ShieldCheck className="h-4 w-4" />}
-              {checking ? 'Checking…' : 'Run CIBIL Check'}
+              {checking ? 'Checking' : 'Run CIBIL Check'}
             </button>
           )}
         </div>
@@ -253,3 +253,4 @@ const CibilCheckModal = ({ onClose }) => {
 };
 
 export default CibilCheckModal;
+

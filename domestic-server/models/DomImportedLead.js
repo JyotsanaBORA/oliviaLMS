@@ -1,26 +1,26 @@
-'use strict';
+﻿'use strict';
 const mongoose = require('mongoose');
 
 /**
- * DomImportedLead — a lead row imported from Excel/CSV by the super admin.
+ * DomImportedLead  a lead row imported from Excel/CSV by the super admin.
  * Supports the standard VINTAGE format headers as shared by the business.
- * Flow: imported → shared (with admin) → assigned (to agent)
+ * Flow: imported  shared (with admin)  assigned (to agent)
  */
 const domImportedLeadSchema = new mongoose.Schema(
   {
-    // ── Core identifiers ───────────────────────────────────────────────────
+    //  Core identifiers 
     name:   { type: String, trim: true, maxlength: 150 },   // Customer Name
     mobile: { type: String, trim: true, maxlength: 20, index: true }, // Mobile Number
     email:  { type: String, trim: true, lowercase: true, maxlength: 150 }, // E Mail
 
-    // ── Customer profile ───────────────────────────────────────────────────
+    //  Customer profile 
     dateOfBirth:              { type: String, trim: true, maxlength: 30 },
     age:                      { type: String, trim: true, maxlength: 10 },
     customerAadharNo:         { type: String, trim: true, maxlength: 20 },
     panNumber:                { type: String, trim: true, uppercase: true, maxlength: 15 },
     customerPreferredLanguage:{ type: String, trim: true, maxlength: 50 },
 
-    // ── Address ────────────────────────────────────────────────────────────
+    //  Address 
     residenceAddress:    { type: String, trim: true, maxlength: 500 },
     residencePhoneNumber:{ type: String, trim: true, maxlength: 20 },
     officeAddress:       { type: String, trim: true, maxlength: 500 },
@@ -29,7 +29,7 @@ const domImportedLeadSchema = new mongoose.Schema(
     city:                { type: String, trim: true, maxlength: 100 },
     state:               { type: String, trim: true, maxlength: 100 },
 
-    // ── Loan / financial details ───────────────────────────────────────────
+    //  Loan / financial details 
     vintage:                 { type: String, trim: true, maxlength: 100 },
     loanType:                { type: String, trim: true, maxlength: 100 },
     productType:             { type: String, trim: true, maxlength: 100 }, // alias / legacy
@@ -44,12 +44,12 @@ const domImportedLeadSchema = new mongoose.Schema(
     countOfLiveLoans:        { type: String, trim: true, maxlength: 10 },
     bankName:                { type: String, trim: true, maxlength: 100 },
 
-    // ── Employment ─────────────────────────────────────────────────────────
+    //  Employment 
     employment:      { type: String, trim: true, maxlength: 100 }, // Employement Type
     firmEmployeeName:{ type: String, trim: true, maxlength: 150 }, // Firm/Employee Name
     monthlyIncome:   { type: String, trim: true, maxlength: 50 },
 
-    // ── Asset / CIBIL ──────────────────────────────────────────────────────
+    //  Asset / CIBIL 
     cibilScore:          { type: String, trim: true, maxlength: 20 },
     cibilScoreDate:      { type: String, trim: true, maxlength: 30 },
     assetDescription:    { type: String, trim: true, maxlength: 300 },
@@ -58,7 +58,7 @@ const domImportedLeadSchema = new mongoose.Schema(
     loanAmount:          { type: String, trim: true, maxlength: 50 }, // legacy
     remarks:             { type: String, trim: true, maxlength: 1000 },
 
-    // ── Import batch tracking ──────────────────────────────────────────────
+    //  Import batch tracking 
     importBatchId:   { type: String, index: true },
     importBatchName: { type: String, trim: true, maxlength: 200 },
     importedBy: {
@@ -68,17 +68,23 @@ const domImportedLeadSchema = new mongoose.Schema(
       index: true,
     },
 
-    // ── Sharing ────────────────────────────────────────────────────────────
+    //  Sharing 
     sharedWith: [{ type: mongoose.Schema.Types.ObjectId, ref: 'DomUser' }],
     sharedAt:   { type: Date, default: null },
     sharedBy:   { type: mongoose.Schema.Types.ObjectId, ref: 'DomUser', default: null },
 
-    // ── Assignment ─────────────────────────────────────────────────────────
+    //  Assignment 
     assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: 'DomUser', default: null, index: true },
     assignedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'DomUser', default: null },
     assignedAt: { type: Date, default: null },
+    // Kept even after reassignment/unassignment for day-by-day IST reporting.
+    assignmentHistory: [{
+      agent:        { type: mongoose.Schema.Types.ObjectId, ref: 'DomUser' },
+      assignedAt:   { type: Date, required: true },
+      unassignedAt: { type: Date, default: null },
+    }],
 
-    // ── Work tracking ──────────────────────────────────────────────────────
+    //  Work tracking 
     domLeadId: { type: mongoose.Schema.Types.ObjectId, ref: 'DomLead', default: null },
     workStatus: {
       type: String,
@@ -91,7 +97,7 @@ const domImportedLeadSchema = new mongoose.Schema(
     agentNotes:   { type: String, trim: true, maxlength: 1000 },
     workedAt:     { type: Date, default: null },
 
-    // ── Status pipeline ────────────────────────────────────────────────────
+    //  Status pipeline 
     status: {
       type: String,
       enum: ['imported', 'shared', 'assigned'],
@@ -105,6 +111,10 @@ const domImportedLeadSchema = new mongoose.Schema(
 domImportedLeadSchema.index({ status: 1, createdAt: -1 });
 domImportedLeadSchema.index({ sharedWith: 1, status: 1 });
 domImportedLeadSchema.index({ importBatchId: 1, createdAt: -1 });
+domImportedLeadSchema.index({ assignedTo: 1, assignedAt: -1 });
+domImportedLeadSchema.index({ assignedAt: -1 });
+domImportedLeadSchema.index({ 'assignmentHistory.assignedAt': -1 });
 
 module.exports = mongoose.model('DomImportedLead', domImportedLeadSchema);
+
 

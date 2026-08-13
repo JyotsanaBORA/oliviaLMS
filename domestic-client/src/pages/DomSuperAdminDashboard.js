@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+﻿import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   LogOut, Plus, Shield, Eye, EyeOff, X, RefreshCw, Key,
   Users, UserPlus, ChevronLeft, ChevronRight, CheckCircle2, AlertCircle, Copy,
   Upload, Database, Share2, Globe, Search, UserCheck2,
   Activity, BarChart2, FileText, Briefcase, Coffee, XCircle,
   TrendingUp, Calendar, Download, ArrowUp, ArrowDown, Zap,
-  ChevronDown, Menu, Send,
+  ChevronDown, Menu, Send, UserMinus,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import DomAdminDashboard from './DomAdminDashboard';
@@ -14,18 +14,18 @@ import toast from 'react-hot-toast';
 
 /** Shared performance tier helper (mirrors DomAdminDashboard) */
 const getAgentTier = (agent) => {
-  if (!agent.isActive) return { tier: 0, emoji: '💤', label: 'Inactive', color: 'gray', score: -1 };
+  if (!agent.isActive) return { tier: 0, emoji: '', label: 'Inactive', color: 'gray', score: -1 };
   const loaded    = agent.leadsLoaded    || 0;
   const completed = agent.leadsCompleted || 0;
   const worked    = agent.domLeadsCreated || 0;
   const conv      = loaded > 0 ? (completed / loaded) * 100 : 0;
   const score     = (conv * 0.6) + (Math.min(worked, 60) * 0.8);
-  if (loaded < 2)                                    return { tier: 1, emoji: '🆕', label: 'New Agent',      color: 'sky',    score };
-  if (conv >= 65 && worked >= 5)                     return { tier: 5, emoji: '🏆', label: 'Top Performer',  color: 'amber',  score };
-  if (conv >= 45 || (conv >= 35 && worked >= 8))     return { tier: 4, emoji: '⭐', label: 'Star Agent',      color: 'violet', score };
-  if (conv >= 25 || worked >= 5)                     return { tier: 3, emoji: '👍', label: 'Good Agent',      color: 'emerald',score };
-  if (loaded >= 5 && conv < 15)                      return { tier: 2, emoji: '⚠️', label: 'Needs Coaching', color: 'orange', score };
-  return                                                      { tier: 2, emoji: '✅', label: 'Active',          color: 'teal',   score };
+  if (loaded < 2)                                    return { tier: 1, emoji: '', label: 'New Agent',      color: 'sky',    score };
+  if (conv >= 65 && worked >= 5)                     return { tier: 5, emoji: '', label: 'Top Performer',  color: 'amber',  score };
+  if (conv >= 45 || (conv >= 35 && worked >= 8))     return { tier: 4, emoji: '', label: 'Star Agent',      color: 'violet', score };
+  if (conv >= 25 || worked >= 5)                     return { tier: 3, emoji: '', label: 'Good Agent',      color: 'emerald',score };
+  if (loaded >= 5 && conv < 15)                      return { tier: 2, emoji: '', label: 'Needs Coaching', color: 'orange', score };
+  return                                                      { tier: 2, emoji: '', label: 'Active',          color: 'teal',   score };
 };
 const SA_TIER_STYLES = {
   amber:'bg-amber-100 text-amber-800 border-amber-300', violet:'bg-violet-100 text-violet-800 border-violet-300',
@@ -46,7 +46,7 @@ const ROLE_COLORS = {
   domagent:       'bg-gray-100 text-gray-700 border border-gray-200',
 };
 
-const IST_MS = 5.5 * 60 * 60 * 1000; // UTC+5:30 — India has no DST
+const IST_MS = 5.5 * 60 * 60 * 1000; // UTC+5:30  India has no DST
 /** Returns today's date in IST as YYYY-MM-DD. offsetDays > 0 = days ago */
 const istToday = (offsetDays = 0) => {
   const ist = new Date(Date.now() + IST_MS - offsetDays * 86400000);
@@ -65,7 +65,7 @@ const DomSuperAdminDashboard = () => {
   const [usersLoading,    setUsersLoading]    = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editUser,        setEditUser]        = useState(null);
-  const [deleteConfirm,   setDeleteConfirm]   = useState(null); // { type, id, name } — universal delete confirm
+  const [deleteConfirm,   setDeleteConfirm]   = useState(null); // { type, id, name }  universal delete confirm
 
   const [apiKey,         setApiKey]        = useState(null);
   const [apiKeyVisible,  setApiKeyVisible]  = useState(false);
@@ -135,7 +135,18 @@ const DomSuperAdminDashboard = () => {
   const [trackLeadsLoading,   setTrackLeadsLoading]   = useState(false);
   const [trackerLeadDetail,   setTrackerLeadDetail]   = useState(null);  // lead clicked in tracker
 
-  // Channel Partners — Manual Leads
+  // Daily allocations are always grouped by an IST calendar date.
+  const [dailyAssignedDate, setDailyAssignedDate] = useState(istToday());
+  const [dailyAssignedLeads, setDailyAssignedLeads] = useState([]);
+  const [dailyAssignedLoading, setDailyAssignedLoading] = useState(false);
+  const [dailyAssignedSearch, setDailyAssignedSearch] = useState('');
+  const [dailyAssignedAgent, setDailyAssignedAgent] = useState('');
+  const [dailyAssignedAgentSearch, setDailyAssignedAgentSearch] = useState('');
+  const [dailyAssignedDisposition, setDailyAssignedDisposition] = useState('');
+  const [dailyAssignedView, setDailyAssignedView] = useState('assigned'); // 'assigned' | 'worked'
+  const [dailyAssignedCounts, setDailyAssignedCounts] = useState({ assigned: 0, worked: 0 });
+
+  // Channel Partners  Manual Leads
   const [manualLeads,        setManualLeads]        = useState([]);
   const [manualLeadsLoading, setManualLeadsLoading] = useState(false);
   const [manualLeadDetail,   setManualLeadDetail]   = useState(null);
@@ -144,7 +155,7 @@ const DomSuperAdminDashboard = () => {
   const [userSearch,         setUserSearch]         = useState('');    // search users table
   const [batchSearch,        setBatchSearch]        = useState('');    // search import batches
 
-  // Sidebar collapse state — 'agents' group is expanded by default
+  // Sidebar collapse state  'agents' group is expanded by default
   const [openGroups, setOpenGroups] = useState(new Set(['agents']));
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
@@ -213,7 +224,7 @@ const DomSuperAdminDashboard = () => {
     } catch {}
   }, []);
 
-  // ── Website Leads fetch functions ────────────────────────────────────────
+  //  Website Leads fetch functions 
   const fetchWebLeads = useCallback(async (page = 1) => {
     setWebLeadsLoading(true);
     try {
@@ -293,7 +304,7 @@ const DomSuperAdminDashboard = () => {
     } finally { setWebAssigning(false); }
   }, [webSelectedIds, fetchWebLeads, webLeadsPage]);
 
-  // ── Agent Tracker ────────────────────────────────────────────────────────
+  //  Agent Tracker 
   const fetchTrackerAgents = useCallback(async () => {
     setTrackerLoading(true);
     try {
@@ -302,6 +313,44 @@ const DomSuperAdminDashboard = () => {
     } catch { toast.error('Failed to load agents.'); }
     finally { setTrackerLoading(false); }
   }, []);
+
+  const fetchDailyAssignedLeads = useCallback(async (date = dailyAssignedDate) => {
+    setDailyAssignedLoading(true);
+    try {
+      // Always fetch the full assigned-day set; worked view is derived locally from lead activity fields.
+      const res = await api.get(`/domestic-api/admin/daily-assigned-leads?date=${encodeURIComponent(date)}&view=assigned`);
+      const data = res.data?.data || [];
+      const isWorkedLead = (lead) => Boolean(
+        lead?.hasWorkedDetails ||
+        lead?.workedLead?.domLeadId ||
+        lead?.domLeadId ||
+        lead?.workedAt ||
+        lead?.completedAt ||
+        lead?.callOutcome ||
+        (lead?.workStatus && lead.workStatus !== 'new') ||
+        lead?.status === 'completed'
+      );
+      const computedCounts = {
+        assigned: data.length,
+        worked: data.filter(isWorkedLead).length,
+      };
+      setDailyAssignedLeads(data);
+      setDailyAssignedCounts(computedCounts);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to load daily assigned leads.');
+    } finally { setDailyAssignedLoading(false); }
+  }, [dailyAssignedDate]);
+
+  const handleDailyUnassign = useCallback(async (lead) => {
+    if (!window.confirm(`Unassign ${lead.name || lead.mobile} from ${lead.agent?.name}?`)) return;
+    try {
+      const res = await api.delete(`/domestic-api/admin/daily-assigned-leads/${lead.source}/${lead.leadId}`);
+      toast.success(res.data?.message || 'Lead unassigned.');
+      fetchDailyAssignedLeads();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Could not unassign lead.');
+    }
+  }, [fetchDailyAssignedLeads]);
 
   const fetchManualLeads = useCallback(async () => {
     setManualLeadsLoading(true);
@@ -375,7 +424,7 @@ const DomSuperAdminDashboard = () => {
       toast.success(res.data.message);
       // Show warning if some mapped fields were not found in the Excel
       if (res.data.warning) {
-        toast(res.data.warning, { icon: '⚠️', duration: 6000 });
+        toast(res.data.warning, { icon: '', duration: 6000 });
       }
       setLastImportResult({
         count:         res.data.count,
@@ -437,7 +486,13 @@ const DomSuperAdminDashboard = () => {
     if (superTab === 'reports')      { fetchReport('month', '', ''); }
     if (superTab === 'manual_leads') { fetchManualLeads(); }
     if (superTab === 'agent_performance') { /* uses DomAdminDashboard internally */ }
-  }, [superTab, fetchUsers, fetchApiKey, fetchBatches, fetchAdmins, fetchWebLeads, fetchWebProductTypes, fetchWebAgents, fetchWebServiceStats, fetchTrackerAgents, fetchReport, fetchManualLeads]);
+  }, [superTab, fetchUsers, fetchApiKey, fetchBatches, fetchAdmins, fetchWebLeads, fetchWebProductTypes, fetchWebAgents, fetchWebServiceStats, fetchTrackerAgents, fetchReport, fetchManualLeads, fetchDailyAssignedLeads]);
+
+  // Keep daily assigned table in sync with IST date and Assigned/Worked toggle.
+  useEffect(() => {
+    if (superTab !== 'daily_assigned') return;
+    fetchDailyAssignedLeads();
+  }, [superTab, dailyAssignedDate, dailyAssignedView, fetchDailyAssignedLeads]);
 
   // Auto-refresh tracker every 30 seconds for live monitoring
   useEffect(() => {
@@ -479,8 +534,8 @@ const DomSuperAdminDashboard = () => {
     }
   };
 
-  /* ── Main: renders Admin Dashboard + super-admin header + tab nav ── */
-  /* ── Sidebar nav config ── */
+  /*  Main: renders Admin Dashboard + super-admin header + tab nav  */
+  /*  Sidebar nav config  */
   const SIDEBAR_GROUPS = [
     {
       key: 'overview', label: null, collapsible: false,
@@ -494,6 +549,7 @@ const DomSuperAdminDashboard = () => {
       key: 'agents', label: 'AGENT ALLOCATION', collapsible: true,
       items: [
         { key: 'tracker',          Icon: Activity,  label: 'Track Agents',      sub: 'Live monitoring'         },
+        { key: 'daily_assigned',   Icon: UserCheck2, label: 'Daily Assigned',   sub: 'IST lead allocation log'  },
         { key: 'users',            Icon: Users,     label: 'No. of Agents',     sub: 'Agents & admins'        },
         { key: 'agent_performance',Icon: BarChart2, label: 'Agent Allocation', sub: 'Rankings & stats'        },
       ],
@@ -518,7 +574,7 @@ const DomSuperAdminDashboard = () => {
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50">
 
-      {/* ════ SIDEBAR ════ */}
+      {/*  SIDEBAR  */}
       <aside className={`${sidebarOpen ? 'w-[230px]' : 'w-14'} flex-shrink-0 flex flex-col h-screen bg-white border-r border-gray-200 shadow-sm transition-all duration-300 overflow-hidden`}>
 
         {/* Brand strip */}
@@ -631,13 +687,181 @@ const DomSuperAdminDashboard = () => {
         </div>
       </aside>
 
-      {/* ════ CONTENT ════ */}
+      {/*  CONTENT  */}
       <div className="flex-1 overflow-y-auto overflow-x-hidden min-w-0 scrollbar-app">
         {/* Dashboard */}
         {superTab === 'main' && <DomAdminDashboard />}
 
         {/* Agent Performance */}
         {superTab === 'agent_performance' && <DomAdminDashboard initialTab="agents" />}
+
+        {superTab === 'daily_assigned' && (() => {
+          const needle = dailyAssignedSearch.trim().toLowerCase();
+          const agentNeedle = dailyAssignedAgentSearch.trim().toLowerCase();
+          const isWorkedView = dailyAssignedView === 'worked';
+          const isWorkedLead = (lead) => Boolean(
+            lead?.hasWorkedDetails ||
+            lead?.workedLead?.domLeadId ||
+            lead?.domLeadId ||
+            lead?.workedAt ||
+            lead?.completedAt ||
+            lead?.callOutcome ||
+            (lead?.workStatus && lead.workStatus !== 'new') ||
+            lead?.status === 'completed'
+          );
+          const leadDisposition = (lead) => (lead?.workedLead?.callOutcome || lead?.callOutcome || '').trim();
+          const dispositionOptions = [...new Set(
+            dailyAssignedLeads
+              .filter(isWorkedLead)
+              .map((lead) => leadDisposition(lead))
+              .filter(Boolean)
+          )].sort();
+          const agentNames = [...new Map(dailyAssignedLeads.map(l => [l.agent?._id, l.agent?.name]).filter(([id]) => id)).entries()];
+          const rows = dailyAssignedLeads.filter((lead) => {
+            if (dailyAssignedAgent && lead.agent?._id !== dailyAssignedAgent) return false;
+            if (agentNeedle) {
+              const agentText = [lead.agent?.name, lead.agent?.email].filter(Boolean).join(' ').toLowerCase();
+              if (!agentText.includes(agentNeedle)) return false;
+            }
+            if (isWorkedView && !isWorkedLead(lead)) return false;
+            if (isWorkedView && dailyAssignedDisposition && leadDisposition(lead) !== dailyAssignedDisposition) return false;
+            return !needle || [lead.name, lead.mobile, lead.email, lead.city, lead.productType, lead.batchName, lead.source, lead.agent?.name, lead.agent?.email].filter(Boolean).join(' ').toLowerCase().includes(needle);
+          });
+          const fmt = (d) => d ? new Date(d).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }) : '';
+          const outcomeLabel = (value) => (value || 'Not called').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+          const workedStatusLabel = (value) => (value || 'Pending').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+          const workedStatusClass = (value) => {
+            if (value === 'rejected') return 'bg-rose-100 text-rose-700';
+            if (value === 'completed') return 'bg-emerald-100 text-emerald-700';
+            return 'bg-blue-100 text-blue-700';
+          };
+          return (
+            <div className="min-h-full bg-gray-50">
+              <header className="bg-white border-b border-gray-100 px-6 py-5 flex items-center justify-between gap-4 flex-wrap">
+                <div><h1 className="text-xl font-black text-gray-800">Daily Assigned Leads</h1><p className="text-xs text-gray-400 mt-1">Switch between assigned and worked leads for the same IST day to verify daily follow-up.</p></div>
+                <button onClick={() => fetchDailyAssignedLeads()} disabled={dailyAssignedLoading} className="flex items-center gap-2 px-3 py-2 text-sm font-semibold border border-gray-200 rounded-xl text-gray-600 hover:text-[#065F36] bg-white"><RefreshCw className={`h-4 w-4 ${dailyAssignedLoading ? 'animate-spin' : ''}`} /> Refresh</button>
+              </header>
+              <main className="px-6 py-5">
+                <div className="bg-white border border-gray-100 shadow-sm rounded-2xl overflow-hidden">
+                  <div className="p-4 border-b border-gray-100 flex flex-wrap items-center gap-3">
+                    <div className="flex items-center rounded-xl border border-gray-200 bg-gray-50 p-1">
+                      <button
+                        type="button"
+                        onClick={() => setDailyAssignedView('assigned')}
+                        className={`px-3 py-1.5 text-xs font-bold rounded-lg transition ${!isWorkedView ? 'bg-white text-[#065F36] shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+                        Assigned ({dailyAssignedCounts.assigned || 0})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDailyAssignedView('worked')}
+                        className={`px-3 py-1.5 text-xs font-bold rounded-lg transition ${isWorkedView ? 'bg-white text-[#065F36] shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+                        Worked ({dailyAssignedCounts.worked || 0})
+                      </button>
+                    </div>
+                    <label className="text-xs font-bold text-gray-500">IST date <input type="date" value={dailyAssignedDate} onChange={e => setDailyAssignedDate(e.target.value)} className="ml-2 px-2 py-2 border border-gray-200 rounded-lg text-sm text-gray-700" /></label>
+                    <div className="relative flex-1 min-w-[220px]"><Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" /><input value={dailyAssignedSearch} onChange={e => setDailyAssignedSearch(e.target.value)} placeholder="Search any lead detail" className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#065F36]/20" /></div>
+                    <div className="relative min-w-[190px]"><Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" /><input value={dailyAssignedAgentSearch} onChange={e => setDailyAssignedAgentSearch(e.target.value)} placeholder="Search agent" className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#065F36]/20" /></div>
+                    <select value={dailyAssignedAgent} onChange={e => setDailyAssignedAgent(e.target.value)} className="px-3 py-2 border border-gray-200 rounded-xl text-sm text-gray-600"><option value="">All agents</option>{agentNames.map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select>
+                    <select
+                      value={dailyAssignedDisposition}
+                      onChange={e => setDailyAssignedDisposition(e.target.value)}
+                      disabled={!isWorkedView}
+                      className={`px-3 py-2 border border-gray-200 rounded-xl text-sm ${isWorkedView ? 'text-gray-600 bg-white' : 'text-gray-400 bg-gray-50 cursor-not-allowed'}`}>
+                      <option value="">All dispositions</option>
+                      {dispositionOptions.map((value) => (
+                        <option key={value} value={value}>{outcomeLabel(value)}</option>
+                      ))}
+                    </select>
+                    <span className="text-xs font-bold text-[#065F36] bg-[#E8FFF5] px-3 py-2 rounded-lg">{rows.length} {isWorkedView ? 'worked lead' : 'assignment'}{rows.length === 1 ? '' : 's'}</span>
+                  </div>
+                  {dailyAssignedLoading ? (
+                    <div className="py-16 text-center text-gray-400">Loading daily assignments</div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="bg-gray-50 text-xs text-gray-500 uppercase">
+                            <th className="text-left px-5 py-3">Lead</th>
+                            <th className="text-left px-3 py-3">Agent</th>
+                            <th className="text-left px-3 py-3">Source</th>
+                            <th className="text-left px-3 py-3">Assigned (IST)</th>
+                            {isWorkedView ? (
+                              <>
+                                <th className="text-left px-3 py-3">Call Outcome</th>
+                                <th className="text-left px-3 py-3">Tracker</th>
+                                <th className="text-left px-3 py-3">Docs</th>
+                                <th className="text-left px-3 py-3">Worked Status</th>
+                                <th className="text-left px-3 py-3">Last Update (IST)</th>
+                              </>
+                            ) : (
+                              <th className="text-left px-3 py-3">Status</th>
+                            )}
+                            <th className="text-right px-5 py-3">Action</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {rows.map((lead) => (
+                            <tr key={lead._id} className="hover:bg-[#E8FFF5]/30">
+                              <td className="px-5 py-3">
+                                <p className="font-semibold text-gray-800">{lead.name || ''}</p>
+                                <p className="text-xs text-gray-400">{[lead.mobile, lead.email, lead.city, lead.productType, lead.batchName].filter(Boolean).join('  ') || 'No extra details'}</p>
+                              </td>
+                              <td className="px-3 py-3 text-gray-700">{lead.agent?.name || ''}<p className="text-xs text-gray-400">{lead.agent?.email || ''}</p></td>
+                              <td className="px-3 py-3 capitalize text-gray-600">{lead.source}</td>
+                              <td className="px-3 py-3 text-xs text-gray-600 whitespace-nowrap">{fmt(lead.assignedAt)}</td>
+
+                              {isWorkedView ? (
+                                <>
+                                  <td className="px-3 py-3">
+                                    <span className="px-2 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-700">{outcomeLabel(lead?.workedLead?.callOutcome)}</span>
+                                  </td>
+                                  <td className="px-3 py-3">
+                                    <div className="flex flex-wrap gap-1.5">
+                                      <span className="px-2 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700">{lead?.workedLead?.callCount || 0} calls</span>
+                                      <span className="px-2 py-1 rounded-full text-xs font-semibold bg-violet-50 text-violet-700">{lead?.workedLead?.updateCount || 0} updates</span>
+                                    </div>
+                                  </td>
+                                  <td className="px-3 py-3">
+                                    <span className={`px-2 py-1 rounded-full text-xs font-bold ${(lead?.workedLead?.docsCount || 0) > 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>{lead?.workedLead?.docsCount || 0} docs</span>
+                                  </td>
+                                  <td className="px-3 py-3">
+                                    <span className={`px-2 py-1 rounded-full text-xs font-bold ${workedStatusClass(lead?.workedLead?.status)}`}>{workedStatusLabel(lead?.workedLead?.status)}</span>
+                                  </td>
+                                  <td className="px-3 py-3 text-xs text-gray-600 whitespace-nowrap">{fmt(lead?.workedLead?.updatedAt || lead?.workedAt)}</td>
+                                </>
+                              ) : (
+                                <td className="px-3 py-3">
+                                  <span className={`px-2 py-1 rounded-full text-xs font-bold ${lead.currentlyAssigned ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>{lead.currentlyAssigned ? 'Assigned' : `Unassigned ${lead.unassignedAt ? ' ' + fmt(lead.unassignedAt) : ''}`}</span>
+                                </td>
+                              )}
+
+                              <td className="px-5 py-3 text-right">
+                                {!isWorkedView && lead.canUnassign && (
+                                  <button onClick={() => handleDailyUnassign(lead)} className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-bold text-red-600 bg-red-50 border border-red-100 rounded-lg hover:bg-red-100">
+                                    <UserMinus className="h-3.5 w-3.5" /> Unassign
+                                  </button>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                          {rows.length === 0 && (
+                            <tr>
+                              <td colSpan={isWorkedView ? 10 : 6} className="py-14 text-center text-gray-400">
+                                {isWorkedView
+                                  ? 'No assigned leads with worked details on this IST date yet.'
+                                  : 'No leads were assigned on this IST date.'}
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              </main>
+            </div>
+          );
+        })()}
 
   {superTab === 'reports' && (() => {
     const PRESETS = [
@@ -665,9 +889,9 @@ const DomSuperAdminDashboard = () => {
       wrong_number: 'bg-gray-400', other: 'bg-purple-400', none: 'bg-gray-300', '': 'bg-gray-300',
     };
     const OUTCOME_EMOJI = {
-      interested: '✅', not_interested: '❌', not_eligible: '🚫',
-      callback: '📞', not_reachable: '📵', not_answering: '🔕',
-      wrong_number: '❓', other: '📋', none: '—', '': '—',
+      interested: '', not_interested: '', not_eligible: '',
+      callback: '', not_reachable: '', not_answering: '',
+      wrong_number: '', other: '', none: '', '': '',
     };
 
     const maxOutcome    = brk?.outcome?.length ? Math.max(...brk.outcome.map(o => o.count), 1) : 1;
@@ -686,9 +910,9 @@ const DomSuperAdminDashboard = () => {
         ['Report Period', `${reportData.range?.from?.split('T')[0] || ''} to ${reportData.range?.to?.split('T')[0] || ''}`],
         [],
         ['Metric', 'Value'],
-        ['Meta Allocation — Received',  s?.websiteLeads?.total],
-        ['Meta Allocation — Assigned',  s?.websiteLeads?.assigned],
-        ['Meta Allocation — Meta Leads',s?.websiteLeads?.assignedMeta],
+        ['Meta Allocation  Received',  s?.websiteLeads?.total],
+        ['Meta Allocation  Assigned',  s?.websiteLeads?.assigned],
+        ['Meta Allocation  Meta Leads',s?.websiteLeads?.assignedMeta],
         ['Disposition Allocation',      s?.workedLeads?.total],
         ['Completed',                   s?.workedLeads?.completed],
         ['Interested',                  s?.workedLeads?.interested],
@@ -711,7 +935,7 @@ const DomSuperAdminDashboard = () => {
         ['Agent', 'Cases', 'Completed', 'Interested', 'Completion %'],
         ...(reportData.agents || []).map(a => {
           const pct = a.total > 0 ? Math.round((a.completed / a.total) * 100) : 0;
-          return [a.agent?.name || '—', a.total, a.completed, a.interested, `${pct}%`];
+          return [a.agent?.name || '', a.total, a.completed, a.interested, `${pct}%`];
         }),
       ];
       const csv  = rows.map(r => r.join(',')).join('\n');
@@ -724,12 +948,12 @@ const DomSuperAdminDashboard = () => {
     return (
       <div className="min-h-screen bg-gray-50">
 
-        {/* ── Top nav bar ── */}
+        {/*  Top nav bar  */}
         <div className="bg-[#065F36] text-white px-6 py-2 flex items-center justify-between border-b border-[#054A2E]">
           <div className="flex items-center gap-1.5 text-xs">
             <Shield className="h-3 w-3 text-white/60" />
             <button onClick={() => setSuperTab('main')} className="text-white/60 hover:text-white transition-colors">Super Admin Portal</button>
-            <span className="text-white/30">›</span>
+            <span className="text-white/30"></span>
             <span className="text-white font-semibold flex items-center gap-1"><TrendingUp className="h-3 w-3" /> Reports & Analysis</span>
           </div>
           <button onClick={logout} className="flex items-center gap-1 text-xs text-white/60 hover:text-white transition-colors">
@@ -737,7 +961,7 @@ const DomSuperAdminDashboard = () => {
           </button>
         </div>
 
-        {/* ── Sticky page header ── */}
+        {/*  Sticky page header  */}
         <header className="bg-white shadow-sm sticky top-0 z-30 border-b border-gray-100">
           <div className="px-6 flex items-center justify-between h-14">
             <div className="flex items-center gap-3">
@@ -767,7 +991,7 @@ const DomSuperAdminDashboard = () => {
                   reportRange === 'today' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-gray-50 text-gray-500 border-gray-200'
                 }`}>
                   <span className={`w-2 h-2 rounded-full ${reportRange === 'today' ? 'bg-emerald-500 animate-pulse' : 'bg-gray-400'}`} />
-                  {reportRange === 'today' ? 'LIVE · ' : ''}
+                  {reportRange === 'today' ? 'LIVE  ' : ''}
                   Updated {Math.round((new Date() - reportLastUpdated) / 60000) < 1 ? 'just now' : `${Math.round((new Date() - reportLastUpdated) / 60000)}m ago`}
                 </div>
               )}
@@ -777,9 +1001,9 @@ const DomSuperAdminDashboard = () => {
 
         <main className="px-4 sm:px-6 xl:px-8 py-5 space-y-5 min-w-0">
 
-          {/* ── Step 1: Pick a time period ── */}
+          {/*  Step 1: Pick a time period  */}
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
-            <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Step 1 — Choose a time period to view</p>
+            <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Step 1  Choose a time period to view</p>
             <div className="flex items-center gap-2 flex-wrap">
               {PRESETS.map(p => (
                 <button key={p.key}
@@ -812,7 +1036,7 @@ const DomSuperAdminDashboard = () => {
               {reportData?.range && (
                 <span className="ml-auto text-xs text-gray-400 bg-gray-50 border border-gray-100 rounded-xl px-3 py-2">
                   {new Date(reportData.range.from).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' })}
-                  {' — '}
+                  {'  '}
                   {new Date(reportData.range.to).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' })}
                 </span>
               )}
@@ -822,14 +1046,14 @@ const DomSuperAdminDashboard = () => {
           {reportLoading ? (
             <div className="flex flex-col items-center justify-center py-24 gap-4">
               <div className="w-12 h-12 border-4 border-gray-100 border-t-[#065F36] rounded-full animate-spin" />
-              <p className="text-gray-400 text-sm font-medium">Loading report…</p>
+              <p className="text-gray-400 text-sm font-medium">Loading report</p>
             </div>
           ) : !reportData ? null : (
             <>
 
-              {/* ── Section 1: Key Numbers ── */}
+              {/*  Section 1: Key Numbers  */}
               <div>
-                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 px-1">Key Numbers — What happened in this period</p>
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 px-1">Key Numbers  What happened in this period</p>
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
 
                   {/* Meta Allocation */}
@@ -840,15 +1064,15 @@ const DomSuperAdminDashboard = () => {
                         {s?.websiteLeads?.new > 0 ? `${s.websiteLeads.new} unassigned` : 'From Meta / Website'}
                       </span>
                     </div>
-                    {/* Show assigned count first — reflects today's work even if leads arrived earlier */}
-                    <p className="text-4xl font-black text-teal-700">{s?.websiteLeads?.assigned ?? s?.websiteLeads?.total ?? '—'}</p>
+                    {/* Show assigned count first  reflects today's work even if leads arrived earlier */}
+                    <p className="text-4xl font-black text-teal-700">{s?.websiteLeads?.assigned ?? s?.websiteLeads?.total ?? ''}</p>
                     <p className="text-sm font-bold text-gray-700 mt-1">Meta Allocation</p>
                     <p className="text-xs text-gray-400 mt-0.5">
-                      Assigned in period · {s?.websiteLeads?.total ?? 0} received
+                      Assigned in period  {s?.websiteLeads?.total ?? 0} received
                     </p>
                     {(s?.websiteLeads?.assignedMeta ?? 0) > 0 && (
                       <p className="text-xs text-teal-600 font-semibold mt-1.5">
-                        🌐 {s.websiteLeads.assignedMeta} from Meta · {(s.websiteLeads.assigned ?? 0) - s.websiteLeads.assignedMeta} from Website
+                         {s.websiteLeads.assignedMeta} from Meta  {(s.websiteLeads.assigned ?? 0) - s.websiteLeads.assignedMeta} from Website
                       </p>
                     )}
                   </div>
@@ -861,7 +1085,7 @@ const DomSuperAdminDashboard = () => {
                         {s?.workedLeads?.pending > 0 ? `${s.workedLeads.pending} pending` : 'All worked'}
                       </span>
                     </div>
-                    <p className="text-4xl font-black text-gray-800">{s?.workedLeads?.total ?? '—'}</p>
+                    <p className="text-4xl font-black text-gray-800">{s?.workedLeads?.total ?? ''}</p>
                     <p className="text-sm font-bold text-gray-700 mt-1">Disposition Allocation</p>
                     <p className="text-xs text-gray-400 mt-0.5">Total cases submitted by agents</p>
                   </div>
@@ -874,7 +1098,7 @@ const DomSuperAdminDashboard = () => {
                         {s?.conversionRate}% rate
                       </span>
                     </div>
-                    <p className="text-4xl font-black text-emerald-600">{s?.workedLeads?.completed ?? '—'}</p>
+                    <p className="text-4xl font-black text-emerald-600">{s?.workedLeads?.completed ?? ''}</p>
                     <p className="text-sm font-bold text-gray-700 mt-1">Completed Cases</p>
                     <p className="text-xs text-gray-400 mt-0.5">Cases fully closed / processed by agents</p>
                   </div>
@@ -887,14 +1111,14 @@ const DomSuperAdminDashboard = () => {
                         {s?.interestRate}% rate
                       </span>
                     </div>
-                    <p className="text-4xl font-black text-amber-600">{s?.workedLeads?.interested ?? '—'}</p>
+                    <p className="text-4xl font-black text-amber-600">{s?.workedLeads?.interested ?? ''}</p>
                     <p className="text-sm font-bold text-gray-700 mt-1">Interested Customers</p>
                     <p className="text-xs text-gray-400 mt-0.5">Customers who showed interest in a loan</p>
                   </div>
 
                 </div>
 
-                {/* ── Secondary stats row ── */}
+                {/*  Secondary stats row  */}
                 <div className="grid grid-cols-3 gap-4 mt-4">
                   <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-5 py-4 flex items-center gap-4">
                     <div className="p-2 bg-orange-100 rounded-xl flex-shrink-0"><Activity className="h-4 w-4 text-orange-500" /></div>
@@ -923,9 +1147,9 @@ const DomSuperAdminDashboard = () => {
                 </div>
               </div>
 
-              {/* ── Section 2: Performance Rates ── */}
+              {/*  Section 2: Performance Rates  */}
               <div>
-                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 px-1">Performance — How well did we do?</p>
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 px-1">Performance  How well did we do?</p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
 
                   {/* Completion Rate */}
@@ -951,9 +1175,9 @@ const DomSuperAdminDashboard = () => {
                       s?.conversionRate >= 50 ? 'bg-emerald-50 text-emerald-700' :
                       s?.conversionRate >= 25 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700'
                     }`}>
-                      {s?.conversionRate >= 50 ? '✅ Great performance — keep it up!'
-                        : s?.conversionRate >= 25 ? '👍 Decent — push agents to close more cases'
-                        : '⚠️ Low — review agent scripts and follow-up process'}
+                      {s?.conversionRate >= 50 ? ' Great performance  keep it up!'
+                        : s?.conversionRate >= 25 ? ' Decent  push agents to close more cases'
+                        : ' Low  review agent scripts and follow-up process'}
                     </p>
                   </div>
 
@@ -980,21 +1204,21 @@ const DomSuperAdminDashboard = () => {
                       s?.interestRate >= 40 ? 'bg-emerald-50 text-emerald-700' :
                       s?.interestRate >= 20 ? 'bg-amber-50 text-amber-700' : 'bg-slate-50 text-slate-600'
                     }`}>
-                      {s?.interestRate >= 40 ? '🔥 High interest — leads quality is strong'
-                        : s?.interestRate >= 20 ? '📊 Moderate interest — try better qualifying questions'
-                        : '📉 Low interest — check lead source quality'}
+                      {s?.interestRate >= 40 ? ' High interest  leads quality is strong'
+                        : s?.interestRate >= 20 ? ' Moderate interest  try better qualifying questions'
+                        : ' Low interest  check lead source quality'}
                     </p>
                   </div>
 
                 </div>
               </div>
 
-              {/* ── Section 3: Daily Activity Chart ── */}
+              {/*  Section 3: Daily Activity Chart  */}
               <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
                 <div className="flex items-center justify-between mb-1">
                   <div>
                     <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Day-by-Day Activity</p>
-                    <h2 className="font-bold text-gray-800">Disposition Allocation — Cases worked each day</h2>
+                    <h2 className="font-bold text-gray-800">Disposition Allocation  Cases worked each day</h2>
                     <p className="text-xs text-gray-400 mt-0.5">Each bar = one day. Dark green = total worked. Light green = completed. Teal dot = Meta Allocation assigned that day.</p>
                   </div>
                   <div className="flex items-center gap-4 text-xs text-gray-500">
@@ -1023,7 +1247,7 @@ const DomSuperAdminDashboard = () => {
                             {/* Hover tooltip */}
                             <div className="opacity-0 group-hover:opacity-100 transition-opacity text-center mb-1 absolute -top-7 z-10">
                               <span className="text-[10px] font-black text-[#065F36] bg-[#E8FFF5] border border-[#D1FAE5] px-1.5 py-0.5 rounded-lg whitespace-nowrap">
-                                {d.total} disp · {d.completed} done{(() => { const w = webTrend.find(x => x.date === d.date); return w?.count > 0 ? ` · ${w.count} meta` : ''; })()}
+                                {d.total} disp  {d.completed} done{(() => { const w = webTrend.find(x => x.date === d.date); return w?.count > 0 ? `  ${w.count} meta` : ''; })()}
                               </span>
                             </div>
                             <div className="w-full flex flex-col justify-end rounded-t-lg overflow-hidden relative"
@@ -1045,9 +1269,9 @@ const DomSuperAdminDashboard = () => {
                 )}
               </div>
 
-              {/* ── Section 4: What happened on each call? + What products? ── */}
+              {/*  Section 4: What happened on each call? + What products?  */}
               <div>
-                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 px-1">Breakdown — What happened on each call?</p>
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 px-1">Breakdown  What happened on each call?</p>
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
 
                   {/* Call Results */}
@@ -1067,7 +1291,7 @@ const DomSuperAdminDashboard = () => {
                           <div key={o._id}>
                             <div className="flex justify-between items-center mb-1.5">
                               <span className="text-sm font-semibold text-gray-700">
-                                {OUTCOME_EMOJI[o._id] || '📋'} {OUTCOME_LABEL[o._id] || o._id || 'No Outcome'}
+                                {OUTCOME_EMOJI[o._id] || ''} {OUTCOME_LABEL[o._id] || o._id || 'No Outcome'}
                               </span>
                               <span className="text-sm font-black text-gray-700">{o.count}</span>
                             </div>
@@ -1114,13 +1338,13 @@ const DomSuperAdminDashboard = () => {
                 </div>
               </div>
 
-              {/* ── Section 5: Where did the leads come from? ── */}
+              {/*  Section 5: Where did the leads come from?  */}
               <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
                 <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
                   <div className="p-2 bg-teal-100 rounded-xl"><Globe className="h-4 w-4 text-teal-600" /></div>
                   <div>
                     <h3 className="font-bold text-gray-800 text-sm">Where Did the Leads Come From?</h3>
-                    <p className="text-xs text-gray-400">Website form · Imported file · Manually added</p>
+                    <p className="text-xs text-gray-400">Website form  Imported file  Manually added</p>
                   </div>
                 </div>
                 <div className="p-5">
@@ -1132,10 +1356,10 @@ const DomSuperAdminDashboard = () => {
                         const total = (brk?.source || []).reduce((a, b) => a + b.count, 0) || 1;
                         const pct   = Math.round((src.count / total) * 100);
                         const cfg   = {
-                          Website:  { color: 'bg-teal-500',   ring: 'ring-teal-200',   text: 'text-teal-600',   bg: 'bg-teal-50',   icon: '🌐', desc: 'Leads from the website form' },
-                          Imported: { color: 'bg-violet-500', ring: 'ring-violet-200',  text: 'text-violet-600', bg: 'bg-violet-50', icon: '📂', desc: 'Leads uploaded via Excel/CSV file' },
-                          Manual:   { color: 'bg-gray-500',   ring: 'ring-gray-200',    text: 'text-gray-600',   bg: 'bg-gray-50',   icon: '✍️', desc: 'Leads added manually by admins' },
-                        }[src._id] || { color: 'bg-gray-400', ring: 'ring-gray-200', text: 'text-gray-600', bg: 'bg-gray-50', icon: '📋', desc: '' };
+                          Website:  { color: 'bg-teal-500',   ring: 'ring-teal-200',   text: 'text-teal-600',   bg: 'bg-teal-50',   icon: '', desc: 'Leads from the website form' },
+                          Imported: { color: 'bg-violet-500', ring: 'ring-violet-200',  text: 'text-violet-600', bg: 'bg-violet-50', icon: '', desc: 'Leads uploaded via Excel/CSV file' },
+                          Manual:   { color: 'bg-gray-500',   ring: 'ring-gray-200',    text: 'text-gray-600',   bg: 'bg-gray-50',   icon: '', desc: 'Leads added manually by admins' },
+                        }[src._id] || { color: 'bg-gray-400', ring: 'ring-gray-200', text: 'text-gray-600', bg: 'bg-gray-50', icon: '', desc: '' };
                         return (
                           <div key={src._id} className={`${cfg.bg} rounded-2xl border border-gray-100 p-5`}>
                             <div className="flex items-center justify-between mb-3">
@@ -1157,7 +1381,7 @@ const DomSuperAdminDashboard = () => {
                   {/* Website leads pipeline */}
                   {s?.websiteLeads?.total > 0 && (
                     <div className="mt-5 pt-5 border-t border-gray-100">
-                      <p className="text-xs font-bold text-gray-500 mb-3">Meta Allocation Pipeline — what happened after a lead was received?</p>
+                      <p className="text-xs font-bold text-gray-500 mb-3">Meta Allocation Pipeline  what happened after a lead was received?</p>
                       <div className="flex items-center gap-3 flex-wrap">
                         {[
                           { label: 'Received', val: s.websiteLeads.total,     color: 'bg-teal-200 text-teal-700',   desc: 'Total from website' },
@@ -1170,7 +1394,7 @@ const DomSuperAdminDashboard = () => {
                               <span className="text-xs font-bold">{f.label}</span>
                               <span className="text-xs opacity-70">{f.desc}</span>
                             </div>
-                            {i < 2 && <span className="text-gray-400 font-bold text-lg">→</span>}
+                            {i < 2 && <span className="text-gray-400 font-bold text-lg"></span>}
                           </React.Fragment>
                         ))}
                       </div>
@@ -1179,7 +1403,7 @@ const DomSuperAdminDashboard = () => {
                 </div>
               </div>
 
-              {/* ── Section 6: Agent Performance ── */}
+              {/*  Section 6: Agent Performance  */}
               <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
                 <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-3">
                   <div className="p-2 bg-amber-100 rounded-xl">
@@ -1187,7 +1411,7 @@ const DomSuperAdminDashboard = () => {
                   </div>
                   <div>
                     <h2 className="font-bold text-gray-800">Agent Performance</h2>
-                    <p className="text-xs text-gray-400">Who worked the most cases and who completed the most — in this period</p>
+                    <p className="text-xs text-gray-400">Who worked the most cases and who completed the most  in this period</p>
                   </div>
                 </div>
 
@@ -1212,7 +1436,7 @@ const DomSuperAdminDashboard = () => {
                       <tbody className="divide-y divide-gray-50">
                         {reportData.agents.map((a, i) => {
                           const conv  = a.total > 0 ? Math.round((a.completed / a.total) * 100) : 0;
-                          const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : null;
+                          const medal = i === 0 ? '' : i === 1 ? '' : i === 2 ? '' : null;
                           const statusKey = a.agent?.agentStatus || 'available';
                           return (
                             <tr key={a._id} className={`hover:bg-gray-50/60 transition-colors ${i < 3 ? 'bg-amber-50/20' : ''}`}>
@@ -1238,7 +1462,7 @@ const DomSuperAdminDashboard = () => {
                                       statusKey === 'unavailable' ? 'bg-red-100 text-red-600'       :
                                                                      'bg-emerald-100 text-emerald-700'
                                     }`}>
-                                      {statusKey === 'break' ? '☕ On Break' : statusKey === 'unavailable' ? '🔴 Offline' : '✅ Active'}
+                                      {statusKey === 'break' ? ' On Break' : statusKey === 'unavailable' ? ' Offline' : ' Active'}
                                     </span>
                                   </div>
                                 </div>
@@ -1292,7 +1516,7 @@ const DomSuperAdminDashboard = () => {
           <div className="flex items-center gap-1.5 text-xs">
             <Shield className="h-3 w-3 text-white/60" />
             <button onClick={() => setSuperTab('main')} className="text-white/60 hover:text-white transition-colors">Super Admin Portal</button>
-            <span className="text-white/30">›</span>
+            <span className="text-white/30"></span>
             <span className="text-white font-semibold flex items-center gap-1"><Users className="h-3 w-3" /> Manage Users</span>
           </div>
           <button onClick={logout} className="flex items-center gap-1 text-xs text-white/60 hover:text-white transition-colors">
@@ -1361,7 +1585,7 @@ const DomSuperAdminDashboard = () => {
                 {/* User search */}
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 pointer-events-none" />
-                  <input type="text" placeholder="Search name, email or role…" value={userSearch}
+                  <input type="text" placeholder="Search name, email or role" value={userSearch}
                     onChange={e => setUserSearch(e.target.value)}
                     className="pl-9 pr-8 py-2 text-sm border border-gray-200 rounded-xl bg-white w-52 focus:outline-none focus:ring-2 focus:ring-[#065F36]/20 focus:border-[#065F36]" />
                   {userSearch && <button onClick={() => setUserSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500"><X className="h-3.5 w-3.5" /></button>}
@@ -1375,7 +1599,7 @@ const DomSuperAdminDashboard = () => {
             {usersLoading ? (
               <div className="flex flex-col items-center justify-center py-16 text-gray-400">
                 <span className="w-8 h-8 border-2 border-gray-200 border-t-[#065F36] rounded-full animate-spin mb-3" />
-                <span className="text-sm">Loading users…</span>
+                <span className="text-sm">Loading users</span>
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -1450,7 +1674,7 @@ const DomSuperAdminDashboard = () => {
                                 onClick={() => setDeleteConfirm({ type: 'user', id: u._id, name: u.name, successMsg: `User "${u.name}" deleted.` })}
                                 className="text-xs px-2 py-1.5 rounded-lg font-semibold border bg-gray-50 text-gray-500 hover:bg-red-50 hover:text-red-600 hover:border-red-100 border-gray-200 transition-colors"
                                 title="Delete user permanently">
-                                🗑
+                                
                               </button>
                             )}
                           </div>
@@ -1508,7 +1732,7 @@ const DomSuperAdminDashboard = () => {
                   <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Transfer To</p>
                   <select value={saTransferTo} onChange={e => setSaTransferTo(e.target.value)}
                     className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-amber-400/40 focus:border-amber-400">
-                    <option value="">— Select target agent —</option>
+                    <option value=""> Select target agent </option>
                     {users.filter(u => u.role === 'domagent' && u._id !== saTransferAgent._id && u.isActive).map(u => (
                       <option key={u._id} value={u._id}>{u.name} ({u.email})</option>
                     ))}
@@ -1521,7 +1745,7 @@ const DomSuperAdminDashboard = () => {
                     {[
                       { key: 'website', label: 'Website / Meta Leads',            sub: 'Unworked website leads loaded by this agent',  color: 'teal'   },
                       { key: 'pool',    label: 'Pool / Imported Leads (Unworked)', sub: 'Imported data leads not yet called',           color: 'violet' },
-                      { key: 'worked',  label: 'Worked Cases (DomLeads)',          sub: 'Already-filled lead forms — reassign ownership', color: 'orange' },
+                      { key: 'worked',  label: 'Worked Cases (DomLeads)',          sub: 'Already-filled lead forms  reassign ownership', color: 'orange' },
                     ].map(({ key, label, sub, color }) => (
                       <label key={key} className={`flex items-start gap-3 px-4 py-3 rounded-xl border cursor-pointer transition-all ${
                         saTransferTypes[key]
@@ -1555,7 +1779,7 @@ const DomSuperAdminDashboard = () => {
                 <button onClick={handleSaTransfer} disabled={!saTransferTo || saTransferring}
                   className="flex items-center gap-2 px-5 py-2 text-sm font-bold text-white bg-amber-500 hover:bg-amber-600 disabled:bg-gray-300 disabled:cursor-not-allowed rounded-xl shadow-sm transition-colors">
                   {saTransferring
-                    ? <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Transferring…</>
+                    ? <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Transferring</>
                     : <><Send className="h-4 w-4" /> Confirm Transfer</>}
                 </button>
               </div>
@@ -1568,7 +1792,7 @@ const DomSuperAdminDashboard = () => {
   })()}
 
   {superTab === 'tracker' && (() => {
-    const fmtDate = (d) => d ? new Date(d).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' }) : '—';
+    const fmtDate = (d) => d ? new Date(d).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' }) : '';
     const fmtShortDt = (d) => d ? new Date(d).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day:'2-digit', month:'short', year:'numeric' }) : 'Never';
     const STATUS_DOT = {
       available:   { dot: 'bg-emerald-500', label: 'Available',   cls: 'bg-emerald-100 text-emerald-700 border-emerald-300' },
@@ -1600,7 +1824,7 @@ const DomSuperAdminDashboard = () => {
           a.poolAssigned || 0, a.poolWorked || 0,
           a.domLeadsCreated || 0, a.interestedCount || 0, a.callbackCount || 0,
           `${a.conversionRate || 0}%`,
-          a.agentStatusUpdatedAt ? new Date(a.agentStatusUpdatedAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : '—',
+          a.agentStatusUpdatedAt ? new Date(a.agentStatusUpdatedAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : '',
         ]);
       const csv = [headers, ...rows].map(r => r.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
       const blob = new Blob([csv], { type: 'text/csv' });
@@ -1629,7 +1853,7 @@ const DomSuperAdminDashboard = () => {
           <div className="flex items-center gap-1.5 text-xs">
             <Shield className="h-3 w-3 text-white/60" />
             <button onClick={() => setSuperTab('main')} className="text-white/60 hover:text-white transition-colors">Super Admin Portal</button>
-            <span className="text-white/30">›</span>
+            <span className="text-white/30"></span>
             <span className="text-white font-semibold flex items-center gap-1"><Activity className="h-3 w-3" /> Agent Tracker</span>
           </div>
           <button onClick={logout} className="flex items-center gap-1 text-xs text-white/60 hover:text-white transition-colors">
@@ -1656,7 +1880,7 @@ const DomSuperAdminDashboard = () => {
               {/* Search agents */}
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 pointer-events-none" />
-                <input type="text" placeholder="Search agent…" value={trackerSearch}
+                <input type="text" placeholder="Search agent" value={trackerSearch}
                   onChange={e => setTrackerSearch(e.target.value)}
                   className="pl-9 pr-7 py-2 text-sm border border-gray-200 rounded-xl bg-white w-44 focus:outline-none focus:ring-2 focus:ring-[#065F36]/20 focus:border-[#065F36]" />
                 {trackerSearch && <button onClick={() => setTrackerSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500"><X className="h-3.5 w-3.5" /></button>}
@@ -1694,21 +1918,18 @@ const DomSuperAdminDashboard = () => {
               </div>
             )}
 
-            {/* ── Aggregate stat cards ── */}
+            {/*  Aggregate stat cards  */}
             {!trackerLoading && trackerAgents.length > 0 && (
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 {[
-                  { label: 'Total Leads',        val: totalMeta + totalImported, sub: 'Meta + Imported', icon: '📊', bg: 'from-[#065F36] to-[#00874A]', text: 'text-white' },
-                  { label: 'Meta Leads',          val: totalMeta,                sub: 'Website / Meta',  icon: '🌐', bg: 'from-teal-500 to-cyan-600',       text: 'text-white' },
-                  { label: 'Imported Leads',      val: totalImported,            sub: 'Pool / Batches',  icon: '📥', bg: 'from-violet-500 to-purple-600',    text: 'text-white' },
-                  { label: 'Dispositions Filed',  val: totalDisp,                sub: 'Forms submitted', icon: '📝', bg: 'from-blue-500 to-indigo-600',      text: 'text-white' },
-                  { label: 'Interested',          val: totalInterested,          sub: 'Hot leads',       icon: '✅', bg: 'from-emerald-500 to-green-600',    text: 'text-white' },
-                  { label: 'Callbacks',           val: totalCallback,            sub: 'Follow-ups due',  icon: '📞', bg: 'from-amber-400 to-orange-500',     text: 'text-white' },
+                  { label: 'Total Leads',        val: totalMeta + totalImported, sub: 'Meta + Imported', bg: 'from-[#065F36] to-[#00874A]', text: 'text-white' },
+                  { label: 'Meta Leads',         val: totalMeta,                 sub: 'Website / Meta',  bg: 'from-teal-500 to-cyan-600',    text: 'text-white' },
+                  { label: 'Imported Leads',     val: totalImported,             sub: 'Pool / Batches',  bg: 'from-violet-500 to-purple-600', text: 'text-white' },
+                  { label: 'Dispositions Filed', val: totalDisp,                 sub: 'Forms submitted', bg: 'from-blue-500 to-indigo-600',   text: 'text-white' },
+                  { label: 'Interested',         val: totalInterested,           sub: 'Hot leads',       bg: 'from-emerald-500 to-green-600', text: 'text-white' },
+                  { label: 'Callbacks',          val: totalCallback,             sub: 'Follow-ups due',  bg: 'from-amber-400 to-orange-500',  text: 'text-white' },
                 ].map(s => (
                   <div key={s.label} className={`relative overflow-hidden rounded-2xl bg-gradient-to-br ${s.bg} p-4 text-white shadow-md`}>
-                    <div className="flex items-start justify-between mb-1">
-                      <span className="text-2xl">{s.icon}</span>
-                    </div>
                     <p className="text-2xl font-black">{s.val.toLocaleString()}</p>
                     <p className="text-white/80 text-xs font-semibold mt-0.5">{s.label}</p>
                     <p className="text-white/50 text-[10px]">{s.sub}</p>
@@ -1721,7 +1942,7 @@ const DomSuperAdminDashboard = () => {
             {trackerLoading ? (
               <div className="flex flex-col items-center justify-center py-20 gap-3">
                 <div className="w-10 h-10 border-4 border-gray-100 border-t-[#065F36] rounded-full animate-spin" />
-                <span className="text-sm text-gray-400">Loading agents…</span>
+                <span className="text-sm text-gray-400">Loading agents</span>
               </div>
             ) : sortedAgents.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-20 gap-3">
@@ -1845,15 +2066,15 @@ const DomSuperAdminDashboard = () => {
                   </button>
                 </div>
 
-                {/* Quick stats — full breakdown */}
+                {/* Quick stats  full breakdown */}
                 <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mt-5">
                   {[
-                    { label: '🌐 Meta',        val: selectedTrackAgent.leadsLoaded    || 0, color: 'text-teal-600',    bg: 'bg-teal-50' },
-                    { label: '📥 Pool',         val: selectedTrackAgent.poolAssigned   || 0, color: 'text-violet-600',  bg: 'bg-violet-50' },
-                    { label: '📝 Disposed',     val: selectedTrackAgent.domLeadsCreated|| 0, color: 'text-blue-600',    bg: 'bg-blue-50' },
-                    { label: '✅ Interested',   val: selectedTrackAgent.interestedCount|| 0, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-                    { label: '📞 Callbacks',    val: selectedTrackAgent.callbackCount  || 0, color: 'text-amber-600',   bg: 'bg-amber-50' },
-                    { label: '📊 Pool Worked',  val: selectedTrackAgent.poolWorked     || 0, color: 'text-indigo-600',  bg: 'bg-indigo-50' },
+                    { label: ' Meta',        val: selectedTrackAgent.leadsLoaded    || 0, color: 'text-teal-600',    bg: 'bg-teal-50' },
+                    { label: ' Pool',         val: selectedTrackAgent.poolAssigned   || 0, color: 'text-violet-600',  bg: 'bg-violet-50' },
+                    { label: ' Disposed',     val: selectedTrackAgent.domLeadsCreated|| 0, color: 'text-blue-600',    bg: 'bg-blue-50' },
+                    { label: ' Interested',   val: selectedTrackAgent.interestedCount|| 0, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+                    { label: ' Callbacks',    val: selectedTrackAgent.callbackCount  || 0, color: 'text-amber-600',   bg: 'bg-amber-50' },
+                    { label: ' Pool Worked',  val: selectedTrackAgent.poolWorked     || 0, color: 'text-indigo-600',  bg: 'bg-indigo-50' },
                   ].map(s => (
                     <div key={s.label} className={`${s.bg} rounded-xl p-3 text-center`}>
                       <p className={`text-xl font-black ${s.color}`}>{s.val}</p>
@@ -1866,7 +2087,7 @@ const DomSuperAdminDashboard = () => {
               {trackLeadsLoading ? (
                 <div className="flex items-center justify-center py-16 gap-3">
                   <div className="w-8 h-8 border-4 border-gray-100 border-t-[#065F36] rounded-full animate-spin" />
-                  <span className="text-sm text-gray-400">Loading activity…</span>
+                  <span className="text-sm text-gray-400">Loading activity</span>
                 </div>
               ) : (
                 <>
@@ -1885,21 +2106,21 @@ const DomSuperAdminDashboard = () => {
                       <div className="divide-y divide-gray-50">
                         {trackWorkedLeads.map((l) => {
                           const src =
-                            l.sourceWebsiteLead  ? { label: 'Website',  emoji: '🌐', borderL: 'border-l-4 border-l-teal-500',   rowHover: 'hover:bg-teal-50/40',   badge: 'bg-teal-100 text-teal-700 border border-teal-300' } :
-                            l.sourceImportedLead ? { label: 'Imported', emoji: '📊', borderL: 'border-l-4 border-l-violet-500', rowHover: 'hover:bg-violet-50/40', badge: 'bg-violet-100 text-violet-700 border border-violet-300' } :
-                                                   { label: 'Manual',   emoji: '✍️', borderL: 'border-l-4 border-l-gray-300',   rowHover: 'hover:bg-gray-50/40',   badge: 'bg-gray-100 text-gray-600 border border-gray-300' };
+                            l.sourceWebsiteLead  ? { label: 'Website',  emoji: '', borderL: 'border-l-4 border-l-teal-500',   rowHover: 'hover:bg-teal-50/40',   badge: 'bg-teal-100 text-teal-700 border border-teal-300' } :
+                            l.sourceImportedLead ? { label: 'Imported', emoji: '', borderL: 'border-l-4 border-l-violet-500', rowHover: 'hover:bg-violet-50/40', badge: 'bg-violet-100 text-violet-700 border border-violet-300' } :
+                                                   { label: 'Manual',   emoji: '', borderL: 'border-l-4 border-l-gray-300',   rowHover: 'hover:bg-gray-50/40',   badge: 'bg-gray-100 text-gray-600 border border-gray-300' };
                           return (
                           <div key={l._id}
                             onClick={() => setTrackerLeadDetail(l)}
                             className={`px-5 py-3 flex items-center justify-between cursor-pointer transition-colors ${src.borderL} ${src.rowHover}`}>
                             <div>
                               <div className="flex items-center gap-2 flex-wrap">
-                                <span className="font-mono text-xs font-bold bg-gray-900 text-emerald-400 px-1.5 py-0.5 rounded">{l.leadRef || '—'}</span>
-                                <span className="font-semibold text-sm text-gray-800">{l.name || '—'}</span>
+                                <span className="font-mono text-xs font-bold bg-gray-900 text-emerald-400 px-1.5 py-0.5 rounded">{l.leadRef || ''}</span>
+                                <span className="font-semibold text-sm text-gray-800">{l.name || ''}</span>
                                 <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold ${src.badge}`}>{src.emoji} {src.label}</span>
                               </div>
                               <p className="text-xs text-gray-400 mt-0.5">
-                                {l.mobile} · {l.productType?.replace(/_/g,' ')} · {fmtDate(l.createdAt)}
+                                {l.mobile}  {l.productType?.replace(/_/g,' ')}  {fmtDate(l.createdAt)}
                               </p>
                             </div>
                             <div className="flex flex-col items-end gap-1">
@@ -1943,8 +2164,8 @@ const DomSuperAdminDashboard = () => {
                         {trackPoolLeads.slice(0, 8).map((l) => (
                           <div key={l._id} className="px-5 py-3 flex items-center justify-between hover:bg-gray-50">
                             <div>
-                              <p className="font-semibold text-sm text-gray-800">{l.name || '—'}</p>
-                              <p className="text-xs text-gray-400">{l.mobile} · {l.loanType || l.productType || '—'} · {l.state || ''}</p>
+                              <p className="font-semibold text-sm text-gray-800">{l.name || ''}</p>
+                              <p className="text-xs text-gray-400">{l.mobile}  {l.loanType || l.productType || ''}  {l.state || ''}</p>
                             </div>
                             <span className={`text-xs px-2 py-0.5 rounded-full font-semibold border ${
                               l.workStatus === 'interested'     ? 'bg-emerald-100 text-emerald-700 border-emerald-200' :
@@ -1966,20 +2187,20 @@ const DomSuperAdminDashboard = () => {
           )}
         </div>
 
-        {/* ── Lead Disposition Detail Modal ── */}
+        {/*  Lead Disposition Detail Modal  */}
         {trackerLeadDetail && (() => {
           const l = trackerLeadDetail;
           const OUTCOME_CFG = {
-            interested:     { label: 'Interested',     cls: 'bg-emerald-100 text-emerald-700 border-emerald-300', icon: '✅', bar: 'bg-emerald-500' },
-            not_interested: { label: 'Not Interested', cls: 'bg-red-100 text-red-700 border-red-300',             icon: '❌', bar: 'bg-red-500' },
-            not_eligible:   { label: 'Not Eligible',   cls: 'bg-rose-100 text-rose-700 border-rose-300',           icon: '🚫', bar: 'bg-rose-500' },
-            callback:       { label: 'Callback',       cls: 'bg-amber-100 text-amber-700 border-amber-300',       icon: '📞', bar: 'bg-amber-400' },
-            not_reachable:  { label: 'Not Reachable',  cls: 'bg-orange-100 text-orange-700 border-orange-300',    icon: '📵', bar: 'bg-orange-400' },
-            wrong_number:   { label: 'Wrong Number',   cls: 'bg-gray-100 text-gray-600 border-gray-300',          icon: '❓', bar: 'bg-gray-400' },
+            interested:     { label: 'Interested',     cls: 'bg-emerald-100 text-emerald-700 border-emerald-300', icon: '', bar: 'bg-emerald-500' },
+            not_interested: { label: 'Not Interested', cls: 'bg-red-100 text-red-700 border-red-300',             icon: '', bar: 'bg-red-500' },
+            not_eligible:   { label: 'Not Eligible',   cls: 'bg-rose-100 text-rose-700 border-rose-300',           icon: '', bar: 'bg-rose-500' },
+            callback:       { label: 'Callback',       cls: 'bg-amber-100 text-amber-700 border-amber-300',       icon: '', bar: 'bg-amber-400' },
+            not_reachable:  { label: 'Not Reachable',  cls: 'bg-orange-100 text-orange-700 border-orange-300',    icon: '', bar: 'bg-orange-400' },
+            wrong_number:   { label: 'Wrong Number',   cls: 'bg-gray-100 text-gray-600 border-gray-300',          icon: '', bar: 'bg-gray-400' },
           };
-          const oc  = OUTCOME_CFG[l.callOutcome] || { label: l.callOutcome || 'No Disposition', cls: 'bg-gray-100 text-gray-500 border-gray-200', icon: '—', bar: 'bg-gray-300' };
-          const fmt = (d) => d ? new Date(d).toLocaleString('en-IN', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '—';
-          const CIBIL_LABEL = { below_600:'< 600 (Poor)', '600_699':'600–699 (Fair)', '700_749':'700–749 (Good)', '750_800':'750–800 (Very Good)', above_800:'> 800 (Excellent)', unknown:'Unknown' };
+          const oc  = OUTCOME_CFG[l.callOutcome] || { label: l.callOutcome || 'No Disposition', cls: 'bg-gray-100 text-gray-500 border-gray-200', icon: '', bar: 'bg-gray-300' };
+          const fmt = (d) => d ? new Date(d).toLocaleString('en-IN', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '';
+          const CIBIL_LABEL = { below_600:'< 600 (Poor)', '600_699':'600699 (Fair)', '700_749':'700749 (Good)', '750_800':'750800 (Very Good)', above_800:'> 800 (Excellent)', unknown:'Unknown' };
 
           return (
             <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-4"
@@ -2001,17 +2222,17 @@ const DomSuperAdminDashboard = () => {
                     <div>
                       <div className="flex items-center gap-2 flex-wrap mb-1">
                         <span className="text-2xl">{oc.icon}</span>
-                        <span className="text-xl font-black">{l.name || '—'}</span>
+                        <span className="text-xl font-black">{l.name || ''}</span>
                         {l.leadRef && (
                           <span className="font-mono text-xs font-bold bg-white/20 text-white px-2 py-0.5 rounded-lg tracking-widest">{l.leadRef}</span>
                         )}
                       </div>
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-white/80 text-sm">{l.mobile}</span>
-                        {l.email && <span className="text-white/60 text-xs">· {l.email}</span>}
-                        {(l.city || l.state) && <span className="text-white/60 text-xs">· {[l.city, l.state].filter(Boolean).join(', ')}</span>}
+                        {l.email && <span className="text-white/60 text-xs"> {l.email}</span>}
+                        {(l.city || l.state) && <span className="text-white/60 text-xs"> {[l.city, l.state].filter(Boolean).join(', ')}</span>}
                         <span className="text-xs bg-white/20 text-white px-2 py-0.5 rounded-full font-bold border border-white/30">
-                          {l.sourceWebsiteLead ? '🌐 Website' : l.sourceImportedLead ? '📊 Imported' : '✍️ Manual'}
+                          {l.sourceWebsiteLead ? ' Website' : l.sourceImportedLead ? ' Imported' : ' Manual'}
                         </span>
                       </div>
                     </div>
@@ -2024,7 +2245,7 @@ const DomSuperAdminDashboard = () => {
 
                 <div className="p-6 space-y-5">
 
-                  {/* Disposition section — the key info */}
+                  {/* Disposition section  the key info */}
                   <div className={`rounded-2xl border-2 p-5 ${
                     l.callOutcome === 'not_interested' || l.callOutcome === 'not_eligible' || l.status === 'rejected' ? 'border-red-200 bg-red-50' :
                     l.callOutcome === 'interested'     ? 'border-emerald-200 bg-emerald-50' :
@@ -2042,15 +2263,15 @@ const DomSuperAdminDashboard = () => {
                         l.status === 'rejected'  ? 'bg-red-100 text-red-700 border-red-300' :
                                                    'bg-blue-100 text-blue-700 border-blue-300'
                       }`}>
-                        {l.status === 'completed' ? '✔ Completed' : l.status === 'rejected' ? '✖ Rejected' : '⏳ Pending'}
+                        {l.status === 'completed' ? ' Completed' : l.status === 'rejected' ? ' Rejected' : ' Pending'}
                       </span>
                       {l.callbackDate && (
                         <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-bold bg-violet-100 text-violet-700 border border-violet-300">
-                          📅 Callback: {l.callbackDate}
+                           Callback: {l.callbackDate}
                         </span>
                       )}
                     </div>
-                    {/* Agent Notes — the "why" */}
+                    {/* Agent Notes  the "why" */}
                     {l.notes ? (
                       <div className="bg-white rounded-xl p-4 border border-gray-200">
                         <p className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-1.5">Agent Notes / Reason</p>
@@ -2063,16 +2284,16 @@ const DomSuperAdminDashboard = () => {
 
                   {/* Lead info grid */}
                   <div>
-                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Lead Details — Agent Filled</p>
+                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Lead Details  Agent Filled</p>
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                       {[
                         { label: 'Product / Service', val: l.productType?.replace(/_/g,' '), bold: true },
-                        { label: 'Loan Amount',        val: l.loanAmountRequired ? `₹${l.loanAmountRequired.toLocaleString('en-IN')}` : null },
+                        { label: 'Loan Amount',        val: l.loanAmountRequired ? `${l.loanAmountRequired.toLocaleString('en-IN')}` : null },
                         { label: 'Employment Type',    val: l.employmentType?.replace(/_/g,' ') },
                         { label: 'Company',            val: l.companyName },
-                        { label: 'Monthly Salary',     val: l.monthlySalary ? `₹${l.monthlySalary.toLocaleString('en-IN')}` : null },
+                        { label: 'Monthly Salary',     val: l.monthlySalary ? `${l.monthlySalary.toLocaleString('en-IN')}` : null },
                         { label: 'CIBIL Score Range',  val: CIBIL_LABEL[l.cibilScoreRange] || l.cibilScoreRange },
-                        { label: 'Existing EMI',       val: l.existingEMI ? `₹${l.existingEMI.toLocaleString('en-IN')}/mo` : null },
+                        { label: 'Existing EMI',       val: l.existingEMI ? `${l.existingEMI.toLocaleString('en-IN')}/mo` : null },
                         { label: 'Existing Bank',      val: l.existingBank },
                         { label: 'PAN',                val: l.pan },
                         { label: 'Date of Birth',      val: l.dob },
@@ -2097,7 +2318,7 @@ const DomSuperAdminDashboard = () => {
                     )}
                   </div>
 
-                  {/* ── Original Imported Data (if lead came from Excel) ── */}
+                  {/*  Original Imported Data (if lead came from Excel)  */}
                   {l.sourceImportedLead && (() => {
                     const imp = l.sourceImportedLead;
                     return (
@@ -2105,7 +2326,7 @@ const DomSuperAdminDashboard = () => {
                         <div className="flex items-center gap-2 mb-3">
                           <div className="p-1.5 bg-violet-100 rounded-lg"><Database className="h-4 w-4 text-violet-600" /></div>
                           <div>
-                            <p className="text-xs font-bold text-violet-700 uppercase tracking-wide">Original Imported Data — Excel Source</p>
+                            <p className="text-xs font-bold text-violet-700 uppercase tracking-wide">Original Imported Data  Excel Source</p>
                             <p className="text-xs text-violet-500">Data from the uploaded Excel batch before agent worked this lead</p>
                           </div>
                         </div>
@@ -2176,7 +2397,7 @@ const DomSuperAdminDashboard = () => {
     };
     const fmtDate = (d) => d
       ? new Date(d).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
-      : '—';
+      : '';
 
     return (
       <div className="min-h-screen bg-[#F0FFF8]">
@@ -2185,7 +2406,7 @@ const DomSuperAdminDashboard = () => {
           <div className="flex items-center gap-1.5 text-xs">
             <Shield className="h-3 w-3 text-white/60" />
             <button onClick={() => setSuperTab('main')} className="text-white/60 hover:text-white transition-colors">Super Admin Portal</button>
-            <span className="text-white/30">›</span>
+            <span className="text-white/30"></span>
             <span className="text-white font-semibold flex items-center gap-1"><Globe className="h-3 w-3" /> Lead Monitor</span>
           </div>
           <button onClick={logout} className="flex items-center gap-1 text-xs text-white/60 hover:text-white transition-colors">
@@ -2240,7 +2461,7 @@ const DomSuperAdminDashboard = () => {
                     className="bg-white px-5 py-4 cursor-pointer hover:bg-[#E8FFF5] transition-colors group">
                     <p className="text-2xl font-black text-gray-800 group-hover:text-[#065F36]">{s.total}</p>
                     <p className="text-xs text-gray-500 mt-0.5 capitalize font-medium">{s.type.replace(/_/g, ' ')}</p>
-                    <p className="text-xs text-[#065F36] font-semibold opacity-0 group-hover:opacity-100 mt-0.5">Click to filter →</p>
+                    <p className="text-xs text-[#065F36] font-semibold opacity-0 group-hover:opacity-100 mt-0.5">Click to filter </p>
                   </div>
                 ))}
               </div>
@@ -2249,7 +2470,7 @@ const DomSuperAdminDashboard = () => {
 
           {/* Leads Table */}
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-            {/* Bulk action bar — shown when rows are selected */}
+            {/* Bulk action bar  shown when rows are selected */}
             {webSelectedIds.size > 0 && (
               <div className="flex items-center justify-between px-6 py-3 bg-[#065F36] text-white">
                 <div className="flex items-center gap-3">
@@ -2267,7 +2488,7 @@ const DomSuperAdminDashboard = () => {
                 </button>
               </div>
             )}
-            {/* Filter bar — full set matching Disposition Allocation */}
+            {/* Filter bar  full set matching Disposition Allocation */}
             <div className="flex flex-wrap items-center gap-3 px-6 py-3 bg-gray-50 border-b border-gray-100">
               {/* Search */}
               <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3 py-2 flex-1 min-w-[200px]">
@@ -2275,34 +2496,34 @@ const DomSuperAdminDashboard = () => {
                 <input type="text" value={webSearch}
                   onChange={(e) => { setWebSearch(e.target.value); webSearchRef.current = e.target.value; }}
                   onKeyDown={(e) => e.key === 'Enter' && fetchWebLeads(1)}
-                  placeholder="Search name, mobile, city…"
+                  placeholder="Search name, mobile, city"
                   className="flex-1 text-sm bg-transparent outline-none text-gray-700 placeholder-gray-400" />
                 {webSearch && <button onClick={() => { setWebSearch(''); webSearchRef.current=''; }} className="text-gray-300 hover:text-gray-500"><X className="h-3.5 w-3.5" /></button>}
               </div>
-              {/* Source filter — Meta vs Website vs All */}
+              {/* Source filter  Meta vs Website vs All */}
               <select value={webSourceFilter}
                 onChange={(e) => { setWebSourceFilter(e.target.value); webSourceRef.current = e.target.value; fetchWebLeads(1); }}
                 className="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white text-gray-700">
-                <option value="">🌐 All Sources</option>
-                <option value="meta">📘 Meta Ads only</option>
-                <option value="website">🌐 Website Form only</option>
-                <option value="manual">✍️ Manual only</option>
+                <option value=""> All Sources</option>
+                <option value="meta"> Meta Ads only</option>
+                <option value="website"> Website Form only</option>
+                <option value="manual"> Manual only</option>
               </select>
               {/* Status */}
               <select value={webStatusFilter}
                 onChange={(e) => { setWebStatusFilter(e.target.value); webStatusRef.current = e.target.value; fetchWebLeads(1); }}
                 className="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white text-gray-700">
                 <option value="">All Statuses</option>
-                <option value="new">⏳ New (Unclaimed)</option>
-                <option value="loaded">📋 Loaded by Agent</option>
-                <option value="completed">✅ Completed</option>
-                <option value="rejected">❌ Rejected</option>
+                <option value="new"> New (Unclaimed)</option>
+                <option value="loaded"> Loaded by Agent</option>
+                <option value="completed"> Completed</option>
+                <option value="rejected"> Rejected</option>
               </select>
               {/* Agent */}
               <select value={webAgentFilter}
                 onChange={(e) => { setWebAgentFilter(e.target.value); webAgentRef.current = e.target.value; fetchWebLeads(1); }}
                 className="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white text-gray-700">
-                <option value="">👤 All Agents</option>
+                <option value=""> All Agents</option>
                 {[...webAgents].sort((a,b) => a.name?.localeCompare(b.name)).map(a => (
                   <option key={a._id} value={a._id}>{a.name}</option>
                 ))}
@@ -2312,7 +2533,7 @@ const DomSuperAdminDashboard = () => {
                 onChange={(e) => { setWebProductFilter(e.target.value); webProductRef.current = e.target.value; fetchWebLeads(1); }}
                 className="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white text-gray-700">
                 <option value="">All Services</option>
-                <optgroup label="─ Loans ─">
+                <optgroup label=" Loans ">
                   <option value="personal_loan">Personal Loan</option>
                   <option value="home_loan">Home Loan</option>
                   <option value="car_loan">Car Loan</option>
@@ -2321,14 +2542,14 @@ const DomSuperAdminDashboard = () => {
                   <option value="education_loan">Education Loan</option>
                   <option value="gold_loan">Gold Loan</option>
                 </optgroup>
-                <optgroup label="─ Cards ─"><option value="credit_card">Credit Card</option></optgroup>
-                <optgroup label="─ Insurance ─">
+                <optgroup label=" Cards "><option value="credit_card">Credit Card</option></optgroup>
+                <optgroup label=" Insurance ">
                   <option value="health_insurance">Health Insurance</option>
                   <option value="life_insurance">Life Insurance</option>
                   <option value="motor_insurance">Motor Insurance</option>
                   <option value="travel_insurance">Travel Insurance</option>
                 </optgroup>
-                <optgroup label="─ Investments ─">
+                <optgroup label=" Investments ">
                   <option value="mutual_fund">Mutual Fund</option>
                   <option value="sip">SIP</option>
                   <option value="demat">Demat Account</option>
@@ -2339,7 +2560,7 @@ const DomSuperAdminDashboard = () => {
                 className="flex items-center gap-2 text-sm bg-[#065F36] text-white px-4 py-2 rounded-xl hover:bg-[#054A2E] font-semibold">
                 <Search className="h-4 w-4" /> Search
               </button>
-              {/* Clear — always visible, red when active */}
+              {/* Clear  always visible, red when active */}
               <button
                 onClick={() => {
                   setWebStatusFilter(''); setWebProductFilter(''); setWebSearch(''); setWebAgentFilter(''); setWebSourceFilter('');
@@ -2391,7 +2612,7 @@ const DomSuperAdminDashboard = () => {
               <span>Total: <strong className="text-gray-800">{webLeadsTotal}</strong></span>
               {webProductFilter && <span className="bg-[#E8FFF5] text-[#065F36] px-2 py-0.5 rounded-full font-semibold capitalize">{webProductFilter.replace(/_/g,' ')}</span>}
               {webStatusFilter  && <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full font-semibold capitalize">{webStatusFilter}</span>}
-              {webSourceFilter  && <span className={`px-2 py-0.5 rounded-full font-semibold capitalize ${webSourceFilter === 'meta' ? 'bg-blue-100 text-blue-700' : webSourceFilter === 'website' ? 'bg-teal-50 text-teal-700' : 'bg-gray-100 text-gray-600'}`}>{webSourceFilter === 'meta' ? '📘 Meta Ads' : webSourceFilter === 'website' ? '🌐 Website Form' : '✍️ Manual'}</span>}
+              {webSourceFilter  && <span className={`px-2 py-0.5 rounded-full font-semibold capitalize ${webSourceFilter === 'meta' ? 'bg-blue-100 text-blue-700' : webSourceFilter === 'website' ? 'bg-teal-50 text-teal-700' : 'bg-gray-100 text-gray-600'}`}>{webSourceFilter === 'meta' ? ' Meta Ads' : webSourceFilter === 'website' ? ' Website Form' : ' Manual'}</span>}
               {webAgentFilter && <span className="bg-violet-50 text-violet-700 px-2 py-0.5 rounded-full font-semibold">{webAgents.find(a=>a._id===webAgentFilter)?.name || 'Agent'}</span>}
             </div>
 
@@ -2399,7 +2620,7 @@ const DomSuperAdminDashboard = () => {
             {webLeadsLoading ? (
               <div className="flex flex-col items-center justify-center py-16 text-gray-400">
                 <span className="w-8 h-8 border-2 border-gray-200 border-t-[#065F36] rounded-full animate-spin mb-3" />
-                <span className="text-sm">Loading…</span>
+                <span className="text-sm">Loading</span>
               </div>
             ) : webLeads.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-gray-400">
@@ -2458,22 +2679,22 @@ const DomSuperAdminDashboard = () => {
                             )}
                           </td>
                           <td className="pl-2 pr-3 py-3.5">
-                            <p className="font-semibold text-gray-800">{lead.name || '—'}</p>
+                            <p className="font-semibold text-gray-800">{lead.name || ''}</p>
                             {lead.pan && <p className="text-xs text-gray-400 font-mono">{lead.pan}</p>}
                           </td>
-                          <td className="px-3 py-3.5 font-mono text-xs text-gray-600 tracking-wide">{lead.mobile || '—'}</td>
-                          <td className="px-3 py-3.5 text-gray-500">{lead.city || '—'}</td>
+                          <td className="px-3 py-3.5 font-mono text-xs text-gray-600 tracking-wide">{lead.mobile || ''}</td>
+                          <td className="px-3 py-3.5 text-gray-500">{lead.city || ''}</td>
                           <td className="px-3 py-3.5">
                             {lead.productType
                               ? <span className="bg-[#E8FFF5] text-[#065F36] border border-[#D1FAE5] px-2 py-0.5 rounded-full text-xs font-medium capitalize">{lead.productType.replace(/_/g,' ')}</span>
-                              : <span className="text-gray-300 text-xs">—</span>}
+                              : <span className="text-gray-300 text-xs"></span>}
                           </td>
                           <td className="px-3 py-3.5">
                             {lead.source === 'meta'
-                              ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-700 border border-blue-200">📘 Meta Ads</span>
+                              ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-700 border border-blue-200"> Meta Ads</span>
                               : lead.source === 'manual'
-                              ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-gray-100 text-gray-600 border border-gray-200">✍️ Manual</span>
-                              : <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-teal-100 text-teal-700 border border-teal-200">🌐 Website</span>
+                              ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-gray-100 text-gray-600 border border-gray-200"> Manual</span>
+                              : <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-teal-100 text-teal-700 border border-teal-200"> Website</span>
                             }
                           </td>
                           <td className="px-3 py-3.5">
@@ -2509,12 +2730,12 @@ const DomSuperAdminDashboard = () => {
                 <div className="flex items-center gap-2">
                   <button onClick={() => fetchWebLeads(webLeadsPage - 1)} disabled={webLeadsPage <= 1}
                     className="px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed font-medium">
-                    ← Prev
+                     Prev
                   </button>
                   <span className="text-xs font-semibold text-gray-700">Page {webLeadsPage}</span>
                   <button onClick={() => fetchWebLeads(webLeadsPage + 1)} disabled={webLeads.length < 30}
                     className="px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed font-medium">
-                    Next →
+                    Next 
                   </button>
                 </div>
               </div>
@@ -2597,15 +2818,15 @@ const DomSuperAdminDashboard = () => {
                 <div className="bg-[#E8FFF5] rounded-xl px-4 py-3 border border-[#D1FAE5]">
                   <p className="text-sm font-semibold text-[#065F36]">{webAssignModal.name}</p>
                   <p className="text-xs text-gray-500 mt-0.5">
-                    🌐 Website · {webAssignModal.mobile}
-                    {webAssignModal.productType && ` · ${webAssignModal.productType.replace(/_/g,' ')}`}
-                    {webAssignModal.city && ` · ${webAssignModal.city}`}
+                     Website  {webAssignModal.mobile}
+                    {webAssignModal.productType && `  ${webAssignModal.productType.replace(/_/g,' ')}`}
+                    {webAssignModal.city && `  ${webAssignModal.city}`}
                   </p>
                 </div>
                 <div>
                   <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">
                     Select Agent <span className="text-red-500">*</span>
-                    <span className="ml-2 normal-case font-normal text-gray-400">— Sorted by performance</span>
+                    <span className="ml-2 normal-case font-normal text-gray-400"> Sorted by performance</span>
                   </p>
                   {webAgents.filter(a => a.isActive).length === 0 ? (
                     <p className="text-sm text-gray-400 py-2">No active agents available.</p>
@@ -2637,10 +2858,10 @@ const DomSuperAdminDashboard = () => {
                                   {tier.emoji} {tier.label}
                                 </span>
                               </div>
-                              <p className="text-xs text-gray-400 mt-0.5">{conv}% conversion · {a.leadsLoaded || 0} loaded</p>
+                              <p className="text-xs text-gray-400 mt-0.5">{conv}% conversion  {a.leadsLoaded || 0} loaded</p>
                             </div>
                             {tier.tier === 5 && (
-                              <span className="text-xs font-bold text-amber-600 bg-amber-100 px-2 py-1 rounded-lg flex-shrink-0">Best ✨</span>
+                              <span className="text-xs font-bold text-amber-600 bg-amber-100 px-2 py-1 rounded-lg flex-shrink-0">Best </span>
                             )}
                           </button>
                         );
@@ -2669,7 +2890,7 @@ const DomSuperAdminDashboard = () => {
           <div className="flex items-center gap-1.5 text-xs">
             <Shield className="h-3 w-3 text-white/60" />
             <button onClick={() => setSuperTab('main')} className="text-white/60 hover:text-white transition-colors">Super Admin Portal</button>
-            <span className="text-white/30">›</span>
+            <span className="text-white/30"></span>
             <span className="text-white font-semibold flex items-center gap-1"><Upload className="h-3 w-3" /> Import & Distribute</span>
           </div>
           <button onClick={logout} className="flex items-center gap-1 text-xs text-white/60 hover:text-white transition-colors">
@@ -2701,7 +2922,7 @@ const DomSuperAdminDashboard = () => {
               <div className="p-2.5 bg-[#E8FFF5] rounded-xl"><Upload className="h-5 w-5 text-[#065F36]" /></div>
               <div>
                 <h3 className="font-bold text-gray-800">Import Excel / CSV</h3>
-                <p className="text-xs text-gray-400 mt-0.5">Any Excel is accepted — 32 fields are auto-mapped. Missing columns are stored as blank, extra columns are ignored.</p>
+                <p className="text-xs text-gray-400 mt-0.5">Any Excel is accepted  32 fields are auto-mapped. Missing columns are stored as blank, extra columns are ignored.</p>
               </div>
             </div>
             <form onSubmit={handleImportUpload} className="p-6 space-y-4">
@@ -2733,13 +2954,13 @@ const DomSuperAdminDashboard = () => {
               <button type="submit" disabled={uploading || !importFile}
                 className="flex items-center gap-2 bg-[#065F36] text-white text-sm font-bold px-6 py-2.5 rounded-xl hover:bg-[#054A2E] disabled:opacity-40 shadow-sm transition-all">
                 {uploading
-                  ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Importing…</>
+                  ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Importing</>
                   : <><Upload className="h-4 w-4" /> Import Leads</>}
               </button>
             </form>
           </div>
 
-          {/* Last Import Result — field mapping summary */}
+          {/* Last Import Result  field mapping summary */}
           {lastImportResult && (
             <div className={`rounded-2xl border-2 p-5 ${lastImportResult.missingFields.length > 0 ? 'border-amber-200 bg-amber-50' : 'border-emerald-200 bg-emerald-50'}`}>
               <div className="flex items-start justify-between mb-4">
@@ -2749,8 +2970,8 @@ const DomSuperAdminDashboard = () => {
                   </div>
                   <div>
                     <p className="font-bold text-gray-800 text-sm">
-                      Import Complete — {lastImportResult.count} leads imported
-                      {lastImportResult.skippedRows > 0 && <span className="text-gray-500 font-normal"> · {lastImportResult.skippedRows} empty rows skipped</span>}
+                      Import Complete  {lastImportResult.count} leads imported
+                      {lastImportResult.skippedRows > 0 && <span className="text-gray-500 font-normal">  {lastImportResult.skippedRows} empty rows skipped</span>}
                     </p>
                     <p className="text-xs text-gray-500">{lastImportResult.batchName}</p>
                   </div>
@@ -2788,7 +3009,7 @@ const DomSuperAdminDashboard = () => {
               </div>
               {lastImportResult.missingFields.length > 0 && (
                 <p className="text-xs text-amber-700 mt-3 bg-amber-100 rounded-xl px-3 py-2 border border-amber-200">
-                  💡 Tip: The missing fields will be blank for all {lastImportResult.count} leads. You can still assign and work these leads normally.
+                   Tip: The missing fields will be blank for all {lastImportResult.count} leads. You can still assign and work these leads normally.
                 </p>
               )}
             </div>
@@ -2808,7 +3029,7 @@ const DomSuperAdminDashboard = () => {
                 {/* Batch search */}
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 pointer-events-none" />
-                  <input type="text" placeholder="Search batch name…" value={batchSearch}
+                  <input type="text" placeholder="Search batch name" value={batchSearch}
                     onChange={e => setBatchSearch(e.target.value)}
                     className="pl-9 pr-8 py-2 text-sm border border-gray-200 rounded-xl bg-white w-44 focus:outline-none focus:ring-2 focus:ring-[#065F36]/20 focus:border-[#065F36]" />
                   {batchSearch && <button onClick={() => setBatchSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500"><X className="h-3.5 w-3.5" /></button>}
@@ -2823,7 +3044,7 @@ const DomSuperAdminDashboard = () => {
             {batchesLoading ? (
               <div className="flex flex-col items-center justify-center py-12 text-gray-400">
                 <span className="w-8 h-8 border-2 border-gray-200 border-t-[#065F36] rounded-full animate-spin mb-3" />
-                <span className="text-sm">Loading batches…</span>
+                <span className="text-sm">Loading batches</span>
               </div>
             ) : batches.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-gray-400">
@@ -2842,9 +3063,9 @@ const DomSuperAdminDashboard = () => {
                         <p className="font-semibold text-gray-800 truncate">{b.batchName || b._id}</p>
                         <p className="text-xs text-gray-400 mt-0.5">
                           {new Date(b.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
-                          {' · '}{fmtNum(b.total)} leads
-                          {' · '}<span className="text-emerald-600 font-medium">{fmtNum(b.sharedCount)} shared</span>
-                          {' · '}<span className="text-blue-600 font-medium">{fmtNum(b.assigned)} assigned</span>
+                          {'  '}{fmtNum(b.total)} leads
+                          {'  '}<span className="text-emerald-600 font-medium">{fmtNum(b.sharedCount)} shared</span>
+                          {'  '}<span className="text-blue-600 font-medium">{fmtNum(b.assigned)} assigned</span>
                         </p>
                       </div>
                     </div>
@@ -2863,7 +3084,7 @@ const DomSuperAdminDashboard = () => {
                         onClick={() => setDeleteConfirm({ type: 'batch', batchId: b._id, name: b.batchName || b._id, totalLeads: b.total, successMsg: `Batch "${b.batchName || b._id}" and all its leads deleted.` })}
                         className="flex items-center gap-1 text-sm px-3 py-2 rounded-xl border border-gray-200 text-gray-500 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-all"
                         title="Delete entire batch">
-                        🗑 Delete
+                         Delete
                       </button>
                     </div>
                   </div>
@@ -2926,7 +3147,7 @@ const DomSuperAdminDashboard = () => {
                   <button onClick={handleShare} disabled={sharing || selectedAdmins.length === 0}
                     className="flex-1 py-2.5 text-sm bg-[#065F36] text-white rounded-xl hover:bg-[#054A2E] disabled:opacity-40 font-bold shadow-sm flex items-center justify-center gap-2">
                     {sharing
-                      ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Sharing…</>
+                      ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Sharing</>
                       : <><Share2 className="h-4 w-4" /> Share</>}
                   </button>
                 </div>
@@ -2945,7 +3166,7 @@ const DomSuperAdminDashboard = () => {
         <div className="flex items-center gap-1.5 text-xs">
           <Shield className="h-3 w-3 text-white/60" />
           <button onClick={() => setSuperTab('main')} className="text-white/60 hover:text-white transition-colors">Super Admin Portal</button>
-          <span className="text-white/30">›</span>
+          <span className="text-white/30"></span>
           <span className="text-white font-semibold flex items-center gap-1"><Key className="h-3 w-3" /> Integration Setup</span>
         </div>
         <button onClick={logout} className="flex items-center gap-1 text-xs text-white/60 hover:text-white transition-colors">
@@ -2985,13 +3206,13 @@ const DomSuperAdminDashboard = () => {
           <div className="p-6">
             {apiKeyLoading ? (
               <div className="flex items-center gap-2 text-gray-400 py-6">
-                <span className="w-5 h-5 border-2 border-gray-200 border-t-[#065F36] rounded-full animate-spin" /> Loading key…
+                <span className="w-5 h-5 border-2 border-gray-200 border-t-[#065F36] rounded-full animate-spin" /> Loading key
               </div>
             ) : apiKey ? (
               <>
                 <div className="flex items-center gap-2 bg-gray-900 rounded-xl px-4 py-3">
                   <span className="flex-1 font-mono text-sm text-emerald-400 break-all leading-relaxed">
-                    {apiKeyVisible ? apiKey : '•'.repeat(Math.min(apiKey.length, 48))}
+                    {apiKeyVisible ? apiKey : ''.repeat(Math.min(apiKey.length, 48))}
                   </span>
                   <button onClick={() => setApiKeyVisible(!apiKeyVisible)}
                     className="text-gray-400 hover:text-white flex-shrink-0 p-1 rounded transition-colors" title={apiKeyVisible ? 'Hide' : 'Show'}>
@@ -3027,20 +3248,20 @@ DOMESTIC_LMS_API_KEY=${apiKeyVisible ? apiKey : '<show key above>'}`}
     </div>
   )}
 
-  {/* ════ CHANNEL PARTNERS — MANUAL LEADS ════ */}
+  {/*  CHANNEL PARTNERS  MANUAL LEADS  */}
   {superTab === 'manual_leads' && (() => {
-    const fmtDate = (d) => d ? new Date(d).toLocaleString('en-IN', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '—';
+    const fmtDate = (d) => d ? new Date(d).toLocaleString('en-IN', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '';
 
     const OUTCOME_CFG = {
-      interested:     { label: 'Interested',     cls: 'bg-emerald-100 text-emerald-700 border-emerald-200', icon: '✅', hdr: 'from-emerald-500 to-teal-600' },
-      not_interested: { label: 'Not Interested', cls: 'bg-red-100 text-red-700 border-red-200',             icon: '❌', hdr: 'from-red-500 to-rose-600' },
-      not_eligible:   { label: 'Not Eligible',   cls: 'bg-rose-100 text-rose-700 border-rose-200',           icon: '🚫', hdr: 'from-rose-500 to-rose-700' },
-      callback:       { label: 'Callback',       cls: 'bg-amber-100 text-amber-700 border-amber-200',       icon: '📞', hdr: 'from-amber-400 to-orange-500' },
-      not_reachable:  { label: 'Not Reachable',  cls: 'bg-orange-100 text-orange-700 border-orange-200',    icon: '📵', hdr: 'from-orange-400 to-amber-500' },
-      wrong_number:   { label: 'Wrong Number',   cls: 'bg-gray-100 text-gray-500 border-gray-200',          icon: '❓', hdr: 'from-gray-500 to-gray-600' },
+      interested:     { label: 'Interested',     cls: 'bg-emerald-100 text-emerald-700 border-emerald-200', icon: '', hdr: 'from-emerald-500 to-teal-600' },
+      not_interested: { label: 'Not Interested', cls: 'bg-red-100 text-red-700 border-red-200',             icon: '', hdr: 'from-red-500 to-rose-600' },
+      not_eligible:   { label: 'Not Eligible',   cls: 'bg-rose-100 text-rose-700 border-rose-200',           icon: '', hdr: 'from-rose-500 to-rose-700' },
+      callback:       { label: 'Callback',       cls: 'bg-amber-100 text-amber-700 border-amber-200',       icon: '', hdr: 'from-amber-400 to-orange-500' },
+      not_reachable:  { label: 'Not Reachable',  cls: 'bg-orange-100 text-orange-700 border-orange-200',    icon: '', hdr: 'from-orange-400 to-amber-500' },
+      wrong_number:   { label: 'Wrong Number',   cls: 'bg-gray-100 text-gray-500 border-gray-200',          icon: '', hdr: 'from-gray-500 to-gray-600' },
     };
 
-    const CIBIL_LABEL = { below_600:'< 600 (Poor)', '600_699':'600–699 (Fair)', '700_749':'700–749 (Good)', '750_800':'750–800 (Very Good)', above_800:'> 800 (Excellent)', unknown:'Unknown' };
+    const CIBIL_LABEL = { below_600:'< 600 (Poor)', '600_699':'600699 (Fair)', '700_749':'700749 (Good)', '750_800':'750800 (Very Good)', above_800:'> 800 (Excellent)', unknown:'Unknown' };
 
     // Apply disposition + search filters
     const marked    = manualLeads.filter(l => l.callOutcome && l.callOutcome !== '');
@@ -3060,15 +3281,15 @@ DOMESTIC_LMS_API_KEY=${apiKeyVisible ? apiKey : '<show key above>'}`}
             <div className="flex items-center gap-3">
               <div className="p-1.5 bg-amber-100 rounded-lg"><Briefcase className="h-4 w-4 text-amber-600" /></div>
               <div>
-                <h1 className="text-gray-800 font-bold text-sm">Channel Partners — Manual Leads</h1>
-                <p className="text-gray-400 text-xs">Leads filled manually by agents · click any row to see full details</p>
+                <h1 className="text-gray-800 font-bold text-sm">Channel Partners  Manual Leads</h1>
+                <p className="text-gray-400 text-xs">Leads filled manually by agents  click any row to see full details</p>
               </div>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
               {/* Search manual leads */}
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 pointer-events-none" />
-                <input type="text" placeholder="Search name, mobile or agent…" value={manualSearch}
+                <input type="text" placeholder="Search name, mobile or agent" value={manualSearch}
                   onChange={e => setManualSearch(e.target.value)}
                   className="pl-9 pr-8 py-2 text-sm border border-gray-200 rounded-xl bg-white w-52 focus:outline-none focus:ring-2 focus:ring-[#065F36]/20 focus:border-[#065F36]" />
                 {manualSearch && <button onClick={() => setManualSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500"><X className="h-3.5 w-3.5" /></button>}
@@ -3083,12 +3304,12 @@ DOMESTIC_LMS_API_KEY=${apiKeyVisible ? apiKey : '<show key above>'}`}
 
         <main className="px-4 sm:px-6 xl:px-8 py-4 xl:py-5 space-y-4 min-w-0">
 
-          {/* ── Filter tabs + stats ── */}
+          {/*  Filter tabs + stats  */}
           <div className="flex items-center gap-3 flex-wrap">
             {[
               { key: 'all',        label: 'All Leads',   count: manualLeads.length,  color: 'text-gray-700 border-gray-200 bg-white' },
-              { key: 'marked',     label: '✅ Marked',    count: marked.length,       color: 'text-emerald-700 border-emerald-200 bg-emerald-50' },
-              { key: 'not_marked', label: '⭕ Not Marked', count: notMarked.length,    color: 'text-orange-700 border-orange-200 bg-orange-50' },
+              { key: 'marked',     label: ' Marked',    count: marked.length,       color: 'text-emerald-700 border-emerald-200 bg-emerald-50' },
+              { key: 'not_marked', label: ' Not Marked', count: notMarked.length,    color: 'text-orange-700 border-orange-200 bg-orange-50' },
             ].map(f => (
               <button key={f.key} onClick={() => setManualFilter(f.key)}
                 className={`flex items-center gap-2 px-4 py-2 rounded-xl border text-sm font-bold transition-all ${
@@ -3104,7 +3325,7 @@ DOMESTIC_LMS_API_KEY=${apiKeyVisible ? apiKey : '<show key above>'}`}
             ))}
             <div className="ml-auto flex items-center gap-2">
               <span className="text-xs text-gray-400 bg-gray-100 px-3 py-1.5 rounded-xl">
-                ✍️ Manual entry only · no Excel / website source
+                 Manual entry only  no Excel / website source
               </span>
             </div>
           </div>
@@ -3112,7 +3333,7 @@ DOMESTIC_LMS_API_KEY=${apiKeyVisible ? apiKey : '<show key above>'}`}
           {manualLeadsLoading ? (
             <div className="flex flex-col items-center justify-center py-24 gap-4 bg-white rounded-2xl border border-gray-100">
               <div className="w-10 h-10 border-4 border-gray-100 border-t-amber-500 rounded-full animate-spin" />
-              <p className="text-gray-400 text-sm">Loading leads…</p>
+              <p className="text-gray-400 text-sm">Loading leads</p>
             </div>
           ) : filtered.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 gap-4 bg-white rounded-2xl border border-gray-100 shadow-sm">
@@ -3156,32 +3377,32 @@ DOMESTIC_LMS_API_KEY=${apiKeyVisible ? apiKey : '<show key above>'}`}
                           <td className="pl-6 pr-3 py-3.5">
                             {l.leadRef
                               ? <span className="font-mono text-xs font-bold bg-gray-900 text-emerald-400 px-1.5 py-0.5 rounded">{l.leadRef}</span>
-                              : <span className="text-gray-300 text-xs italic">—</span>}
+                              : <span className="text-gray-300 text-xs italic"></span>}
                           </td>
                           <td className="px-3 py-3.5">
                             <div className="flex items-center gap-2">
                               <div className={`w-2 h-2 rounded-full flex-shrink-0 ${isMarked ? 'bg-emerald-400' : 'bg-orange-400 animate-pulse'}`} />
                               <div>
-                                <p className="font-semibold text-gray-800">{l.name || '—'}</p>
+                                <p className="font-semibold text-gray-800">{l.name || ''}</p>
                                 {l.email && <p className="text-xs text-gray-400">{l.email}</p>}
                               </div>
                             </div>
                           </td>
                           <td className="px-3 py-3.5 text-gray-600 font-mono text-xs">
-                            <div>{l.mobile || '—'}</div>
+                            <div>{l.mobile || ''}</div>
                             {l.alternateMobile && <div className="text-gray-400">{l.alternateMobile}</div>}
                           </td>
                           <td className="px-3 py-3.5">
                             {l.productType
                               ? <span className="bg-[#E8FFF5] text-[#065F36] border border-[#D1FAE5] px-2 py-0.5 rounded-full text-xs font-medium capitalize">{l.productType.replace(/_/g,' ')}</span>
-                              : <span className="text-gray-300 text-xs">—</span>}
+                              : <span className="text-gray-300 text-xs"></span>}
                           </td>
-                          <td className="px-3 py-3.5 text-gray-500 text-xs">{[l.city, l.state].filter(Boolean).join(', ') || '—'}</td>
-                          <td className="px-3 py-3.5 text-gray-600 text-sm">{l.assignedTo?.name || '—'}</td>
+                          <td className="px-3 py-3.5 text-gray-500 text-xs">{[l.city, l.state].filter(Boolean).join(', ') || ''}</td>
+                          <td className="px-3 py-3.5 text-gray-600 text-sm">{l.assignedTo?.name || ''}</td>
                           <td className="px-3 py-3.5">
                             {oc
                               ? <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-semibold border ${oc.cls}`}>{oc.icon} {oc.label}</span>
-                              : <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-semibold bg-orange-50 text-orange-600 border border-orange-200">⭕ Not Marked</span>}
+                              : <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-semibold bg-orange-50 text-orange-600 border border-orange-200"> Not Marked</span>}
                           </td>
                           <td className="px-3 py-3.5">
                             <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
@@ -3201,13 +3422,13 @@ DOMESTIC_LMS_API_KEY=${apiKeyVisible ? apiKey : '<show key above>'}`}
           )}
         </main>
 
-        {/* ── Full Lead Detail Modal ── */}
+        {/*  Full Lead Detail Modal  */}
         {manualLeadDetail && (() => {
           const l = manualLeadDetail;
           const oc = OUTCOME_CFG[l.callOutcome];
           const isMarked = !!(l.callOutcome && l.callOutcome !== '');
           const hdrGrad  = oc?.hdr || 'from-[#065F36] to-[#00874A]';
-          const fmtMoney = (v) => v ? `₹${Number(v).toLocaleString('en-IN')}` : null;
+          const fmtMoney = (v) => v ? `${Number(v).toLocaleString('en-IN')}` : null;
 
           const Section = ({ title, children }) => (
             <div>
@@ -3233,16 +3454,16 @@ DOMESTIC_LMS_API_KEY=${apiKeyVisible ? apiKey : '<show key above>'}`}
                   <div className="flex items-start justify-between">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap mb-1">
-                        {oc ? <span className="text-xl">{oc.icon}</span> : <span className="text-xl">⭕</span>}
-                        <span className="text-xl font-black">{l.name || '—'}</span>
+                        {oc ? <span className="text-xl">{oc.icon}</span> : <span className="text-xl"></span>}
+                        <span className="text-xl font-black">{l.name || ''}</span>
                         {l.leadRef && <span className="font-mono text-xs font-bold bg-white/20 text-white px-2 py-0.5 rounded-lg tracking-widest">{l.leadRef}</span>}
-                        <span className="text-xs bg-white/20 text-white px-2 py-0.5 rounded-full font-bold border border-white/30">✍️ Manual</span>
+                        <span className="text-xs bg-white/20 text-white px-2 py-0.5 rounded-full font-bold border border-white/30"> Manual</span>
                       </div>
                       <div className="flex items-center gap-3 flex-wrap text-sm text-white/80">
-                        <span>{l.mobile || '—'}</span>
-                        {l.alternateMobile && <span>· Alt: {l.alternateMobile}</span>}
-                        {l.email && <span>· {l.email}</span>}
-                        {(l.city || l.state) && <span>· {[l.city, l.state].filter(Boolean).join(', ')}</span>}
+                        <span>{l.mobile || ''}</span>
+                        {l.alternateMobile && <span> Alt: {l.alternateMobile}</span>}
+                        {l.email && <span> {l.email}</span>}
+                        {(l.city || l.state) && <span> {[l.city, l.state].filter(Boolean).join(', ')}</span>}
                       </div>
                     </div>
                     <button onClick={() => setManualLeadDetail(null)}
@@ -3272,7 +3493,7 @@ DOMESTIC_LMS_API_KEY=${apiKeyVisible ? apiKey : '<show key above>'}`}
                         </span>
                       ) : (
                         <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-bold bg-orange-100 text-orange-700 border border-orange-300">
-                          ⭕ Not Marked — No Disposition Set
+                           Not Marked  No Disposition Set
                         </span>
                       )}
                       <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-bold border ${
@@ -3280,11 +3501,11 @@ DOMESTIC_LMS_API_KEY=${apiKeyVisible ? apiKey : '<show key above>'}`}
                         l.status === 'rejected'  ? 'bg-red-100 text-red-700 border-red-300' :
                                                    'bg-blue-100 text-blue-700 border-blue-300'
                       }`}>
-                        {l.status === 'completed' ? '✔ Completed' : l.status === 'rejected' ? '✖ Rejected' : '⏳ Pending'}
+                        {l.status === 'completed' ? ' Completed' : l.status === 'rejected' ? ' Rejected' : ' Pending'}
                       </span>
                       {l.callbackDate && (
                         <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-bold bg-violet-100 text-violet-700 border border-violet-300">
-                          📅 Callback: {l.callbackDate}
+                           Callback: {l.callbackDate}
                         </span>
                       )}
                     </div>
@@ -3360,7 +3581,7 @@ DOMESTIC_LMS_API_KEY=${apiKeyVisible ? apiKey : '<show key above>'}`}
     );
   })()}
 
-    {/* ── Global Delete Confirmation Modal (works on ALL tabs) ── */}
+    {/*  Global Delete Confirmation Modal (works on ALL tabs)  */}
     {deleteConfirm && (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
         onClick={() => setDeleteConfirm(null)}>
@@ -3368,7 +3589,7 @@ DOMESTIC_LMS_API_KEY=${apiKeyVisible ? apiKey : '<show key above>'}`}
           onClick={e => e.stopPropagation()}>
           <div className="bg-gradient-to-r from-red-500 to-rose-600 px-6 py-4">
             <div className="flex items-center gap-2">
-              <span className="text-2xl">🗑️</span>
+              <span className="text-2xl"></span>
               <h3 className="text-white font-bold text-base">Confirm Delete</h3>
             </div>
           </div>
@@ -3376,7 +3597,7 @@ DOMESTIC_LMS_API_KEY=${apiKeyVisible ? apiKey : '<show key above>'}`}
             <p className="text-gray-700 text-sm mb-1 font-semibold">You are about to permanently delete:</p>
             <p className="text-gray-500 text-sm bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 mb-4">
               {deleteConfirm.name}
-              {deleteConfirm.type === 'batch' && <span className="block text-xs text-orange-600 font-semibold mt-1">⚠️ This will delete all {deleteConfirm.totalLeads ? `${deleteConfirm.totalLeads} ` : ''}leads in the entire batch.</span>}
+              {deleteConfirm.type === 'batch' && <span className="block text-xs text-orange-600 font-semibold mt-1"> This will delete all {deleteConfirm.totalLeads ? `${deleteConfirm.totalLeads} ` : ''}leads in the entire batch.</span>}
             </p>
             <p className="text-red-600 text-xs font-semibold mb-5">This action cannot be undone.</p>
             <div className="flex gap-3">
@@ -3394,7 +3615,7 @@ DOMESTIC_LMS_API_KEY=${apiKeyVisible ? apiKey : '<show key above>'}`}
       </div>
     )}
 
-    {/* ── Batch Assign to Agent Modal ── */}
+    {/*  Batch Assign to Agent Modal  */}
     {batchAssignModal && (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
         onClick={() => setBatchAssignModal(null)}>
@@ -3403,7 +3624,7 @@ DOMESTIC_LMS_API_KEY=${apiKeyVisible ? apiKey : '<show key above>'}`}
           <div className="bg-gradient-to-r from-violet-600 to-purple-600 px-6 py-4 flex items-center justify-between">
             <div>
               <h3 className="text-white font-bold text-base">Assign Batch to Agent</h3>
-              <p className="text-white/70 text-xs mt-0.5">{batchAssignModal.batchName} · {batchAssignModal.total} leads</p>
+              <p className="text-white/70 text-xs mt-0.5">{batchAssignModal.batchName}  {batchAssignModal.total} leads</p>
             </div>
             <button onClick={() => setBatchAssignModal(null)} className="text-white/70 hover:text-white"><X className="h-5 w-5" /></button>
           </div>
@@ -3415,7 +3636,7 @@ DOMESTIC_LMS_API_KEY=${apiKeyVisible ? apiKey : '<show key above>'}`}
               <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Select Agent</p>
               <select value={batchAssignAgentId} onChange={e => setBatchAssignAgentId(e.target.value)}
                 className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-violet-400/40 focus:border-violet-500">
-                <option value="">— Choose an agent —</option>
+                <option value=""> Choose an agent </option>
                 {users.filter(u => u.role === 'domagent' && u.isActive).map(u => (
                   <option key={u._id} value={u._id}>{u.name} ({u.email})</option>
                 ))}
@@ -3430,7 +3651,7 @@ DOMESTIC_LMS_API_KEY=${apiKeyVisible ? apiKey : '<show key above>'}`}
             <button onClick={handleBatchAssign} disabled={!batchAssignAgentId || batchAssigning}
               className="flex items-center gap-2 px-5 py-2 text-sm font-bold text-white bg-violet-600 hover:bg-violet-700 disabled:bg-gray-300 rounded-xl shadow-sm transition-colors">
               {batchAssigning
-                ? <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Assigning…</>
+                ? <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Assigning</>
                 : <><Database className="h-4 w-4" /> Assign All Leads</>}
             </button>
           </div>
@@ -3443,7 +3664,7 @@ DOMESTIC_LMS_API_KEY=${apiKeyVisible ? apiKey : '<show key above>'}`}
   );
 };
 
-/* ── User Create / Edit Modal ── */
+/*  User Create / Edit Modal  */
 const UserFormModal = ({ title, user: existingUser, onClose, onSaved }) => {
   const [form, setForm] = useState({
     name:     existingUser?.name  || '',
@@ -3523,9 +3744,9 @@ const UserFormModal = ({ title, user: existingUser, onClose, onSaved }) => {
             <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Role</label>
             <select value={form.role} onChange={set('role')}
               className="w-full px-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white text-gray-700">
-              <option value="domagent">Agent — can load and work leads</option>
-              <option value="dom_admin">Admin — can view all leads + agents</option>
-              <option value="dom_superadmin">Super Admin — full access</option>
+              <option value="domagent">Agent  can load and work leads</option>
+              <option value="dom_admin">Admin  can view all leads + agents</option>
+              <option value="dom_superadmin">Super Admin  full access</option>
             </select>
           </div>
           <div className="flex gap-3 pt-2">
@@ -3535,7 +3756,7 @@ const UserFormModal = ({ title, user: existingUser, onClose, onSaved }) => {
             </button>
             <button type="submit" disabled={saving}
               className="flex-1 py-2.5 text-sm bg-violet-700 text-white rounded-xl hover:bg-violet-800 disabled:bg-violet-300 font-bold transition-colors shadow-sm">
-              {saving ? 'Saving…' : isEdit ? 'Save Changes' : 'Create User'}
+              {saving ? 'Saving' : isEdit ? 'Save Changes' : 'Create User'}
             </button>
           </div>
         </form>
@@ -3545,4 +3766,5 @@ const UserFormModal = ({ title, user: existingUser, onClose, onSaved }) => {
 };
 
 export default DomSuperAdminDashboard;
+
 

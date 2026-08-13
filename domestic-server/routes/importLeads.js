@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 const express         = require('express');
 const multer          = require('multer');
 const crypto          = require('crypto');
@@ -9,7 +9,7 @@ const { protect, authorize } = require('../middleware/auth');
 
 const router = express.Router();
 
-// In-memory storage — we parse the buffer and discard the raw file
+// In-memory storage  we parse the buffer and discard the raw file
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
@@ -24,12 +24,12 @@ const upload = multer({
   },
 });
 
-// ── Helpers ────────────────────────────────────────────────────────────────
+//  Helpers 
 
 /** Normalise a header string so we can do fuzzy matching */
 const norm = (s) => String(s || '').toLowerCase().replace(/[\s_\-()./]/g, '');
 
-/** Build { normalisedHeader → columnIndex } map from the first row of the sheet */
+/** Build { normalisedHeader  columnIndex } map from the first row of the sheet */
 function buildHeaderMap(headerRow) {
   const map = {};
   (headerRow || []).forEach((cell, idx) => { map[norm(cell)] = idx; });
@@ -50,19 +50,19 @@ function mapRow(row, hm) {
   };
 
   return {
-    // ── Core identifiers ──────────────────────────────────────────────────
+    //  Core identifiers 
     name:   get('customer name','customername','name','fullname','customer','client name','clientname','borrower name','borrowername'),
     mobile: get('mobile number','mobilenumber','mobile','mobile no','mobileno','phone number','phonenumber','phone','phone no','phoneno','contact number','contactnumber','contact','mob no','mobno','mob'),
     email:  get('e mail','email','email id','emailid','email address','emailaddress','e-mail','emai','mail'),
 
-    // ── Customer profile ──────────────────────────────────────────────────
+    //  Customer profile 
     dateOfBirth:              get('date of birth','dateofbirth','dob','birth date','birthdate','d.o.b','dob date'),
     age:                      get('age','customer age','customerage'),
     customerAadharNo:         get('customer aadhar no','customeraadharno','aadhar no','aadharno','aadhar number','aadharnumber','aadhar','adhar no','adharno','uid','uid number'),
     panNumber:                get('pan number','pannumber','pan no','panno','pan','pan card no','pancardno'),
     customerPreferredLanguage:get('customer preferred language','customerpreferredlanguage','preferred language','preferredlanguage','language'),
 
-    // ── Address ───────────────────────────────────────────────────────────
+    //  Address 
     residenceAddress:    get('residence address','residenceaddress','res address','resaddress','home address','homeaddress','resi address','resiaddress','address','resi. address','res. address'),
     residencePhoneNumber:get('residence phone number','residencephonenumber','res phone number','resphone','residence phone','home phone','homephone','resi phone','resiphone','res ph no'),
     officeAddress:       get('office address','officeaddress','off address','offaddress','work address','workaddress','office add'),
@@ -71,7 +71,7 @@ function mapRow(row, hm) {
     city:                get('city','location','district'),
     state:               get('state'),
 
-    // ── Loan / financial ──────────────────────────────────────────────────
+    //  Loan / financial 
     vintage:                get('vintage','loan vintage','loanvintage','product vintage'),
     loanType:               get('loan type','loantype','loan','type of loan','typeofloan','product','product name','productname'),
     productType:            get('product type','producttype','product name','productname','service type','servicetype'),
@@ -87,12 +87,12 @@ function mapRow(row, hm) {
     bankName:               get('bank name','bankname','bank','lender name','lendername','financier','financier name'),
     loanAmount:             get('loan amount','loanamount','loan amt','loanamt','amount','sanctioned amount','sanctionedamount','loan amount required'),
 
-    // ── Employment ────────────────────────────────────────────────────────
+    //  Employment 
     employment:       get('employement type','employementtype','employment type','employmenttype','employment','emp type','emptype','job type','jobtype','occupation','occupation type'),
     firmEmployeeName: get('firm/ employee name','firmemployeename','firm employee name','firm name','firmname','employer name','employername','firm','employee name','employeename','company name','companyname','employer'),
     monthlyIncome:    get('monthly income','monthlyincome','income','salary','monthly salary','monthlysalary','net income','netincome','monthly salary income','income monthly'),
 
-    // ── Asset / CIBIL ─────────────────────────────────────────────────────
+    //  Asset / CIBIL 
     cibilScore:          get('cibil score','cibilscore','cibil','credit score','creditscore','cibil score value','bureau score','bureauscore'),
     cibilScoreDate:      get('cibil score date','cibilscoredate','cibil date','cibildate','credit score date','bureau date','bureaudate'),
     assetDescription:    get('asset description','assetdescription','asset','vehicle description','vehicledescription','asset desc','property description','propertydescription'),
@@ -103,7 +103,7 @@ function mapRow(row, hm) {
   };
 }
 
-// ── POST /domestic-api/import-leads/upload ────────────────────────────────
+//  POST /domestic-api/import-leads/upload 
 // Super admin uploads an Excel / CSV file to create a new import batch
 router.post(
   '/upload',
@@ -141,7 +141,7 @@ router.post(
 
       const hm = buildHeaderMap(rows[0]);
 
-      // Show which of the 32 mapped fields were found vs missing (for info only — never blocks upload)
+      // Show which of the 32 mapped fields were found vs missing (for info only  never blocks upload)
       const MAPPED_FIELDS = {
         'Customer Name':            ['customername','name','fullname','customer'],
         'Mobile Number':            ['mobilenumber','mobile','mobileno','phone','phoneno'],
@@ -198,7 +198,7 @@ router.post(
           continue;
         }
         const fields = mapRow(row, hm);
-        // Accept the row even if name/mobile are blank — just store whatever was found
+        // Accept the row even if name/mobile are blank  just store whatever was found
         leads.push({
           ...fields,
           importBatchId:   batchId,
@@ -234,8 +234,8 @@ router.post(
   }
 );
 
-// ── GET /domestic-api/import-leads/batches ────────────────────────────────
-// Super admin — list all import batches with summary counts
+//  GET /domestic-api/import-leads/batches 
+// Super admin  list all import batches with summary counts
 router.get('/batches', protect, authorize('dom_superadmin'), async (req, res) => {
   try {
     const batches = await DomImportedLead.aggregate([
@@ -262,8 +262,8 @@ router.get('/batches', protect, authorize('dom_superadmin'), async (req, res) =>
   }
 });
 
-// ── GET /domestic-api/import-leads/my-batches ───────────────────────────────
-// Admin — list distinct import batches that have been shared with them
+//  GET /domestic-api/import-leads/my-batches 
+// Admin  list distinct import batches that have been shared with them
 router.get('/my-batches', protect, authorize('dom_admin', 'dom_superadmin'), async (req, res) => {
   try {
     const { role, _id: userId } = req.user;
@@ -289,8 +289,8 @@ router.get('/my-batches', protect, authorize('dom_admin', 'dom_superadmin'), asy
   }
 });
 
-// ── GET /domestic-api/import-leads/pool-stats ─────────────────────────────
-// Admin / SuperAdmin — count of available vs assigned leads in the pool
+//  GET /domestic-api/import-leads/pool-stats 
+// Admin / SuperAdmin  count of available vs assigned leads in the pool
 router.get('/pool-stats', protect, authorize('dom_admin', 'dom_superadmin'), async (req, res) => {
   try {
     const { role, _id: userId } = req.user;
@@ -323,7 +323,7 @@ router.get('/pool-stats', protect, authorize('dom_admin', 'dom_superadmin'), asy
   }
 });
 
-// ── GET /domestic-api/import-leads ────────────────────────────────────────
+//  GET /domestic-api/import-leads 
 // Super admin: all leads (optionally filtered by batchId/status)
 // Admin:       only leads shared with them
 // Agent:       only leads assigned to them
@@ -339,7 +339,7 @@ router.get('/', protect, async (req, res) => {
     if (role === 'dom_superadmin') {
       if (req.query.batchId) filter.importBatchId = req.query.batchId;
       if (req.query.status) {
-        // 'shared' tab in UI means "unassigned" — for SA include both imported+shared unassigned
+        // 'shared' tab in UI means "unassigned"  for SA include both imported+shared unassigned
         if (req.query.status === 'shared') {
           filter.status    = { $in: ['imported', 'shared'] };
           filter.assignedTo = null;
@@ -355,12 +355,12 @@ router.get('/', protect, async (req, res) => {
       if (req.query.agentId) filter.assignedTo = req.query.agentId;
       if (req.query.batchId) filter.importBatchId = req.query.batchId;
     } else {
-      // domagent — only their assigned leads
+      // domagent  only their assigned leads
       filter.assignedTo = userId;
       filter.status     = 'assigned';
     }
 
-    // Date range filter — parse as LOCAL date
+    // Date range filter  parse as LOCAL date
     if (req.query.dateFrom || req.query.dateTo) {
       filter.createdAt = {};
       if (req.query.dateFrom) {
@@ -389,7 +389,7 @@ router.get('/', protect, async (req, res) => {
       DomImportedLead.find(filter)
         .populate('assignedTo', 'name email')
         // Populate the worked DomLead to expose documents + callOutcome + cibilScoreRange for badges/filters
-        .populate('domLeadId', 'documents callOutcome status name cibilScoreRange')
+        .populate('domLeadId', 'documents callOutcome status name cibilScoreRange callCount updateCount')
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
@@ -408,7 +408,7 @@ router.get('/', protect, async (req, res) => {
   }
 });
 
-// ── POST /domestic-api/import-leads/share ────────────────────────────────
+//  POST /domestic-api/import-leads/share 
 // Super admin shares a full batch (or specific lead IDs) with admin(s)
 // Body: { batchId, adminIds }  OR  { leadIds, adminIds }
 router.post('/share', protect, authorize('dom_superadmin'), async (req, res) => {
@@ -440,6 +440,7 @@ router.post('/share', protect, authorize('dom_superadmin'), async (req, res) => 
       return res.status(400).json({ success: false, message: 'batchId or leadIds is required.' });
     }
 
+    const assignedAt = new Date();
     const result = await DomImportedLead.updateMany(
       { ...filter, status: 'imported' },
       {
@@ -465,7 +466,7 @@ router.post('/share', protect, authorize('dom_superadmin'), async (req, res) => 
   }
 });
 
-// ── POST /domestic-api/import-leads/assign-batch ─────────────────────────
+//  POST /domestic-api/import-leads/assign-batch 
 // Super Admin: directly assign all unassigned leads in a batch to an agent
 router.post('/assign-batch', protect, authorize('dom_superadmin'), async (req, res) => {
   try {
@@ -476,9 +477,10 @@ router.post('/assign-batch', protect, authorize('dom_superadmin'), async (req, r
     const agent = await DomUser.findOne({ _id: agentId, role: 'domagent', isActive: true }).lean();
     if (!agent) return res.status(400).json({ success: false, message: 'Agent not found or inactive.' });
 
+    const assignedAt = new Date();
     const result = await DomImportedLead.updateMany(
       { importBatchId: batchId, assignedTo: null, status: { $in: ['imported', 'shared'] } },
-      { $set: { assignedTo: agentId, assignedBy: req.user._id, assignedAt: new Date(), status: 'assigned' } }
+      { $set: { assignedTo: agentId, assignedBy: req.user._id, assignedAt, status: 'assigned' }, $push: { assignmentHistory: { agent: agentId, assignedAt } } }
     );
 
     if (result.modifiedCount === 0) {
@@ -489,7 +491,7 @@ router.post('/assign-batch', protect, authorize('dom_superadmin'), async (req, r
     const sample = await DomImportedLead.findOne({ importBatchId: batchId }).lean();
     const batchName = sample?.importBatchName || batchId;
 
-    // Notify the agent via socket — their dashboard will refresh immediately
+    // Notify the agent via socket  their dashboard will refresh immediately
     const io = req.app.get('io');
     if (io) {
       io.to('domagents').emit('pool_batch_assigned', {
@@ -512,7 +514,7 @@ router.post('/assign-batch', protect, authorize('dom_superadmin'), async (req, r
   }
 });
 
-// ── POST /domestic-api/import-leads/assign ───────────────────────────────
+//  POST /domestic-api/import-leads/assign 
 // Admin assigns N leads from the shared pool to an agent
 // Body: { agentId, count }  OR  { agentId, leadIds: [...] }
 router.post('/assign', protect, authorize('dom_admin', 'dom_superadmin'), async (req, res) => {
@@ -549,7 +551,7 @@ router.post('/assign', protect, authorize('dom_admin', 'dom_superadmin'), async 
         : { status: { $in: ['imported', 'shared'] }, assignedTo: null };
 
       const toAssign = await DomImportedLead.find(poolFilter)
-        .sort({ createdAt: 1 }) // FIFO — oldest first
+        .sort({ createdAt: 1 }) // FIFO  oldest first
         .limit(num)
         .select('_id')
         .lean();
@@ -564,13 +566,15 @@ router.post('/assign', protect, authorize('dom_admin', 'dom_superadmin'), async 
       updateFilter = { _id: { $in: toAssign.map((l) => l._id) } };
     }
 
+    const assignedAt = new Date();
     const result = await DomImportedLead.updateMany(updateFilter, {
       $set: {
         assignedTo: agentId,
         assignedBy: userId,
-        assignedAt: new Date(),
+        assignedAt,
         status:     'assigned',
       },
+      $push: { assignmentHistory: { agent: agentId, assignedAt } },
     });
 
     if (result.modifiedCount === 0) {
@@ -591,7 +595,7 @@ router.post('/assign', protect, authorize('dom_admin', 'dom_superadmin'), async 
   }
 });
 
-// ── PATCH /domestic-api/import-leads/:id/reassign ─────────────────────────
+//  PATCH /domestic-api/import-leads/:id/reassign 
 // Admin / SuperAdmin: reassign an already-assigned lead to a different agent.
 // Works on any lead regardless of current assignedTo.
 // Body: { agentId }
@@ -620,14 +624,10 @@ router.patch('/:id/reassign', protect, authorize('dom_admin', 'dom_superadmin'),
 
     const previousAgent = lead.assignedTo;
 
+    const assignedAt = new Date();
     const updated = await DomImportedLead.findByIdAndUpdate(
       req.params.id,
-      {
-        assignedTo: agentId,
-        assignedBy: userId,
-        assignedAt: new Date(),
-        status:     'assigned',
-      },
+      { $set: { assignedTo: agentId, assignedBy: userId, assignedAt, status: 'assigned' }, $push: { assignmentHistory: { agent: agentId, assignedAt } } },
       { new: true }
     )
       .populate('assignedTo', 'name email')
@@ -654,7 +654,7 @@ router.patch('/:id/reassign', protect, authorize('dom_admin', 'dom_superadmin'),
   }
 });
 
-// ── GET /domestic-api/import-leads/export ─────────────────────────────────
+//  GET /domestic-api/import-leads/export 
 // Export filtered imported leads as Excel. Accessible to admin + superadmin.
 router.get('/export', protect, authorize('dom_admin', 'dom_superadmin'), async (req, res) => {
   try {
@@ -672,7 +672,7 @@ router.get('/export', protect, authorize('dom_admin', 'dom_superadmin'), async (
         }
       }
     } else {
-      // admin — only see leads shared with them
+      // admin  only see leads shared with them
       filter.sharedWith = userId;
       if (req.query.batchId) filter.importBatchId = req.query.batchId;
       if (req.query.status && ['shared', 'assigned'].includes(req.query.status)) {
@@ -766,3 +766,4 @@ router.get('/export', protect, authorize('dom_admin', 'dom_superadmin'), async (
 });
 
 module.exports = router;
+

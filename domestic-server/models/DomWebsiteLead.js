@@ -1,8 +1,8 @@
-'use strict';
+﻿'use strict';
 const mongoose = require('mongoose');
 
 /**
- * DomWebsiteLead — raw lead from website form or Meta Lead Ads.
+ * DomWebsiteLead  raw lead from website form or Meta Lead Ads.
  * An agent loads it, then fills a full DomLead while on the call.
  */
 const domWebsiteLeadSchema = new mongoose.Schema(
@@ -32,21 +32,21 @@ const domWebsiteLeadSchema = new mongoose.Schema(
     // Custom / unrecognised Meta form fields appended here
     customNotes:    { type: String, trim: true, maxlength: 2000 },
 
-    // ── Meta Lead Ads specific ────────────────────────────────────────────
-    // Unique Meta leadgen_id — prevents duplicate saves
+    //  Meta Lead Ads specific 
+    // Unique Meta leadgen_id  prevents duplicate saves
     metaLeadgenId:  { type: String, trim: true, maxlength: 30, default: null, index: true, sparse: true },
 
-    // Every raw field Meta sent, verbatim — never lose custom form questions
+    // Every raw field Meta sent, verbatim  never lose custom form questions
     parsedFields:   { type: mongoose.Schema.Types.Mixed, default: null },
 
     // Full Meta audit trail (page, form, ad, campaign info)
     metaRawPayload: { type: mongoose.Schema.Types.Mixed, default: null },
 
     // Processing state
-    // new       → lead arrived, no agent has loaded it
-    // loaded    → an agent clicked "Load", currently working on it
-    // completed → agent submitted the full DomLead form
-    // rejected  → admin marked as invalid/spam
+    // new        lead arrived, no agent has loaded it
+    // loaded     an agent clicked "Load", currently working on it
+    // completed  agent submitted the full DomLead form
+    // rejected   admin marked as invalid/spam
     status: {
       type: String,
       enum: ['new', 'loaded', 'completed', 'rejected'],
@@ -65,6 +65,12 @@ const domWebsiteLeadSchema = new mongoose.Schema(
     // When agent loaded / completed
     loadedAt:       { type: Date, default: null },
     completedAt:    { type: Date, default: null },
+    // Immutable allocation events used by the Super Admin daily IST tracker.
+    assignmentHistory: [{
+      agent:        { type: mongoose.Schema.Types.ObjectId, ref: 'DomUser' },
+      assignedAt:   { type: Date, required: true },
+      unassignedAt: { type: Date, default: null },
+    }],
 
     // Reference to the full worked lead (set when agent submits DomLead)
     domLeadId: {
@@ -78,7 +84,10 @@ const domWebsiteLeadSchema = new mongoose.Schema(
 
 domWebsiteLeadSchema.index({ status: 1, createdAt: -1 });
 domWebsiteLeadSchema.index({ loadedBy: 1, status: 1 });
+domWebsiteLeadSchema.index({ loadedAt: -1 });
+domWebsiteLeadSchema.index({ 'assignmentHistory.assignedAt': -1 });
 domWebsiteLeadSchema.index({ createdAt: -1 });
 domWebsiteLeadSchema.index({ name: 'text', mobile: 'text' });
 
 module.exports = mongoose.model('DomWebsiteLead', domWebsiteLeadSchema);
+

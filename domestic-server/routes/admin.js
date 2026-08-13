@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 const express        = require('express');
 const DomUser        = require('../models/DomUser');
 const DomWebsiteLead = require('../models/DomWebsiteLead');
@@ -8,16 +8,20 @@ const bcrypt         = require('bcryptjs');
 const { protect, authorize, generateToken } = require('../middleware/auth');
 
 const router = express.Router();
+const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+const istDayBounds = (date = new Date(Date.now() + IST_OFFSET_MS).toISOString().slice(0, 10)) => {
+  const [year, month, day] = date.split('-').map(Number);
+  const start = new Date(Date.UTC(year, month - 1, day) - IST_OFFSET_MS);
+  return { start, end: new Date(start.getTime() + 86400000 - 1) };
+};
 
 // All admin routes require dom_admin or dom_superadmin
 router.use(protect, authorize('dom_admin', 'dom_superadmin'));
 
-// ── GET /domestic-api/admin/stats ──────────────────────────────────────────
+//  GET /domestic-api/admin/stats 
 router.get('/stats', async (req, res) => {
   try {
-    // Use local midnight so "today" is correct for IST/any timezone
-    const now = new Date();
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+    const todayStart = istDayBounds().start;
 
     const [
       totalWebsiteLeads,
@@ -90,8 +94,8 @@ router.get('/stats', async (req, res) => {
   }
 });
 
-// ── GET /domestic-api/admin/agents ─────────────────────────────────────────
-// Agent performance table — supports optional dateFrom/dateTo for disposition stats
+//  GET /domestic-api/admin/agents 
+// Agent performance table  supports optional dateFrom/dateTo for disposition stats
 router.get('/agents', async (req, res) => {
   try {
     const agents = await DomUser.find({ role: 'domagent' })
@@ -101,7 +105,7 @@ router.get('/agents', async (req, res) => {
     // Counts per agent
     const agentIds = agents.map((a) => a._id);
 
-    // ── Optional date range for disposition stats ─────────────────────────
+    //  Optional date range for disposition stats 
     // Builds a { field: { $gte, $lte } } object; returns {} when no dates given
     const buildDateCond = (field) => {
       if (!req.query.dateFrom && !req.query.dateTo) return {};
@@ -124,7 +128,7 @@ router.get('/agents', async (req, res) => {
         { $match: { assignedTo: { $in: agentIds }, ...buildDateCond('createdAt') } },
         { $group: { _id: '$assignedTo', count: { $sum: 1 } } },
       ]),
-      // Pool / imported leads stats — total assigned (lifetime) + worked in date range
+      // Pool / imported leads stats  total assigned (lifetime) + worked in date range
       DomImportedLead.aggregate([
         { $match: { assignedTo: { $in: agentIds } } },
         { $group: {
@@ -187,8 +191,280 @@ router.get('/agents', async (req, res) => {
   }
 });
 
-// ── GET /domestic-api/admin/pipeline ──────────────────────────────────────
-// Funnel: website → loaded → completed → dom_lead submitted
+//  GET /domestic-api/admin/daily-assignments 
+// Per-agent allocation counts for one IST calendar day. Website/Meta leads are
+// assigned when loaded; imported leads are assigned via the pool.
+router.get('/daily-assignments', async (req, res) => {
+  try {
+    const todayIst = new Date(Date.now() + IST_OFFSET_MS).toISOString().slice(0, 10);
+    const date = req.query.date || todayIst;
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return res.status(400).json({ success: false, message: 'date must be in YYYY-MM-DD format.' });
+    }
+
+    const [year, month, day] = date.split('-').map(Number);
+    const istStart = new Date(Date.UTC(year, month - 1, day) - IST_OFFSET_MS);
+    if (new Date(istStart.getTime() + IST_OFFSET_MS).toISOString().slice(0, 10) !== date) {
+      return res.status(400).json({ success: false, message: 'date is not a valid calendar date.' });
+    }
+    const istEnd = new Date(istStart.getTime() + 24 * 60 * 60 * 1000);
+    const dateFilter = { $gte: istStart, $lt: istEnd };
+
+    const agents = await DomUser.find({ role: 'domagent' })
+      .select('name email isActive')
+      .sort({ name: 1 })
+      .lean();
+    const agentIds = agents.map((agent) => agent._id);
+
+    const [websiteAssignments, importedAssignments] = await Promise.all([
+      DomWebsiteLead.aggregate([
+        { $match: { loadedBy: { $in: agentIds }, loadedAt: dateFilter } },
+        { $group: { _id: '$loadedBy', count: { $sum: 1 } } },
+      ]),
+      DomImportedLead.aggregate([
+        { $match: { assignedTo: { $in: agentIds }, assignedAt: dateFilter } },
+        { $group: { _id: '$assignedTo', count: { $sum: 1 } } },
+      ]),
+    ]);
+
+    const toCountMap = (rows) => Object.fromEntries(rows.map((row) => [row._id.toString(), row.count]));
+    const websiteMap = toCountMap(websiteAssignments);
+    const importedMap = toCountMap(importedAssignments);
+    const data = agents.map((agent) => {
+      const id = agent._id.toString();
+      const website = websiteMap[id] || 0;
+      const imported = importedMap[id] || 0;
+      return { ...agent, website, imported, total: website + imported };
+    });
+
+    return res.status(200).json({
+      success: true,
+      date,
+      timezone: 'Asia/Kolkata',
+      data,
+      totals: {
+        website: data.reduce((sum, agent) => sum + agent.website, 0),
+        imported: data.reduce((sum, agent) => sum + agent.imported, 0),
+        total: data.reduce((sum, agent) => sum + agent.total, 0),
+      },
+    });
+  } catch (err) {
+    console.error('[Admin] Daily assignments error:', err.message);
+    return res.status(500).json({ success: false, message: 'Failed to fetch daily assignments.' });
+  }
+});
+
+// GET /domestic-api/admin/daily-assigned-leads
+// Lead-level, searchable allocation history for one IST calendar day.
+router.get('/daily-assigned-leads', async (req, res) => {
+  try {
+    const todayIst = new Date(Date.now() + IST_OFFSET_MS).toISOString().slice(0, 10);
+    const date = req.query.date || todayIst;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ success: false, message: 'date must be YYYY-MM-DD.' });
+
+    const [year, month, day] = date.split('-').map(Number);
+    const start = new Date(Date.UTC(year, month - 1, day) - IST_OFFSET_MS);
+    if (new Date(start.getTime() + IST_OFFSET_MS).toISOString().slice(0, 10) !== date) return res.status(400).json({ success: false, message: 'Invalid date.' });
+    const range = { $gte: start, $lt: new Date(start.getTime() + 86400000) };
+    const view = req.query.view === 'worked' ? 'worked' : 'assigned';
+    const search = (req.query.search || '').trim();
+    const textFilter = search ? { $or: ['name', 'mobile', 'email', 'city', 'productType', 'loanType', 'importBatchName'].map((field) => ({ [field]: { $regex: search, $options: 'i' } })) } : {};
+    const eventFilter = { assignedAt: range, ...(req.query.agentId ? { agent: req.query.agentId } : {}) };
+    const dailyFields = '_id name mobile email city productType loanType importBatchName loadedBy assignedTo loadedAt assignedAt completedAt status workStatus workedAt callOutcome domLeadId assignmentHistory';
+
+    const [users, websites, imported, legacyWebsites, legacyImported] = await Promise.all([
+      DomUser.find({ role: 'domagent' }).select('name email').lean(),
+      DomWebsiteLead.find({ ...textFilter, assignmentHistory: { $elemMatch: eventFilter } }).select(dailyFields).lean(),
+      DomImportedLead.find({ ...textFilter, assignmentHistory: { $elemMatch: eventFilter } }).select(dailyFields).lean(),
+      DomWebsiteLead.find({ loadedAt: range, $and: [textFilter, { $or: [{ assignmentHistory: { $exists: false } }, { assignmentHistory: { $size: 0 } }] }], ...(req.query.agentId ? { loadedBy: req.query.agentId } : {}) }).select(dailyFields).lean(),
+      DomImportedLead.find({ assignedAt: range, $and: [textFilter, { $or: [{ assignmentHistory: { $exists: false } }, { assignmentHistory: { $size: 0 } }] }], ...(req.query.agentId ? { assignedTo: req.query.agentId } : {}) }).select(dailyFields).lean(),
+    ]);
+    const usersById = new Map(users.map((u) => [u._id.toString(), u]));
+    const event = (lead, source, history) => {
+      const agentId = (history.agent || (source === 'website' ? lead.loadedBy : lead.assignedTo))?.toString();
+      const currentId = (source === 'website' ? lead.loadedBy : lead.assignedTo)?.toString();
+      const workedAt = source === 'website' ? lead.completedAt : lead.workedAt;
+      const workedOnDate = Boolean(
+        workedAt &&
+        workedAt >= start &&
+        workedAt < range.$lt &&
+        (source === 'website' ? lead.status === 'completed' : lead.workStatus && lead.workStatus !== 'new')
+      );
+      return {
+        _id: `${source}-${lead._id}-${history.assignedAt.getTime()}-${agentId || 'unknown'}`,
+        leadId: lead._id, source, name: lead.name, mobile: lead.mobile, email: lead.email,
+        city: lead.city, productType: lead.productType || lead.loanType, batchName: lead.importBatchName,
+        assignedAt: history.assignedAt, unassignedAt: history.unassignedAt || null,
+        workedAt: workedAt || null,
+        workedOnDate,
+        agentId,
+        agent: agentId ? usersById.get(agentId) || { _id: agentId, name: 'Deleted agent' } : { name: 'Unknown' },
+        currentlyAssigned: Boolean(agentId && currentId === agentId),
+        domLeadId: lead.domLeadId || null,
+        canUnassign: Boolean(agentId && currentId === agentId && (source === 'website' ? lead.status === 'loaded' : lead.workStatus === 'new')),
+      };
+    };
+    const historyEvents = (leads, source) => leads.flatMap((lead) => lead.assignmentHistory
+      .filter((item) => item.assignedAt >= start && item.assignedAt < range.$lt && (!req.query.agentId || item.agent?.toString() === req.query.agentId))
+      .map((item) => event(lead, source, item)));
+    const allData = [
+      ...historyEvents(websites, 'website'), ...historyEvents(imported, 'imported'),
+      ...legacyWebsites.map((lead) => event(lead, 'website', { agent: lead.loadedBy, assignedAt: lead.loadedAt })),
+      ...legacyImported.map((lead) => event(lead, 'imported', { agent: lead.assignedTo, assignedAt: lead.assignedAt })),
+    ].sort((a, b) => new Date(b.assignedAt) - new Date(a.assignedAt));
+
+    const websiteLeadIds = [...new Set(allData.filter((lead) => lead.source === 'website').map((lead) => lead.leadId?.toString()).filter(Boolean))];
+    const importedLeadIds = [...new Set(allData.filter((lead) => lead.source === 'imported').map((lead) => lead.leadId?.toString()).filter(Boolean))];
+
+    const domLeadFilter = [
+      websiteLeadIds.length ? { sourceWebsiteLead: { $in: websiteLeadIds } } : null,
+      importedLeadIds.length ? { sourceImportedLead: { $in: importedLeadIds } } : null,
+    ].filter(Boolean);
+    const workedDomLeads = domLeadFilter.length
+      ? await DomLead.find({ $or: domLeadFilter })
+          .select('_id sourceWebsiteLead sourceImportedLead assignedTo callOutcome updateCount callCount status documents createdAt updatedAt')
+          .lean()
+      : [];
+
+    const normalizeMobile = (v) => (v || '').toString().replace(/\D/g, '').slice(-10);
+    const normalizeName = (v) => (v || '').toString().trim().toLowerCase().replace(/\s+/g, ' ');
+
+    const workedBySourceLead = new Map();
+    for (const row of workedDomLeads) {
+      const key = row.sourceWebsiteLead
+        ? `website-${row.sourceWebsiteLead.toString()}`
+        : row.sourceImportedLead
+          ? `imported-${row.sourceImportedLead.toString()}`
+          : null;
+      if (!key) continue;
+      const prev = workedBySourceLead.get(key);
+      if (!prev || new Date(row.updatedAt) > new Date(prev.updatedAt)) workedBySourceLead.set(key, row);
+    }
+
+    // Fallback matching for legacy/migrated rows where sourceImportedLead/sourceWebsiteLead linkage
+    // may be absent on DomLead: match by assigned agent + mobile + same IST day activity window.
+    const fallbackAgentIds = [...new Set(allData.map((lead) => lead.agentId).filter(Boolean))];
+    const fallbackDomLeads = fallbackAgentIds.length
+      ? await DomLead.find({
+          assignedTo: { $in: fallbackAgentIds },
+          $or: [
+            { createdAt: range },
+            { updatedAt: range },
+          ],
+        })
+          .select('_id assignedTo name mobile callOutcome updateCount callCount status documents createdAt updatedAt')
+          .lean()
+      : [];
+    const workedByAgentMobile = new Map();
+    const workedByMobile = new Map();
+    const workedByAgentName = new Map();
+    for (const row of fallbackDomLeads) {
+      const agentId = row.assignedTo?.toString() || '';
+      const mobile = normalizeMobile(row.mobile);
+      const name = normalizeName(row.name);
+
+      if (agentId && mobile) {
+        const key = `${agentId}-${mobile}`;
+        const prev = workedByAgentMobile.get(key);
+        if (!prev || new Date(row.updatedAt) > new Date(prev.updatedAt)) workedByAgentMobile.set(key, row);
+      }
+      if (mobile) {
+        const prev = workedByMobile.get(mobile);
+        if (!prev || new Date(row.updatedAt) > new Date(prev.updatedAt)) workedByMobile.set(mobile, row);
+      }
+      if (agentId && name) {
+        const key = `${agentId}-${name}`;
+        const prev = workedByAgentName.get(key);
+        if (!prev || new Date(row.updatedAt) > new Date(prev.updatedAt)) workedByAgentName.set(key, row);
+      }
+    }
+
+    const enriched = allData.map((lead) => {
+      const key = `${lead.source}-${lead.leadId?.toString()}`;
+      const leadMobile = normalizeMobile(lead.mobile);
+      const leadName = normalizeName(lead.name);
+      const fallbackAgentMobileKey = `${lead.agentId || ''}-${leadMobile}`;
+      const fallbackAgentNameKey = `${lead.agentId || ''}-${leadName}`;
+      const worked =
+        workedBySourceLead.get(key) ||
+        workedByAgentMobile.get(fallbackAgentMobileKey) ||
+        workedByMobile.get(leadMobile) ||
+        workedByAgentName.get(fallbackAgentNameKey) ||
+        null;
+      const workedByAssignedAgent = Boolean(worked && worked.assignedTo && lead.agentId && worked.assignedTo.toString() === lead.agentId);
+      const hasWorkedLink = Boolean(lead.domLeadId || worked);
+      return {
+        ...lead,
+        // A lead is considered worked when a DomLead exists for it.
+        // Prefer a matching-assigned-agent record when available, but fall back to any linked DomLead
+        // so legacy records and transferred ownership still appear in Worked view.
+        hasWorkedDetails: Boolean(hasWorkedLink),
+        workedLead: worked ? {
+          domLeadId: worked._id,
+          callOutcome: worked.callOutcome || '',
+          updateCount: worked.updateCount || 0,
+          callCount: worked.callCount || 0,
+          status: worked.status,
+          docsCount: Array.isArray(worked.documents) ? worked.documents.length : 0,
+          createdAt: worked.createdAt,
+          updatedAt: worked.updatedAt,
+          assignedToMatchesAllocationAgent: workedByAssignedAgent,
+        } : (lead.domLeadId ? { domLeadId: lead.domLeadId } : null),
+      };
+    });
+
+    const data = view === 'worked' ? enriched.filter((lead) => lead.hasWorkedDetails) : enriched;
+    return res.json({
+      success: true,
+      date,
+      view,
+      timezone: 'Asia/Kolkata',
+      counts: {
+        assigned: enriched.length,
+        worked: enriched.filter((lead) => lead.hasWorkedDetails).length,
+      },
+      data,
+    });
+  } catch (err) {
+    console.error('[Admin] Daily assigned leads error:', err.message);
+    return res.status(500).json({ success: false, message: 'Failed to fetch daily assigned leads.' });
+  }
+});
+
+// DELETE /domestic-api/admin/daily-assigned-leads/:source/:id
+// Super Admin can return an unworked lead to its original pool while retaining its audit event.
+router.delete('/daily-assigned-leads/:source/:id', authorize('dom_superadmin'), async (req, res) => {
+  try {
+    const { source, id } = req.params;
+    const now = new Date();
+    if (source === 'website') {
+      const lead = await DomWebsiteLead.findOne({ _id: id, status: 'loaded', loadedBy: { $ne: null } });
+      if (!lead) return res.status(400).json({ success: false, message: 'Only an unworked loaded lead can be unassigned.' });
+      const agent = lead.loadedBy;
+      const update = lead.assignmentHistory?.length
+        ? { $set: { status: 'new', loadedBy: null, 'assignmentHistory.$[item].unassignedAt': now } }
+        : { $set: { status: 'new', loadedBy: null }, $push: { assignmentHistory: { agent, assignedAt: lead.loadedAt || now, unassignedAt: now } } };
+      await DomWebsiteLead.updateOne({ _id: id }, update, lead.assignmentHistory?.length ? { arrayFilters: [{ 'item.agent': agent, 'item.unassignedAt': null }] } : undefined);
+    } else if (source === 'imported') {
+      const lead = await DomImportedLead.findOne({ _id: id, status: 'assigned', assignedTo: { $ne: null }, workStatus: 'new' });
+      if (!lead) return res.status(400).json({ success: false, message: 'Only an unworked imported lead can be unassigned.' });
+      const agent = lead.assignedTo;
+      const status = lead.sharedWith?.length ? 'shared' : 'imported';
+      const update = lead.assignmentHistory?.length
+        ? { $set: { assignedTo: null, assignedBy: null, status, 'assignmentHistory.$[item].unassignedAt': now } }
+        : { $set: { assignedTo: null, assignedBy: null, status }, $push: { assignmentHistory: { agent, assignedAt: lead.assignedAt || now, unassignedAt: now } } };
+      await DomImportedLead.updateOne({ _id: id }, update, lead.assignmentHistory?.length ? { arrayFilters: [{ 'item.agent': agent, 'item.unassignedAt': null }] } : undefined);
+    } else return res.status(400).json({ success: false, message: 'Invalid lead source.' });
+    return res.json({ success: true, message: 'Lead unassigned and returned to the available pool.' });
+  } catch (err) {
+    console.error('[Admin] Unassign daily lead error:', err.message);
+    return res.status(500).json({ success: false, message: 'Failed to unassign lead.' });
+  }
+});
+
+//  GET /domestic-api/admin/pipeline 
+// Funnel: website  loaded  completed  dom_lead submitted
 router.get('/pipeline', async (req, res) => {
   try {
     const [total, loaded, completed, domLeads] = await Promise.all([
@@ -213,11 +489,11 @@ router.get('/pipeline', async (req, res) => {
   }
 });
 
-// ────────────────────────────────────────────────────────────────────────────
+// 
 // USER MANAGEMENT (superadmin only for create/deactivate)
-// ────────────────────────────────────────────────────────────────────────────
+// 
 
-// GET /domestic-api/admin/users — list all domestic users
+// GET /domestic-api/admin/users  list all domestic users
 router.get('/users', async (req, res) => {
   try {
     const users = await DomUser.find()
@@ -231,7 +507,7 @@ router.get('/users', async (req, res) => {
   }
 });
 
-// POST /domestic-api/admin/users — create new user (superadmin only)
+// POST /domestic-api/admin/users  create new user (superadmin only)
 router.post('/users', authorize('dom_superadmin'), async (req, res) => {
   try {
     const { name, email, password, role } = req.body;
@@ -266,7 +542,7 @@ router.post('/users', authorize('dom_superadmin'), async (req, res) => {
   }
 });
 
-// PATCH /domestic-api/admin/users/:id — update user (activate/deactivate, reset password)
+// PATCH /domestic-api/admin/users/:id  update user (activate/deactivate, reset password)
 router.patch('/users/:id', authorize('dom_superadmin'), async (req, res) => {
   try {
     const { isActive, password, name, role } = req.body;
@@ -295,37 +571,34 @@ router.patch('/users/:id', authorize('dom_superadmin'), async (req, res) => {
   }
 });
 
-// GET /domestic-api/admin/api-key — show the intake API key (superadmin only)
+// GET /domestic-api/admin/api-key  show the intake API key (superadmin only)
 router.get('/api-key', authorize('dom_superadmin'), (req, res) => {
   const key = process.env.DOM_WEBSITE_API_KEY;
   if (!key) return res.status(500).json({ success: false, message: 'API key not configured.' });
   return res.status(200).json({ success: true, apiKey: key });
 });
 
-// ── GET /domestic-api/admin/reports ───────────────────────────────────────
+//  GET /domestic-api/admin/reports 
 // Comprehensive date-range analytics for super admin
 // Query: ?from=YYYY-MM-DD&to=YYYY-MM-DD
 router.get('/reports', authorize('dom_superadmin'), async (req, res) => {
   try {
     const { from, to } = req.query;
 
-    const fromDate = from ? new Date(from) : (() => {
-      const d = new Date(); d.setDate(1); d.setHours(0, 0, 0, 0); return d;
-    })();
-    fromDate.setHours(0, 0, 0, 0);
-
-    const toDate = to ? new Date(to) : new Date();
-    toDate.setHours(23, 59, 59, 999);
+    const todayIst = new Date(Date.now() + IST_OFFSET_MS).toISOString().slice(0, 10);
+    const defaultFrom = `${todayIst.slice(0, 7)}-01`;
+    const fromDate = istDayBounds(from || defaultFrom).start;
+    const toDate = istDayBounds(to || todayIst).end;
 
     const df    = { createdAt: { $gte: fromDate, $lte: toDate } };
-    // Separate filter for leads assigned (loadedAt) in this period — catches leads
+    // Separate filter for leads assigned (loadedAt) in this period  catches leads
     // that arrived before the window but were assigned to agents within it
     const dfLoad = { loadedAt:  { $gte: fromDate, $lte: toDate } };
 
     const [
-      // Website / Meta leads — received (createdAt) in period
+      // Website / Meta leads  received (createdAt) in period
       webTotal, webNew, webLoaded, webCompleted, webRejected,
-      // Website / Meta leads — assigned (loadedAt) in period
+      // Website / Meta leads  assigned (loadedAt) in period
       webAssigned, webAssignedMeta, webAssignedWebsite,
       // Worked leads (DomLead)
       wkTotal, wkCompleted, wkPending, wkRejected, wkInterested, wkCallback, wkNotAnswering, wkNotReachable, wkWrongNumber,
@@ -404,12 +677,12 @@ router.get('/reports', authorize('dom_superadmin'), async (req, res) => {
         { $limit: 15 },
         { $lookup: { from: 'domusers', localField: '_id', foreignField: '_id', as: 'agent' } },
         { $unwind: { path: '$agent', preserveNullAndEmptyArrays: true } },
-        // Only include actual agents (domagent role) — exclude admins & super admins
+        // Only include actual agents (domagent role)  exclude admins & super admins
         { $match: { 'agent.role': 'domagent' } },
         { $project: { total: 1, completed: 1, interested: 1, 'agent.name': 1, 'agent.agentStatus': 1, 'agent.role': 1 } },
       ]),
 
-      // Daily trend — grouped by IST date
+      // Daily trend  grouped by IST date
       DomLead.aggregate([
         { $match: df },
         { $group: {
@@ -440,7 +713,7 @@ router.get('/reports', authorize('dom_superadmin'), async (req, res) => {
         { $sort: { '_id.y': 1, '_id.m': 1, '_id.d': 1 } },
       ]),
 
-      // Hourly breakdown — using IST timezone so hours match actual working hours
+      // Hourly breakdown  using IST timezone so hours match actual working hours
       DomLead.aggregate([
         { $match: df },
         { $group: {
@@ -490,9 +763,9 @@ router.get('/reports', authorize('dom_superadmin'), async (req, res) => {
   }
 });
 
-// ── DELETE routes (superadmin only) ─────────────────────────────────────
+//  DELETE routes (superadmin only) 
 
-// DELETE /domestic-api/admin/users/:id — permanently delete a user
+// DELETE /domestic-api/admin/users/:id  permanently delete a user
 router.delete('/users/:id', authorize('dom_superadmin'), async (req, res) => {
   try {
     if (req.params.id === req.user._id.toString()) {
@@ -507,7 +780,7 @@ router.delete('/users/:id', authorize('dom_superadmin'), async (req, res) => {
   }
 });
 
-// DELETE /domestic-api/admin/leads/:id — delete a single worked lead (DomLead)
+// DELETE /domestic-api/admin/leads/:id  delete a single worked lead (DomLead)
 router.delete('/leads/:id', authorize('dom_superadmin'), async (req, res) => {
   try {
     const lead = await DomLead.findByIdAndDelete(req.params.id);
@@ -519,7 +792,7 @@ router.delete('/leads/:id', authorize('dom_superadmin'), async (req, res) => {
   }
 });
 
-// DELETE /domestic-api/admin/import-batch/:batchId — delete unworked leads in a batch
+// DELETE /domestic-api/admin/import-batch/:batchId  delete unworked leads in a batch
 // Worked leads (workStatus !== 'new') are preserved so agents' completed cases remain visible.
 router.delete('/import-batch/:batchId', authorize('dom_superadmin'), async (req, res) => {
   try {
@@ -537,7 +810,7 @@ router.delete('/import-batch/:batchId', authorize('dom_superadmin'), async (req,
       assignedTo: { $ne: null },
     });
 
-    // Only delete UNWORKED leads — preserve leads the agent has already called/worked
+    // Only delete UNWORKED leads  preserve leads the agent has already called/worked
     const result = await DomImportedLead.deleteMany({
       importBatchId: batchId,
       $or: [{ workStatus: 'new' }, { workStatus: null }, { workStatus: { $exists: false } }],
@@ -564,7 +837,7 @@ router.delete('/import-batch/:batchId', authorize('dom_superadmin'), async (req,
   }
 });
 
-// DELETE /domestic-api/admin/imported-lead/:id — delete a single imported lead
+// DELETE /domestic-api/admin/imported-lead/:id  delete a single imported lead
 router.delete('/imported-lead/:id', authorize('dom_superadmin'), async (req, res) => {
   try {
     const lead = await DomImportedLead.findByIdAndDelete(req.params.id);
@@ -576,7 +849,7 @@ router.delete('/imported-lead/:id', authorize('dom_superadmin'), async (req, res
   }
 });
 
-// ── POST /domestic-api/admin/agents/transfer-leads ─────────────────────────
+//  POST /domestic-api/admin/agents/transfer-leads 
 // Transfer all (or filtered) leads from one agent to another
 router.post('/agents/transfer-leads', async (req, res) => {
   try {
@@ -613,7 +886,7 @@ router.post('/agents/transfer-leads', async (req, res) => {
       results.poolLeads = r.modifiedCount;
     }
 
-    // Transfer worked DomLeads (optional — admin explicitly requests)
+    // Transfer worked DomLeads (optional  admin explicitly requests)
     if (types.includes('worked')) {
       const r = await DomLead.updateMany(
         { assignedTo: fromAgentId },
@@ -636,7 +909,7 @@ router.post('/agents/transfer-leads', async (req, res) => {
   }
 });
 
-// ── GET /domestic-api/admin/agent-dom-leads ────────────────────────────────
+//  GET /domestic-api/admin/agent-dom-leads 
 // Fetch DomLeads for a specific agent, optionally filtered by callOutcome
 router.get('/agent-dom-leads', async (req, res) => {
   try {
@@ -656,7 +929,7 @@ router.get('/agent-dom-leads', async (req, res) => {
   }
 });
 
-// ── POST /domestic-api/admin/bulk-reassign-leads ───────────────────────────
+//  POST /domestic-api/admin/bulk-reassign-leads 
 // Bulk reassign DomLeads AND their source (website/imported) leads to another agent
 router.post('/bulk-reassign-leads', async (req, res) => {
   try {
@@ -687,9 +960,9 @@ router.post('/bulk-reassign-leads', async (req, res) => {
     );
 
     // 2. Update DomWebsiteLead:
-    //    • loadedBy  → agent dashboard uses loadedBy to find "my leads"
-    //    • assignedTo → for consistency
-    //    • status = 'loaded' → must be 'loaded' for agent to see it
+    //     loadedBy   agent dashboard uses loadedBy to find "my leads"
+    //     assignedTo  for consistency
+    //     status = 'loaded'  must be 'loaded' for agent to see it
     // ALSO clear sourceWebsiteLead on the DomLead so isWorked=false for the new agent
     // (isWorked is computed: DomLead.find({ assignedTo:newAgent, sourceWebsiteLead:{$ne:null} }))
     if (websiteLeadIds.length > 0) {
@@ -706,9 +979,9 @@ router.post('/bulk-reassign-leads', async (req, res) => {
     }
 
     // 3. Update DomImportedLead:
-    //    • assignedTo → agent dashboard filters by assignedTo
-    //    • status = 'assigned' → must be 'assigned' for agent to see it
-    //    • workStatus = 'new' → makes it appear in "Assigned to Work" tab
+    //     assignedTo  agent dashboard filters by assignedTo
+    //     status = 'assigned'  must be 'assigned' for agent to see it
+    //     workStatus = 'new'  makes it appear in "Assigned to Work" tab
     if (importedLeadIds.length > 0) {
       await DomImportedLead.updateMany(
         { _id: { $in: importedLeadIds } },
@@ -736,3 +1009,4 @@ router.post('/bulk-reassign-leads', async (req, res) => {
 });
 
 module.exports = router;
+

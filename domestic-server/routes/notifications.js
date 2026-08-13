@@ -1,13 +1,13 @@
-'use strict';
+﻿'use strict';
 const express         = require('express');
 const DomNotification = require('../models/DomNotification');
 const { protect }     = require('../middleware/auth');
 
 const router = express.Router();
 
-// ── GET /domestic-api/notifications ───────────────────────────────────────
+//  GET /domestic-api/notifications 
 // Returns all unread notifications for the logged-in agent.
-// ?countOnly=1 — returns just { count } without fetching documents (cheap for badge init).
+// ?countOnly=1  returns just { count } without fetching documents (cheap for badge init).
 router.get('/', protect, async (req, res) => {
   try {
     if (req.query.countOnly === '1') {
@@ -28,7 +28,7 @@ router.get('/', protect, async (req, res) => {
   }
 });
 
-// ── DELETE /domestic-api/notifications/:id ─────────────────────────────────
+//  DELETE /domestic-api/notifications/:id 
 // Dismiss a single notification
 router.delete('/:id', protect, async (req, res) => {
   try {
@@ -41,3 +41,4 @@ router.delete('/:id', protect, async (req, res) => {
 });
 
 module.exports = router;
+

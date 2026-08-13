@@ -1,5 +1,5 @@
-'use strict';
-// ── Force IST (Indian Standard Time = UTC+5:30) for all date operations ────
+﻿'use strict';
+//  Force IST (Indian Standard Time = UTC+5:30) for all date operations 
 process.env.TZ = 'Asia/Kolkata';
 
 const path      = require('path');
@@ -15,14 +15,14 @@ const { Server } = require('socket.io');
 const fs        = require('fs');
 const mongoose  = require('mongoose');
 
-// ── App setup ──────────────────────────────────────────────────────────────
+//  App setup 
 const app    = express();
 const server = http.createServer(app);
 
 // Trust the first proxy (needed for express-rate-limit behind dev proxy / nginx)
 app.set('trust proxy', 1);
 
-// ── Socket.io ──────────────────────────────────────────────────────────────
+//  Socket.io 
 const io = new Server(server, {
   cors: {
     origin: process.env.CORS_ORIGIN || 'http://localhost:3002',
@@ -51,7 +51,7 @@ io.on('connection', (socket) => {
   });
 });
 
-// ── Security middleware ────────────────────────────────────────────────────
+//  Security middleware 
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' }, // allow serving uploaded files
 }));
@@ -67,7 +67,7 @@ app.use(cors({
   credentials: true,
 }));
 
-// Rate limiting — global
+// Rate limiting  global
 app.use(rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 200,
@@ -90,7 +90,7 @@ const intakeLimiter = rateLimit({
   message: { success: false, message: 'Intake rate limit exceeded.' },
 });
 
-// ── Body parsing ───────────────────────────────────────────────────────────
+//  Body parsing 
 // Capture raw body buffer so the Meta signature middleware can validate HMAC
 app.use(express.json({
   limit: '1mb',
@@ -99,11 +99,11 @@ app.use(express.json({
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 app.use(mongoSanitize()); // prevent NoSQL injection
 
-// ── Uploads directory ──────────────────────────────────────────────────────
+//  Uploads directory 
 const uploadsDir = path.join(__dirname, process.env.UPLOAD_PATH || 'uploads');
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
-// Serve uploaded files — static with CORP header already set by helmet
+// Serve uploaded files  static with CORP header already set by helmet
 app.use('/domestic-api/files', express.static(uploadsDir, {
   setHeaders: (res) => {
     res.setHeader('Cache-Control', 'private, max-age=3600');
@@ -124,7 +124,7 @@ app.get('/domestic-api/files/:leadId/:filename', (req, res) => {
   res.sendFile(filePath);
 });
 
-// ── Routes ────────────────────────────────────────────────────────────────
+//  Routes 
 const authRoutes          = require('./routes/auth');
 const intakeRoutes        = require('./routes/intake');
 const websiteLeadRoutes   = require('./routes/websiteLeads');
@@ -160,7 +160,7 @@ app.get('/domestic-api/health', (req, res) => {
   res.json({ success: true, service: 'domestic-lms', timestamp: new Date().toISOString() });
 });
 
-// ── Serve React build in production ───────────────────────────────────────
+//  Serve React build in production 
 if (process.env.NODE_ENV === 'production') {
   const buildPath = path.join(__dirname, '../domestic-client/build');
   app.use('/domestic', express.static(buildPath));
@@ -180,7 +180,7 @@ app.use((err, req, res, next) => { // eslint-disable-line no-unused-vars
   res.status(status).json({ success: false, message: err.message || 'Internal server error.' });
 });
 
-// ── MongoDB connection ─────────────────────────────────────────────────────
+//  MongoDB connection 
 const MONGO_URI = process.env.DOM_MONGO_URI;
 if (!MONGO_URI) {
   console.error('FATAL: DOM_MONGO_URI is not set in .env');
@@ -205,3 +205,4 @@ mongoose.connect(MONGO_URI, {
 });
 
 module.exports = { app, io };
+

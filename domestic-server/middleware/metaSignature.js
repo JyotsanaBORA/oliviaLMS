@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 /**
  * Meta webhook HMAC-SHA256 signature validation middleware (domestic server).
  *
@@ -7,8 +7,8 @@
  *
  * Requires req.rawBody to be set via the express.json verify fn in server.js.
  *
- * Dev:  missing secret / no signature → warn and allow (for curl/Postman testing)
- * Prod: any failure → ACK Meta (200) but silently drop
+ * Dev:  missing secret / no signature  warn and allow (for curl/Postman testing)
+ * Prod: any failure  ACK Meta (200) but silently drop
  */
 
 const crypto = require('crypto');
@@ -20,25 +20,25 @@ function validateMetaSignature(req, res, next) {
 
   if (!appSecret) {
     if (isDev) {
-      console.warn('[DomMetaSignature] DOM_META_APP_SECRET not set — skipping check (development)');
+      console.warn('[DomMetaSignature] DOM_META_APP_SECRET not set  skipping check (development)');
       return next();
     }
-    console.error('[DomMetaSignature] DOM_META_APP_SECRET not configured in production — dropping');
+    console.error('[DomMetaSignature] DOM_META_APP_SECRET not configured in production  dropping');
     return res.status(200).send('EVENT_RECEIVED');
   }
 
   if (!signature) {
     if (isDev) {
-      console.warn('[DomMetaSignature] No X-Hub-Signature-256 header — allowed in development');
+      console.warn('[DomMetaSignature] No X-Hub-Signature-256 header  allowed in development');
       return next();
     }
-    console.warn('[DomMetaSignature] Missing X-Hub-Signature-256 in production — dropping');
+    console.warn('[DomMetaSignature] Missing X-Hub-Signature-256 in production  dropping');
     return res.status(200).send('EVENT_RECEIVED');
   }
 
   const rawBody = req.rawBody;
   if (!rawBody) {
-    console.error('[DomMetaSignature] req.rawBody not available — check express.json config in server.js');
+    console.error('[DomMetaSignature] req.rawBody not available  check express.json config in server.js');
     return res.status(200).send('EVENT_RECEIVED');
   }
 
@@ -58,8 +58,9 @@ function validateMetaSignature(req, res, next) {
 
   if (valid) return next();
 
-  console.warn('[DomMetaSignature] Signature mismatch — proceeding anyway so lead is not lost');
+  console.warn('[DomMetaSignature] Signature mismatch  proceeding anyway so lead is not lost');
   return next();
 }
 
 module.exports = { validateMetaSignature };
+

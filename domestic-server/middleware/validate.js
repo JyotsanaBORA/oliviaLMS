@@ -1,13 +1,13 @@
-'use strict';
+﻿'use strict';
 
 /**
- * validateIntakeLead — sanitize and validate incoming website lead payload.
+ * validateIntakeLead  sanitize and validate incoming website lead payload.
  * Attaches req.leadData with only the fields we trust.
  */
 const validateIntakeLead = (req, res, next) => {
   const b = req.body || {};
 
-  // Honeypot check — should always be empty from real users
+  // Honeypot check  should always be empty from real users
   if (b._hp && b._hp.toString().trim() !== '') {
     // Silently accept to not reveal the check to bots
     return res.status(200).json({ ok: true });
@@ -19,7 +19,7 @@ const validateIntakeLead = (req, res, next) => {
     return res.status(400).json({ success: false, message: 'name is required.' });
   }
 
-  // Mobile — strip +91 prefix if present, validate 10 digits
+  // Mobile  strip +91 prefix if present, validate 10 digits
   let mobile = (b.mobile || '').toString().trim();
   mobile = mobile.replace(/^\+91[\s-]?/, '').replace(/\D/g, '');
   if (mobile.length !== 10) {
@@ -46,3 +46,4 @@ const validateIntakeLead = (req, res, next) => {
 };
 
 module.exports = { validateIntakeLead };
+

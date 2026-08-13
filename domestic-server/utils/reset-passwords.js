@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 const mongoose = require('mongoose');
@@ -17,8 +17,9 @@ mongoose.connect(process.env.DOM_MONGO_URI).then(async () => {
     if (!u) { console.log('[Reset] NOT FOUND:', acc.email); continue; }
     u.password = acc.password;
     await u.save(); // triggers bcrypt pre-save hook
-    console.log(`[Reset] ✓ ${acc.email}  →  ${acc.password}`);
+    console.log(`[Reset]  ${acc.email}    ${acc.password}`);
   }
   await mongoose.disconnect();
   console.log('[Reset] Done.');
 }).catch(e => { console.error('[Reset] Error:', e.message); process.exit(1); });
+

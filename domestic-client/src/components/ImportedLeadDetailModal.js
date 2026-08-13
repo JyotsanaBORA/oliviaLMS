@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { X, Phone, Mail, MapPin, Briefcase, CreditCard, BarChart2, User, ChevronRight, Edit3 } from 'lucide-react';
 
 const WORK_STATUS_META = {
@@ -36,7 +36,7 @@ const ImportedLeadDetailModal = ({ lead, onClose, onWorkLead }) => {
   const [tab, setTab] = useState('customer');
 
   const ws     = WORK_STATUS_META[lead.workStatus || 'new'] || WORK_STATUS_META.new;
-  const loanId = lead.loanType || lead.productType || '—';
+  const loanId = lead.loanType || lead.productType || '';
 
   const tabs = [
     { key: 'customer',  label: 'Customer',   Icon: User },
@@ -54,7 +54,7 @@ const ImportedLeadDetailModal = ({ lead, onClose, onWorkLead }) => {
         <div className="flex items-start justify-between px-6 py-4 bg-gradient-to-r from-violet-600 to-purple-700 flex-shrink-0">
           <div className="min-w-0">
             <div className="flex items-center gap-3 flex-wrap">
-              <h2 className="text-white font-black text-lg leading-tight">{lead.name || '—'}</h2>
+              <h2 className="text-white font-black text-lg leading-tight">{lead.name || ''}</h2>
               <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold ${ws.cls}`}>
                 {ws.label}
               </span>
@@ -81,12 +81,12 @@ const ImportedLeadDetailModal = ({ lead, onClose, onWorkLead }) => {
               <div className="flex items-center gap-3 mt-2 flex-wrap">
                 {lead.totalOutstandingAmount && (
                   <span className="bg-amber-400 text-amber-900 text-xs font-bold px-2.5 py-1 rounded-lg">
-                    Total Outstanding: ₹{lead.totalOutstandingAmount}
+                    Total Outstanding: {lead.totalOutstandingAmount}
                   </span>
                 )}
                 {lead.principalOutstanding && (
                   <span className="bg-orange-400 text-orange-900 text-xs font-bold px-2.5 py-1 rounded-lg">
-                    Principal: ₹{lead.principalOutstanding}
+                    Principal: {lead.principalOutstanding}
                   </span>
                 )}
               </div>
@@ -153,13 +153,13 @@ const ImportedLeadDetailModal = ({ lead, onClose, onWorkLead }) => {
           {tab === 'financial' && (
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
-                <Field label="Amount Financed"          value={lead.amountFinanced ? `₹${lead.amountFinanced}` : ''} />
-                <Field label="Total Outstanding Amount" value={lead.totalOutstandingAmount ? `₹${lead.totalOutstandingAmount}` : ''} highlight />
-                <Field label="Principal Outstanding"    value={lead.principalOutstanding ? `₹${lead.principalOutstanding}` : ''} highlight />
-                <Field label="Disbursal Amount"         value={lead.disbursalAmount ? `₹${lead.disbursalAmount}` : ''} />
+                <Field label="Amount Financed"          value={lead.amountFinanced ? `${lead.amountFinanced}` : ''} />
+                <Field label="Total Outstanding Amount" value={lead.totalOutstandingAmount ? `${lead.totalOutstandingAmount}` : ''} highlight />
+                <Field label="Principal Outstanding"    value={lead.principalOutstanding ? `${lead.principalOutstanding}` : ''} highlight />
+                <Field label="Disbursal Amount"         value={lead.disbursalAmount ? `${lead.disbursalAmount}` : ''} />
                 <Field label="CIBIL Score"              value={lead.cibilScore} />
                 <Field label="CIBIL Score Date"         value={lead.cibilScoreDate} />
-                <Field label="Property Value (Latest)"  value={lead.propertyValueLatest ? `₹${lead.propertyValueLatest}` : ''} />
+                <Field label="Property Value (Latest)"  value={lead.propertyValueLatest ? `${lead.propertyValueLatest}` : ''} />
                 <Field label="Asset Description"        value={lead.assetDescription} />
                 <Field label="Make"                     value={lead.make} />
               </div>
@@ -188,10 +188,10 @@ const ImportedLeadDetailModal = ({ lead, onClose, onWorkLead }) => {
             <div className="space-y-4">
               <div className={`flex items-center gap-3 p-4 rounded-2xl ${ws.cls}`}>
                 <div className="text-3xl">
-                  {lead.workStatus === 'interested' ? '👍' :
-                   lead.workStatus === 'not_interested' ? '👎' :
-                   lead.workStatus === 'in_progress' ? '📞' :
-                   lead.workStatus === 'closed' ? '🔒' : '📋'}
+                  {lead.workStatus === 'interested' ? '' :
+                   lead.workStatus === 'not_interested' ? '' :
+                   lead.workStatus === 'in_progress' ? '' :
+                   lead.workStatus === 'closed' ? '' : ''}
                 </div>
                 <div>
                   <p className="font-bold text-base">{ws.label}</p>
@@ -226,7 +226,7 @@ const ImportedLeadDetailModal = ({ lead, onClose, onWorkLead }) => {
           </button>
           <button onClick={() => onWorkLead(lead)}
             className="flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-violet-600 to-purple-700 text-white text-sm font-bold rounded-xl hover:from-violet-700 hover:to-purple-800 shadow-md shadow-violet-200 transition-all">
-            {lead.domLeadId ? '✏️ Edit Work Form' : '📞 Work This Lead'}
+            {lead.domLeadId ? ' Edit Work Form' : ' Work This Lead'}
             <ChevronRight className="h-4 w-4" />
           </button>
         </div>
@@ -236,3 +236,4 @@ const ImportedLeadDetailModal = ({ lead, onClose, onWorkLead }) => {
 };
 
 export default ImportedLeadDetailModal;
+
