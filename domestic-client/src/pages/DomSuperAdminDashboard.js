@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   LogOut, Plus, Shield, Eye, EyeOff, X, RefreshCw, Key,
   Users, UserPlus, ChevronLeft, ChevronRight, CheckCircle2, AlertCircle, Copy,
@@ -351,6 +351,41 @@ const DomSuperAdminDashboard = () => {
       toast.error(err.response?.data?.message || 'Could not unassign lead.');
     }
   }, [fetchDailyAssignedLeads]);
+
+  const exportDailyCSV = useCallback((rows, isWorkedView, date) => {
+    const fmtIST = (d) => d ? new Date(d).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }) : '';
+    const escape = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const baseHeaders = ['Name', 'Mobile', 'Email', 'City', 'Product Type', 'Batch / Source', 'Lead Source', 'Agent Name', 'Agent Email', 'Assigned At (IST)'];
+    const workedHeaders = ['Call Outcome', 'Calls', 'Updates', 'Docs', 'Worked Status', 'Last Update (IST)'];
+    const assignedHeaders = ['Assignment Status'];
+    const headers = isWorkedView ? [...baseHeaders, ...workedHeaders] : [...baseHeaders, ...assignedHeaders];
+    const csvRows = rows.map((lead) => {
+      const base = [
+        lead.name || '', lead.mobile || '', lead.email || '', lead.city || '',
+        lead.productType || '', lead.batchName || '', lead.source || '',
+        lead.agent?.name || '', lead.agent?.email || '', fmtIST(lead.assignedAt),
+      ];
+      const extra = isWorkedView ? [
+        (lead.workedLead?.callOutcome || 'Not called').replace(/_/g, ' '),
+        lead.workedLead?.callCount ?? 0,
+        lead.workedLead?.updateCount ?? 0,
+        lead.workedLead?.docsCount ?? 0,
+        (lead.workedLead?.status || 'Pending').replace(/_/g, ' '),
+        fmtIST(lead.workedLead?.updatedAt || lead.workedAt),
+      ] : [
+        lead.currentlyAssigned ? 'Assigned' : `Unassigned${lead.unassignedAt ? ' ' + fmtIST(lead.unassignedAt) : ''}`,
+      ];
+      return [...base, ...extra].map(escape).join(',');
+    });
+    const content = [headers.map(escape).join(','), ...csvRows].join('\r\n');
+    const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `daily_${isWorkedView ? 'worked' : 'assigned'}_leads_${date}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, []);
 
   const fetchManualLeads = useCallback(async () => {
     setManualLeadsLoading(true);
@@ -739,7 +774,10 @@ const DomSuperAdminDashboard = () => {
             <div className="min-h-full bg-gray-50">
               <header className="bg-white border-b border-gray-100 px-6 py-5 flex items-center justify-between gap-4 flex-wrap">
                 <div><h1 className="text-xl font-black text-gray-800">Daily Assigned Leads</h1><p className="text-xs text-gray-400 mt-1">Switch between assigned and worked leads for the same IST day to verify daily follow-up.</p></div>
-                <button onClick={() => fetchDailyAssignedLeads()} disabled={dailyAssignedLoading} className="flex items-center gap-2 px-3 py-2 text-sm font-semibold border border-gray-200 rounded-xl text-gray-600 hover:text-[#065F36] bg-white"><RefreshCw className={`h-4 w-4 ${dailyAssignedLoading ? 'animate-spin' : ''}`} /> Refresh</button>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => exportDailyCSV(rows, isWorkedView, dailyAssignedDate)} disabled={rows.length === 0} className="flex items-center gap-2 px-3 py-2 text-sm font-semibold border border-[#065F36] rounded-xl text-[#065F36] hover:bg-[#065F36] hover:text-white bg-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"><Download className="h-4 w-4" /> Export CSV</button>
+                  <button onClick={() => fetchDailyAssignedLeads()} disabled={dailyAssignedLoading} className="flex items-center gap-2 px-3 py-2 text-sm font-semibold border border-gray-200 rounded-xl text-gray-600 hover:text-[#065F36] bg-white"><RefreshCw className={`h-4 w-4 ${dailyAssignedLoading ? 'animate-spin' : ''}`} /> Refresh</button>
+                </div>
               </header>
               <main className="px-6 py-5">
                 <div className="bg-white border border-gray-100 shadow-sm rounded-2xl overflow-hidden">
