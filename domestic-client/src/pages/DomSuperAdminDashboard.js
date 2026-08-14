@@ -2956,12 +2956,77 @@ const DomSuperAdminDashboard = () => {
         <main className="px-6 py-5 space-y-5 max-w-5xl">
           {/* Upload Form */}
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-3">
-              <div className="p-2.5 bg-[#E8FFF5] rounded-xl"><Upload className="h-5 w-5 text-[#065F36]" /></div>
-              <div>
-                <h3 className="font-bold text-gray-800">Import Excel / CSV</h3>
-                <p className="text-xs text-gray-400 mt-0.5">Any Excel is accepted  32 fields are auto-mapped. Missing columns are stored as blank, extra columns are ignored.</p>
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between gap-3 flex-wrap">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-[#E8FFF5] rounded-xl"><Upload className="h-5 w-5 text-[#065F36]" /></div>
+                <div>
+                  <h3 className="font-bold text-gray-800">Import Excel / CSV</h3>
+                  <p className="text-xs text-gray-400 mt-0.5">Any Excel is accepted — 32 fields are auto-mapped. Missing columns are stored as blank, extra columns are ignored.</p>
+                </div>
               </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const headers = [
+                    'Customer Name','Mobile Number','E Mail','Date of Birth','Age',
+                    'Customer Aadhar No','PAN Number','Customer Preferred Language',
+                    'Residence Address','Residence Phone Number','Office Address','Office Phone Number',
+                    'Zip Code','City','State',
+                    'Vintage','Loan Type','Product Type','Amount Financed',
+                    'Total Outstanding Amount','Principal Outstanding','No Of Installment Overdue',
+                    'Expiry Status','Expiry Date','Disbursal Amount','Sanction Date',
+                    'Count Of Live Loans','Bank Name',
+                    'Employement Type','Firm/ Employee Name','Monthly Income',
+                    'CIBIL Score','CIBIL Score Date','Asset Description','Make',
+                    'Property Value (Latest)','Loan Amount','Remarks',
+                  ];
+                  const samples = [
+                    ['Ramesh Kumar','9876543210','ramesh@example.com','15-Jun-1985','39',
+                     '1234 5678 9012','ABCDE1234F','Hindi',
+                     '12 MG Road Bangalore','080-12345678','Tower B Sector 5 Noida','011-98765432',
+                     '560001','Bangalore','Karnataka',
+                     '24 months','Personal Loan','Personal Loan','500000',
+                     '320000','280000','3',
+                     'Active','31-Dec-2026','480000','01-Jan-2022',
+                     '2','HDFC Bank',
+                     'Salaried','Infosys Ltd','65000',
+                     '720','15-Jan-2025','','',
+                     '','','Good payer  follow up on Monday'],
+                    ['Priya Sharma','9123456780','priya.sharma@gmail.com','22-Mar-1990','34',
+                     '9876 5432 1098','FGHIJ5678K','Marathi',
+                     'Flat 4 Andheri West Mumbai','022-11223344','','',
+                     '400053','Mumbai','Maharashtra',
+                     '36 months','Home Loan','Home Loan','2500000',
+                     '1800000','1650000','1',
+                     'Active','30-Sep-2028','2400000','15-Oct-2021',
+                     '1','SBI',
+                     'Salaried','TCS Ltd','120000',
+                     '780','20-Feb-2025','3 BHK Flat Andheri','Honda City',
+                     '4500000','','Interested in top-up loan'],
+                    ['Suresh Patel','9988776655','suresh.patel@yahoo.com','10-Nov-1978','46',
+                     '3344 5566 7788','KLMNO9012P','Gujarati',
+                     'Plot 7 Vastrapur Ahmedabad','079-44556677','Shop 12 CG Road Ahmedabad','079-55667788',
+                     '380015','Ahmedabad','Gujarat',
+                     '18 months','Gold Loan','Gold Loan','150000',
+                     '95000','85000','0',
+                     'Active','28-Feb-2026','145000','01-Aug-2023',
+                     '3','Manappuram',
+                     'Self Employed','Patel Traders','45000',
+                     '650','10-Mar-2025','Gold Jewellery 50gm','',
+                     '250000','','Callback requested for next week'],
+                  ];
+                  const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+                  const csv = [headers.map(esc).join(','), ...samples.map(r => r.map(esc).join(','))].join('\r\n');
+                  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url; a.download = 'demo_import_template.csv'; a.click();
+                  URL.revokeObjectURL(url);
+                }}
+                className="flex items-center gap-2 px-3 py-2 text-sm font-semibold border border-[#065F36] text-[#065F36] rounded-xl hover:bg-[#065F36] hover:text-white bg-white transition-colors"
+              >
+                <Download className="h-4 w-4" /> Download Demo Template
+              </button>
             </div>
             <form onSubmit={handleImportUpload} className="p-6 space-y-4">
               <div>
