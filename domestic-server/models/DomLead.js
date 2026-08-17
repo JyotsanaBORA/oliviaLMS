@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 const mongoose = require('mongoose');
 
 /**
@@ -65,6 +65,19 @@ const domLeadSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    assignedAt: {
+      type: Date,
+      default: Date.now,
+      index: true,
+    },
+    // Allocation events for daily IST reporting
+    assignmentHistory: [
+      {
+        agent: { type: mongoose.Schema.Types.ObjectId, ref: 'DomUser' },
+        assignedAt: { type: Date, default: Date.now },
+        unassignedAt: { type: Date, default: null },
+      },
+    ],
 
     // Created/last updated by
     createdBy: {

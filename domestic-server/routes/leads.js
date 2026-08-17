@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 const express        = require('express');
 const path           = require('path');
 const fs             = require('fs');
@@ -129,12 +129,15 @@ router.post('/', protect, authorize('domagent', 'dom_admin', 'dom_superadmin'), 
 
     //  Manual lead path (no website lead, no imported lead) 
     const sanitizedManual = sanitizeLeadFields(fields);
+    const assignedAt = new Date();
     const domLead = await DomLead.create({
-      assignedTo:    req.user._id,
-      createdBy:     req.user._id,
-      lastUpdatedBy: req.user._id,
-      isManual:      true,
-      leadRef:       generateLeadRef(sanitizedManual.productType || ''),
+      assignedTo:        req.user._id,
+      assignedAt,
+      assignmentHistory: [{ agent: req.user._id, assignedAt }],
+      createdBy:         req.user._id,
+      lastUpdatedBy:     req.user._id,
+      isManual:          true,
+      leadRef:           generateLeadRef(sanitizedManual.productType || ''),
       ...sanitizedManual,
     });
 

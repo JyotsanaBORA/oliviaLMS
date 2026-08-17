@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  LogOut, Plus, Shield, Eye, EyeOff, X, RefreshCw, Key,
+  LogOut, Shield, Eye, EyeOff, X, RefreshCw, Key,
   Users, UserPlus, ChevronLeft, ChevronRight, CheckCircle2, AlertCircle, Copy,
   Upload, Database, Share2, Globe, Search, UserCheck2,
-  Activity, BarChart2, FileText, Briefcase, Coffee, XCircle,
-  TrendingUp, Calendar, Download, ArrowUp, ArrowDown, Zap,
-  ChevronDown, Menu, Send, UserMinus,
+  Activity, BarChart2, Briefcase, XCircle,
+  TrendingUp, Calendar, Download, Zap,
+  ChevronDown, Send, UserMinus,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import DomAdminDashboard from './DomAdminDashboard';
@@ -100,7 +100,6 @@ const DomSuperAdminDashboard = () => {
   const [webDateTo,          setWebDateTo]           = useState('');
   const [webAgentFilter,     setWebAgentFilter]      = useState('');
   const [webSourceFilter,    setWebSourceFilter]     = useState('');
-  const [webProductTypes,    setWebProductTypes]     = useState([]);
   const [webAgents,          setWebAgents]           = useState([]);
   const [webAssignModal,     setWebAssignModal]      = useState(null);
   const [webAssigning,       setWebAssigning]        = useState(false);
@@ -125,11 +124,9 @@ const DomSuperAdminDashboard = () => {
   const [reportData,    setReportData]    = useState(null);
   const [reportLoading, setReportLoading] = useState(false);
   const [reportLastUpdated, setReportLastUpdated] = useState(null);
-  const [trendView,     setTrendView]     = useState('daily'); // 'daily' | 'hourly'
   const [trackerLoading,      setTrackerLoading]      = useState(false);
   const [trackerSearch,       setTrackerSearch]       = useState('');
   const [selectedTrackAgent,  setSelectedTrackAgent]  = useState(null);
-  const [trackLeads,          setTrackLeads]          = useState([]);
   const [trackWorkedLeads,    setTrackWorkedLeads]    = useState([]);
   const [trackPoolLeads,      setTrackPoolLeads]      = useState([]);
   const [trackLeadsLoading,   setTrackLeadsLoading]   = useState(false);
@@ -246,13 +243,6 @@ const DomSuperAdminDashboard = () => {
     finally { setWebLeadsLoading(false); }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const fetchWebProductTypes = useCallback(async () => {
-    try {
-      const res = await api.get('/domestic-api/website-leads/product-types');
-      setWebProductTypes(res.data?.data || []);
-    } catch {}
-  }, []);
-
   const fetchWebAgents = useCallback(async () => {
     try {
       const res = await api.get('/domestic-api/admin/agents');
@@ -262,8 +252,6 @@ const DomSuperAdminDashboard = () => {
 
   const fetchWebServiceStats = useCallback(async () => {
     try {
-      // Aggregate website leads by productType using available distinct + count approach
-      const res = await api.get('/domestic-api/website-leads?limit=1&page=1');
       // We'll get stats from a series of product-filtered count queries via product types
       const typesRes = await api.get('/domestic-api/website-leads/product-types');
       const types = typesRes.data?.data || [];
@@ -317,19 +305,10 @@ const DomSuperAdminDashboard = () => {
   const fetchDailyAssignedLeads = useCallback(async (date = dailyAssignedDate) => {
     setDailyAssignedLoading(true);
     try {
-      // Always fetch the full assigned-day set; worked view is derived locally from lead activity fields.
+      // Always fetch the full assigned-day set; views are derived locally from lead activity fields.
       const res = await api.get(`/domestic-api/admin/daily-assigned-leads?date=${encodeURIComponent(date)}&view=assigned`);
       const data = res.data?.data || [];
-      const isWorkedLead = (lead) => Boolean(
-        lead?.hasWorkedDetails ||
-        lead?.workedLead?.domLeadId ||
-        lead?.domLeadId ||
-        lead?.workedAt ||
-        lead?.completedAt ||
-        lead?.callOutcome ||
-        (lead?.workStatus && lead.workStatus !== 'new') ||
-        lead?.status === 'completed'
-      );
+      const isWorkedLead = (lead) => Boolean(lead?.workedOnDate);
       const computedCounts = {
         assigned: data.length,
         worked: data.filter(isWorkedLead).length,
@@ -427,17 +406,13 @@ const DomSuperAdminDashboard = () => {
   const handleSelectTrackAgent = useCallback(async (agent) => {
     setSelectedTrackAgent(agent);
     setTrackLeadsLoading(true);
-    setTrackLeads([]);
     setTrackWorkedLeads([]);
     setTrackPoolLeads([]);
     try {
-      const [webRes, workedRes, poolRes] = await Promise.all([
-        api.get(`/domestic-api/website-leads?limit=10`).catch(() => ({ data: { data: [] } })),
+      const [workedRes, poolRes] = await Promise.all([
         api.get(`/domestic-api/leads?agentId=${agent._id}&limit=10`),
         api.get(`/domestic-api/import-leads?agentId=${agent._id}&limit=10`).catch(() => ({ data: { data: [] } })),
       ]);
-      // Filter web leads to only this agent's
-      setTrackLeads((webRes.data?.data || []).filter(l => l.loadedBy?._id === agent._id || l.loadedBy === agent._id));
       setTrackWorkedLeads(workedRes.data?.data || []);
       setTrackPoolLeads(poolRes.data?.data || []);
     } catch (err) {
@@ -516,12 +491,12 @@ const DomSuperAdminDashboard = () => {
     if (superTab === 'users')     fetchUsers();
     if (superTab === 'apikey')    fetchApiKey();
     if (superTab === 'import')    { fetchBatches(); fetchAdmins(); }
-    if (superTab === 'web_leads') { fetchWebLeads(1); fetchWebProductTypes(); fetchWebAgents(); fetchWebServiceStats(); }
+    if (superTab === 'web_leads') { fetchWebLeads(1); fetchWebAgents(); fetchWebServiceStats(); }
     if (superTab === 'tracker')      { fetchTrackerAgents(); setSelectedTrackAgent(null); }
     if (superTab === 'reports')      { fetchReport('month', '', ''); }
     if (superTab === 'manual_leads') { fetchManualLeads(); }
     if (superTab === 'agent_performance') { /* uses DomAdminDashboard internally */ }
-  }, [superTab, fetchUsers, fetchApiKey, fetchBatches, fetchAdmins, fetchWebLeads, fetchWebProductTypes, fetchWebAgents, fetchWebServiceStats, fetchTrackerAgents, fetchReport, fetchManualLeads, fetchDailyAssignedLeads]);
+  }, [superTab, fetchUsers, fetchApiKey, fetchBatches, fetchAdmins, fetchWebLeads, fetchWebAgents, fetchWebServiceStats, fetchTrackerAgents, fetchReport, fetchManualLeads, fetchDailyAssignedLeads]);
 
   // Keep daily assigned table in sync with IST date and Assigned/Worked toggle.
   useEffect(() => {
@@ -734,16 +709,7 @@ const DomSuperAdminDashboard = () => {
           const needle = dailyAssignedSearch.trim().toLowerCase();
           const agentNeedle = dailyAssignedAgentSearch.trim().toLowerCase();
           const isWorkedView = dailyAssignedView === 'worked';
-          const isWorkedLead = (lead) => Boolean(
-            lead?.hasWorkedDetails ||
-            lead?.workedLead?.domLeadId ||
-            lead?.domLeadId ||
-            lead?.workedAt ||
-            lead?.completedAt ||
-            lead?.callOutcome ||
-            (lead?.workStatus && lead.workStatus !== 'new') ||
-            lead?.status === 'completed'
-          );
+          const isWorkedLead = (lead) => Boolean(lead?.workedOnDate);
           const leadDisposition = (lead) => (lead?.workedLead?.callOutcome || lead?.callOutcome || '').trim();
           const dispositionOptions = [...new Set(
             dailyAssignedLeads
@@ -787,7 +753,7 @@ const DomSuperAdminDashboard = () => {
                         type="button"
                         onClick={() => setDailyAssignedView('assigned')}
                         className={`px-3 py-1.5 text-xs font-bold rounded-lg transition ${!isWorkedView ? 'bg-white text-[#065F36] shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
-                        Assigned ({dailyAssignedCounts.assigned || 0})
+                        All Assigned ({dailyAssignedCounts.assigned || 0})
                       </button>
                       <button
                         type="button"
@@ -841,7 +807,14 @@ const DomSuperAdminDashboard = () => {
                           {rows.map((lead) => (
                             <tr key={lead._id} className="hover:bg-[#E8FFF5]/30">
                               <td className="px-5 py-3">
-                                <p className="font-semibold text-gray-800">{lead.name || ''}</p>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <p className="font-semibold text-gray-800">{lead.name || ''}</p>
+                                  {lead.workedOnReassigned ? (
+                                    <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200">Reassigned (Worked)</span>
+                                  ) : lead.isReassigned ? (
+                                    <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">Reassigned (Pending)</span>
+                                  ) : null}
+                                </div>
                                 <p className="text-xs text-gray-400">{[lead.mobile, lead.email, lead.city, lead.productType, lead.batchName].filter(Boolean).join('  ') || 'No extra details'}</p>
                               </td>
                               <td className="px-3 py-3 text-gray-700">{lead.agent?.name || ''}<p className="text-xs text-gray-400">{lead.agent?.email || ''}</p></td>
@@ -869,7 +842,13 @@ const DomSuperAdminDashboard = () => {
                                 </>
                               ) : (
                                 <td className="px-3 py-3">
-                                  <span className={`px-2 py-1 rounded-full text-xs font-bold ${lead.currentlyAssigned ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>{lead.currentlyAssigned ? 'Assigned' : `Unassigned ${lead.unassignedAt ? ' ' + fmt(lead.unassignedAt) : ''}`}</span>
+                                  {lead.workedOnDate ? (
+                                    <span className="px-2 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700">Worked Today</span>
+                                  ) : lead.currentlyAssigned ? (
+                                    <span className="px-2 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200">Pending Work</span>
+                                  ) : (
+                                    <span className="px-2 py-1 rounded-full text-xs font-bold bg-gray-100 text-gray-500">Unassigned {lead.unassignedAt ? ' ' + fmt(lead.unassignedAt) : ''}</span>
+                                  )}
                                 </td>
                               )}
 
@@ -1844,7 +1823,6 @@ const DomSuperAdminDashboard = () => {
     const totalDisp       = trackerAgents.reduce((s, a) => s + (a.domLeadsCreated || 0), 0);
     const totalInterested = trackerAgents.reduce((s, a) => s + (a.interestedCount || 0), 0);
     const totalCallback   = trackerAgents.reduce((s, a) => s + (a.callbackCount   || 0), 0);
-    const totalPoolWorked = trackerAgents.reduce((s, a) => s + (a.poolWorked      || 0), 0);
 
     // Export all agents data as CSV
     const handleExportTracker = () => {
