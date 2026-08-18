@@ -1,8 +1,8 @@
-﻿'use strict';
+'use strict';
 const mongoose = require('mongoose');
 
 /**
- * DomWebsiteLead  raw lead from website form or Meta Lead Ads.
+ * DomWebsiteLead — raw lead from website form or Meta Lead Ads.
  * An agent loads it, then fills a full DomLead while on the call.
  */
 const domWebsiteLeadSchema = new mongoose.Schema(
@@ -17,6 +17,7 @@ const domWebsiteLeadSchema = new mongoose.Schema(
 
     // Data from website form or Meta Lead Ads
     name:           { type: String, trim: true, maxlength: 100 },
+    email:          { type: String, trim: true, lowercase: true, maxlength: 100 },
     mobile:         { type: String, trim: true, maxlength: 20, index: true },
     city:           { type: String, trim: true, maxlength: 100 },
     monthlyIncome:  { type: String, trim: true, maxlength: 50 },
@@ -32,21 +33,21 @@ const domWebsiteLeadSchema = new mongoose.Schema(
     // Custom / unrecognised Meta form fields appended here
     customNotes:    { type: String, trim: true, maxlength: 2000 },
 
-    //  Meta Lead Ads specific 
-    // Unique Meta leadgen_id  prevents duplicate saves
+    // ── Meta Lead Ads specific ───────────────────────────────────────────────
+    // Unique Meta leadgen_id — prevents duplicate saves
     metaLeadgenId:  { type: String, trim: true, maxlength: 30, default: null, index: true, sparse: true },
 
-    // Every raw field Meta sent, verbatim  never lose custom form questions
+    // Every raw field Meta sent, verbatim — never lose custom form questions
     parsedFields:   { type: mongoose.Schema.Types.Mixed, default: null },
 
     // Full Meta audit trail (page, form, ad, campaign info)
     metaRawPayload: { type: mongoose.Schema.Types.Mixed, default: null },
 
     // Processing state
-    // new        lead arrived, no agent has loaded it
-    // loaded     an agent clicked "Load", currently working on it
-    // completed  agent submitted the full DomLead form
-    // rejected   admin marked as invalid/spam
+    // 'new'       — lead arrived, no agent has loaded it
+    // 'loaded'    — an agent clicked "Load", currently working on it
+    // 'completed' — agent submitted the full DomLead form
+    // 'rejected'  — admin marked as invalid/spam
     status: {
       type: String,
       enum: ['new', 'loaded', 'completed', 'rejected'],
@@ -90,4 +91,3 @@ domWebsiteLeadSchema.index({ createdAt: -1 });
 domWebsiteLeadSchema.index({ name: 'text', mobile: 'text' });
 
 module.exports = mongoose.model('DomWebsiteLead', domWebsiteLeadSchema);
-

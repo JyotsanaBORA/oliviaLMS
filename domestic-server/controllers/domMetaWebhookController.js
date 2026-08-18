@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 /**
  * Meta Webhook Controller  domestic LMS.
  *
@@ -200,6 +200,7 @@ async function processSingleEvent(event, io) {
 
       // Schema-mapped fields (only set if we have a value)
       ...(fullName                   && { name:          fullName }),
+      ...(schemaFields.email         && { email:         schemaFields.email }),
       ...(schemaFields.mobile        && { mobile:        schemaFields.mobile }),
       ...(schemaFields.city          && { city:          schemaFields.city }),
       ...(schemaFields.monthlyIncome && { monthlyIncome: schemaFields.monthlyIncome }),

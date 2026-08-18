@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   LogOut, RefreshCw, Users, TrendingUp, BarChart2, Search,
   Eye, X, Hash, Globe, Briefcase, CheckCircle2, Clock,
@@ -3709,6 +3709,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
             <div>
               <Section label="Customer Information">
                 <Row2 label="Full Name"      value={viewLead.name} />
+                <Row2 label="Email"          value={viewLead.email} />
                 <Row2 label="Mobile"         value={viewLead.mobile} mono />
                 <Row2 label="City"           value={viewLead.city} />
                 <Row2 label="Employment"     value={viewLead.employment} />
@@ -3716,11 +3717,20 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                 <Row2 label="PAN"            value={viewLead.pan} mono />
               </Section>
               <Section label="Lead Information">
+                <Row2 label="Source"         value={viewLead.source === 'meta' ? 'Meta Lead Ads' : viewLead.source || 'Website'} />
                 <Row2 label="Service Needed" value={viewLead.productType?.replace(/_/g,' ')} />
                 <Row2 label="Source Page"    value={viewLead.sourcePage} />
                 <Row2 label="Status"         value={<StatusBadge status={viewLead.status} />} />
                 <Row2 label="Claimed By"     value={viewLead.loadedBy?.name || 'Unclaimed'} />
+                {viewLead.customNotes && <Row2 label="Notes" value={viewLead.customNotes} />}
               </Section>
+              {viewLead.parsedFields && Object.keys(viewLead.parsedFields).length > 0 && (
+                <Section label="Meta Form Responses">
+                  {Object.entries(viewLead.parsedFields).map(([k, v]) => (
+                    <Row2 key={k} label={k.replace(/_/g, ' ')} value={String(v)} />
+                  ))}
+                </Section>
+              )}
               {viewDomLead && (
                 <Section label="Agent's Worked Lead Details">
                   <Row2 label="Call Outcome" value={viewDomLead.callOutcome?.replace(/_/g,' ')} />
