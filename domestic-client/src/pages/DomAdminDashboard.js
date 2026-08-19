@@ -1383,7 +1383,9 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                           </td>
                           <td className="px-3 py-3.5">
                             <div className="flex flex-col items-start gap-1">
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-teal-100 text-teal-700 border border-teal-200"> Website</span>
+                              {lead.source !== 'meta' && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-teal-100 text-teal-700 border border-teal-200"> Website</span>
+                              )}
                               {lead.source === 'meta' && (
                                 <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-[#1877F2] text-white">f Meta Ads</span>
                               )}
