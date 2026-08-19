@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { io } from 'socket.io-client';
 import {
   LogOut, RefreshCw, FileText, CheckCircle,
@@ -148,7 +148,7 @@ const DomAgentDashboard = () => {
   const fetchAssignedLeads = useCallback(async () => {
     setAssignedLeadsLoading(true);
     try {
-      const res = await api.get('/domestic-api/import-leads?limit=200');
+      const res = await api.get('/domestic-api/import-leads?limit=5000');
       setAssignedLeads(res.data?.data || []);
     } catch { toast.error('Failed to load assigned leads.'); }
     finally { setAssignedLeadsLoading(false); }

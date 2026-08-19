@@ -366,7 +366,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
           return api.get(`/domestic-api/leads?${q}`).then(r => (r.data?.data || []).map(l => ({ ...l, _isPool: false })));
         })() : Promise.resolve([]),
         source !== 'website' ? (
-          api.get(`/domestic-api/import-leads?agentId=${agentId}&limit=200`)
+          api.get(`/domestic-api/import-leads?agentId=${agentId}&limit=5000`)
             .catch(() => ({ data: { data: [] } }))
             .then(r => {
               let pool = (r.data?.data || []).map(l => ({ ...l, _isPool: true }));
@@ -400,9 +400,9 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
     try {
       const today = localDateStr();
       const [workedRes, poolRes, todayRes] = await Promise.all([
-        api.get(`/domestic-api/leads?agentId=${agent._id}&limit=15`),
-        api.get(`/domestic-api/import-leads?agentId=${agent._id}&limit=100`).catch(() => ({ data: { data: [] } })),
-        api.get(`/domestic-api/leads?agentId=${agent._id}&limit=200&dateFrom=${today}&dateTo=${today}`),
+        api.get(`/domestic-api/leads?agentId=${agent._id}&limit=100`),
+        api.get(`/domestic-api/import-leads?agentId=${agent._id}&limit=2000`).catch(() => ({ data: { data: [] } })),
+        api.get(`/domestic-api/leads?agentId=${agent._id}&limit=2000&dateFrom=${today}&dateTo=${today}`),
       ]);
       // Pool leads worked today  filter client-side by workedAt
       const allPool = poolRes.data?.data || [];
@@ -2867,7 +2867,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                             </td>
                             <td className="px-3 py-4 text-center">
                               <input
-                                type="number" min="1" max="500"
+                                type="number" min="1" max="5000"
                                 value={assignCounts[a._id] || ''}
                                 onChange={(e) => setAssignCounts(prev => ({ ...prev, [a._id]: e.target.value }))}
                                 placeholder="e.g. 25"

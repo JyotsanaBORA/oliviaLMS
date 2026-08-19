@@ -237,7 +237,7 @@ router.get('/followups', protect, authorize('domagent', 'dom_admin', 'dom_supera
       .populate('sourceWebsiteLead',  'name mobile productType')
       .populate('sourceImportedLead', 'name mobile loanType totalOutstandingAmount principalOutstanding noOfInstallmentOverdue cibilScore bankName employment residencePhoneNumber officePhoneNumber vintage disbursalAmount amountFinanced')
       .sort({ callbackDate: 1, updatedAt: -1 })
-      .limit(200)
+      .limit(2000)
       .lean();
 
     return res.status(200).json({ success: true, data: leads });
@@ -253,7 +253,7 @@ router.get('/', protect, async (req, res) => {
   try {
     const { role, _id: userId } = req.user;
     const page   = Math.max(1, parseInt(req.query.page)  || 1);
-    const limit  = Math.min(500, parseInt(req.query.limit) || 50);
+    const limit  = Math.min(5000, parseInt(req.query.limit) || (role === 'domagent' ? 2000 : 50));
     const skip   = (page - 1) * limit;
     const status = req.query.status;
     const search = (req.query.search || '').trim();

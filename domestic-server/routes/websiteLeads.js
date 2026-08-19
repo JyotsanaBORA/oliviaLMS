@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 const express         = require('express');
 const DomWebsiteLead  = require('../models/DomWebsiteLead');
 const DomNotification = require('../models/DomNotification');
@@ -8,12 +8,12 @@ const { protect, authorize } = require('../middleware/auth');
 
 const router = express.Router();
 
-//  GET /domestic-api/website-leads 
+// ── GET /domestic-api/website-leads ──────────────────────────────────────────
 // Admin/superadmin: all website leads with filters and pagination
 router.get('/', protect, authorize('dom_admin', 'dom_superadmin'), async (req, res) => {
   try {
     const page        = Math.max(1, parseInt(req.query.page)  || 1);
-    const limit       = Math.min(200, parseInt(req.query.limit) || 50);
+    const limit       = Math.min(5000, parseInt(req.query.limit) || 50);
     const skip        = (page - 1) * limit;
     const status      = req.query.status;
     const search      = (req.query.search || '').trim();
@@ -41,7 +41,7 @@ router.get('/', protect, authorize('dom_admin', 'dom_superadmin'), async (req, r
         { city:   { $regex: search, $options: 'i' } },
       ];
     }
-    // Date range filter  parse as LOCAL date
+    // Date range filter – parse as LOCAL date
     if (req.query.dateFrom || req.query.dateTo) {
       filter.createdAt = {};
       if (req.query.dateFrom) {
@@ -75,7 +75,7 @@ router.get('/', protect, authorize('dom_admin', 'dom_superadmin'), async (req, r
   }
 });
 
-//  GET /domestic-api/website-leads/product-types 
+// ── GET /domestic-api/website-leads/product-types ────────────────────────────
 // Admin: distinct product types present in website leads (for filter dropdown)
 router.get('/product-types', protect, authorize('dom_admin', 'dom_superadmin'), async (req, res) => {
   try {
@@ -90,7 +90,7 @@ router.get('/product-types', protect, authorize('dom_admin', 'dom_superadmin'), 
   }
 });
 
-//  POST /domestic-api/website-leads/:id/load 
+// ── POST /domestic-api/website-leads/:id/load ────────────────────────────────
 // Domagent claims a website lead.
 // - Only works if status === 'new' (first-come first-served)
 // - Sets loadedBy, status = loaded
@@ -98,7 +98,7 @@ router.get('/product-types', protect, authorize('dom_admin', 'dom_superadmin'), 
 // - Emits socket `lead_loaded` to all agents
 router.post('/:id/load', protect, authorize('dom_admin', 'dom_superadmin'), async (req, res) => {
   try {
-    // Atomic update  only update if status is still 'new'
+    // Atomic update – only update if status is still 'new'
     const assignedAt = new Date();
     const lead = await DomWebsiteLead.findOneAndUpdate(
       { _id: req.params.id, status: 'new' },
@@ -122,7 +122,7 @@ router.post('/:id/load', protect, authorize('dom_admin', 'dom_superadmin'), asyn
     // Delete notifications for this lead for ALL agents
     await DomNotification.deleteMany({ websiteLead: req.params.id });
 
-    // Emit socket  all agents remove this card from their notification panel
+    // Emit socket – all agents remove this card from their notification panel
     const io = req.app.get('io');
     if (io) {
       io.to('domagents').emit('lead_loaded', { leadId: req.params.id });
@@ -135,14 +135,14 @@ router.post('/:id/load', protect, authorize('dom_admin', 'dom_superadmin'), asyn
   }
 });
 
-//  GET /domestic-api/website-leads/my 
+// ── GET /domestic-api/website-leads/my ───────────────────────────────────────
 // Domagent: their own loaded leads (the "My Leads" list)
 // Returns DomWebsiteLeads loaded by this agent + whether a DomLead exists
 router.get('/my', protect, authorize('domagent', 'dom_admin', 'dom_superadmin'), async (req, res) => {
   try {
     const agentId = req.user._id;
 
-    // Find website leads for this agent  match by EITHER loadedBy OR assignedTo
+    // Find website leads for this agent – match by EITHER loadedBy OR assignedTo
     // (reassigned leads may have assignedTo updated without loadedBy being updated)
     const leads = await DomWebsiteLead.find({
       $or: [{ loadedBy: agentId }, { assignedTo: agentId }],
@@ -159,7 +159,7 @@ router.get('/my', protect, authorize('domagent', 'dom_admin', 'dom_superadmin'),
       return true;
     });
 
-    // Find all DomLeads created by this agent  include full doc so documents
+    // Find all DomLeads created by this agent – include full doc so documents
     // array is available when the modal opens without a second fetch.
     const domLeads = await DomLead.find({ assignedTo: agentId, sourceWebsiteLead: { $ne: null } }).lean();
     const workedMap = {};
@@ -205,7 +205,7 @@ router.get('/my', protect, authorize('domagent', 'dom_admin', 'dom_superadmin'),
   }
 });
 
-//  POST /domestic-api/website-leads/:id/assign 
+// ── POST /domestic-api/website-leads/:id/assign ──────────────────────────────
 // Admin/SuperAdmin: directly assign a website lead to a specific agent.
 // The lead must be 'new' (unassigned). Sets loadedBy, status = loaded.
 router.post('/:id/assign', protect, authorize('dom_admin', 'dom_superadmin'), async (req, res) => {
@@ -220,7 +220,7 @@ router.post('/:id/assign', protect, authorize('dom_admin', 'dom_superadmin'), as
       return res.status(400).json({ success: false, message: 'Agent not found or is inactive.' });
     }
 
-    // Atomic  only assign if still 'new'
+    // Atomic – only assign if still 'new'
     const assignedAt = new Date();
     const lead = await DomWebsiteLead.findOneAndUpdate(
       { _id: req.params.id, status: 'new' },
@@ -235,7 +235,7 @@ router.post('/:id/assign', protect, authorize('dom_admin', 'dom_superadmin'), as
       }
       return res.status(409).json({
         success: false,
-        message: `Lead is already ${existing.status}  cannot reassign.`,
+        message: `Lead is already ${existing.status} – cannot reassign.`,
       });
     }
 
@@ -267,7 +267,7 @@ router.post('/:id/assign', protect, authorize('dom_admin', 'dom_superadmin'), as
   }
 });
 
-//  PATCH /domestic-api/website-leads/:id/status 
+// ── PATCH /domestic-api/website-leads/:id/status ─────────────────────────────
 // Admin: manually update status (e.g. reject)
 router.patch('/:id/status', protect, authorize('dom_admin', 'dom_superadmin'), async (req, res) => {
   try {
@@ -290,7 +290,7 @@ router.patch('/:id/status', protect, authorize('dom_admin', 'dom_superadmin'), a
   }
 });
 
-//  POST /domestic-api/website-leads/bulk-assign 
+// ── POST /domestic-api/website-leads/bulk-assign ─────────────────────────────
 // Admin/SuperAdmin: assign multiple new website leads to one agent in one call.
 // Body: { leadIds: [...], agentId }
 router.post('/bulk-assign', protect, authorize('dom_admin', 'dom_superadmin'), async (req, res) => {
@@ -319,7 +319,7 @@ router.post('/bulk-assign', protect, authorize('dom_admin', 'dom_superadmin'), a
     if (result.modifiedCount === 0) {
       return res.status(400).json({
         success: false,
-        message: 'No leads were assigned  they may have already been claimed.',
+        message: 'No leads were assigned – they may have already been claimed.',
       });
     }
 
@@ -349,4 +349,3 @@ router.post('/bulk-assign', protect, authorize('dom_admin', 'dom_superadmin'), a
 });
 
 module.exports = router;
-
