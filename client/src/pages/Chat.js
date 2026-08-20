@@ -462,7 +462,7 @@ export default function Chat() {
       socket.disconnect();
       socketRef.current = null;
     };
-  }, []); // intentionally empty — auth callback handles token refresh on reconnect
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Online presence polling ────────────────────────────────────────────────
   useEffect(() => {

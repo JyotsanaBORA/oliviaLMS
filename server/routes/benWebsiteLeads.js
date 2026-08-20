@@ -42,7 +42,19 @@ router.get('/', protect, async (req, res) => {
     const search = (req.query.search || '').trim();
 
     const filter = {};
-    if (access.orgFilter) filter.organization = access.orgFilter;
+    if (access.orgFilter) {
+      filter.organization = access.orgFilter;
+    } else if (req.query.organizationId) {
+      filter.organization = req.query.organizationId;
+    } else if (req.query.orgName) {
+      const matchOrgs = await Organization.find({ name: { $regex: req.query.orgName.trim(), $options: 'i' } }).select('_id').lean();
+      if (matchOrgs.length > 0) {
+        filter.organization = { $in: matchOrgs.map(o => o._id) };
+      } else {
+        filter.organization = new mongoose.Types.ObjectId();
+      }
+    }
+
     if (status && ['new', 'reviewed', 'imported', 'rejected'].includes(status)) filter.status = status;
     if (search) {
       filter.$or = [
@@ -52,12 +64,15 @@ router.get('/', protect, async (req, res) => {
       ];
     }
 
-    const [leads, total] = await Promise.all([
+    const [leads, total, orgs] = await Promise.all([
       BenWebsiteLead.find(filter).populate('organization', 'name').sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
       BenWebsiteLead.countDocuments(filter),
+      !access.orgFilter ? Organization.find({ isActive: true }).select('name').sort({ name: 1 }).lean() : Promise.resolve([]),
     ]);
 
-    const summaryFilter = access.orgFilter ? { organization: access.orgFilter } : {};
+    const summaryFilter = {};
+    if (filter.organization) summaryFilter.organization = filter.organization;
+
     const counts = await BenWebsiteLead.aggregate([
       { $match: summaryFilter },
       { $group: { _id: '$status', count: { $sum: 1 } } },
@@ -69,6 +84,7 @@ router.get('/', protect, async (req, res) => {
       success: true, data: leads,
       pagination: { page, limit, total, pages: Math.ceil(total / limit) },
       summary,
+      organizations: orgs,
       canWrite: access.canWrite,
     });
   } catch (err) {

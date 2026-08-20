@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useSocket } from '../contexts/SocketContext';
 import { useRefresh } from '../contexts/RefreshContext';
@@ -129,12 +129,13 @@ const Agent2Dashboard = () => {
   // ───────────────────────────────────────────────────────────────
   const [showViewModal, setShowViewModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
-  const [showCreateForm, setShowCreateForm] = useState(false);  // New lead creation form
+  // eslint-disable-next-line no-unused-vars
+  const [showCreateForm, setShowCreateForm] = useState(false);
   const [showNotesModal, setShowNotesModal] = useState(false);  // Notes modal
   // eslint-disable-next-line no-unused-vars
   const [notesPos, setNotesPos] = useState({ x: window.innerWidth - 390, y: 80 });
   const [updating, setUpdating] = useState(false);
-  const [submitting, setSubmitting] = useState(false);  // For lead creation
+  const [submitting, setSubmitting] = useState(false);
   
   // Persistent leads state
   const [pendingQualificationLeads, setPendingQualificationLeads] = useState([]);
@@ -515,7 +516,7 @@ const Agent2Dashboard = () => {
       window.removeEventListener('refreshLeads', handleRefresh);
       window.removeEventListener('vicidialCallReceived', handleVicidialWindowEvent);
     };
-  }, [fetchLeads, pagination.page, socket, fetchTodayAdminStats, user.role]);
+  }, [fetchLeads, pagination.page, socket, fetchTodayAdminStats, user.role, setActiveInboundCall]);
 
   // Fetch persistent leads for Agent2 dashboard
   const handleLeadsRefresh = useCallback(async () => {
@@ -739,7 +740,7 @@ const Agent2Dashboard = () => {
       // Use MongoDB _id instead of leadId for consistency with backend
       const leadIdToUse = selectedLead._id || selectedLead.leadId;
       
-      const response = await axios.put(`/api/leads/${leadIdToUse}`, cleanUpdateData);
+      await axios.put(`/api/leads/${leadIdToUse}`, cleanUpdateData);
       
       toast.success('Lead updated successfully!');
       
@@ -961,7 +962,7 @@ const Agent2Dashboard = () => {
       cleanUpdateData.lastUpdatedBy = user?.name || 'Agent2';
       cleanUpdateData.lastUpdatedAt = getEasternNow().toISOString();
 
-      const response = await axios.put(`/api/leads/${selectedLead.leadId}`, cleanUpdateData);
+      await axios.put(`/api/leads/${selectedLead.leadId}`, cleanUpdateData);
 
       toast.success('Lead details updated successfully!');
       

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   CreditCard, Search, RefreshCw, ChevronLeft, ChevronRight,
-  Calendar, User, CheckCircle2, XCircle, Clock, TrendingUp, DollarSign
+  Calendar, User, CheckCircle2, XCircle, Clock, TrendingUp
 } from 'lucide-react';
 import axios from '../utils/axios';
 import toast from 'react-hot-toast';

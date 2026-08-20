@@ -720,14 +720,14 @@ router.post('/:id/webhook-key', protect, async (req, res) => {
   }
 });
 
-// @desc    Generate a new Ben webhook API key for an organization
-// @route   POST /api/organizations/:id/ben-webhook-key
+// @desc    Generate a new webhook API key for an organization
+// @route   POST /api/organizations/:id/ben-webhook-key, POST /api/organizations/:id/webhook-key
 // @access  Private (SuperAdmin or Reddington admin)
-router.post('/:id/ben-webhook-key', protect, async (req, res) => {
+const generateWebhookKeyHandler = async (req, res) => {
   try {
     const allowed = req.user.role === 'superadmin' || (await isReddingtonAdmin(req.user));
     if (!allowed) {
-      return res.status(403).json({ success: false, message: 'Only superadmin or Reddington admin can generate Ben webhook keys.' });
+      return res.status(403).json({ success: false, message: 'Only superadmin or Reddington admin can generate webhook keys.' });
     }
 
     const organization = await Organization.findById(req.params.id);
@@ -737,22 +737,31 @@ router.post('/:id/ben-webhook-key', protect, async (req, res) => {
 
     const newKey = crypto.randomBytes(32).toString('hex');
     organization.benWebhookApiKey = newKey;
-    await organization.save();
+    const lowerName = (organization.name || '').toLowerCase();
+    let webhookPath = '/api/webhook/leads';
+    if (lowerName.includes('truclick') || lowerName.includes('tru click')) {
+      webhookPath = '/api/webhook/truclick-leads';
+    } else if (lowerName.includes('ben')) {
+      webhookPath = '/api/webhook/ben-leads';
+    }
 
     return res.status(200).json({
       success: true,
-      message: 'Ben webhook API key generated. Save it now — it will not be shown again in full.',
+      message: 'Webhook API key generated. Save it now — it will not be shown again in full.',
       data: {
         organizationId: organization._id,
         benWebhookApiKey: newKey,
-        webhookUrl: `${req.protocol}://${req.get('host')}/api/webhook/ben-leads`
+        webhookUrl: `${req.protocol}://${req.get('host')}${webhookPath}`
       }
     });
   } catch (error) {
-    console.error('Generate Ben webhook key error:', error);
-    return res.status(500).json({ success: false, message: 'Error generating Ben webhook API key', error: process.env.NODE_ENV === 'development' ? error.message : {} });
+    console.error('Generate webhook key error:', error);
+    return res.status(500).json({ success: false, message: 'Error generating webhook API key', error: process.env.NODE_ENV === 'development' ? error.message : {} });
   }
-});
+};
+
+router.post('/:id/ben-webhook-key', protect, generateWebhookKeyHandler);
+router.post('/:id/webhook-key', protect, generateWebhookKeyHandler);
 
 // @desc    Get webhook status (masked key) for an organization
 // @route   GET /api/organizations/:id/webhook-key

@@ -4,12 +4,11 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Download, RefreshCw, Search, ChevronLeft, ChevronRight,
   List, BarChart2, FileSpreadsheet, ArrowLeft, Calendar,
-  Hash, Users, Filter, TrendingUp, ChevronDown, ChevronUp,
+  TrendingUp, ChevronDown, ChevronUp,
   DollarSign, ShoppingCart, Activity, CreditCard
 } from 'lucide-react';
 import axios from '../utils/axios';
 import toast from 'react-hot-toast';
-import { useAuth } from '../contexts/AuthContext';
 import LoadingSpinner from '../components/LoadingSpinner';
 
 // ── All 45 ViciDial columns for the records view ──────────────────
@@ -109,7 +108,6 @@ function fmtCurrency(val) {
 
 // ─────────────────────────────────────────────────────────────────
 const DataVendorDashboard = () => {
-  const { user } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -424,17 +422,6 @@ const DataVendorDashboard = () => {
 
   const applySearch = () => {
     if (selectedRun) fetchRecords(selectedRun.runBatchId, 1);
-  };
-
-  // ── Render dispositions summary (runs table cell) ────────────
-  const renderDispBadge = (status, count) => {
-    const meta = getDispMeta(status);
-    return (
-      <span key={status} title={meta.label}
-        className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold ring-1 ${meta.color}`}>
-        {status} <span className="opacity-70">{count}</span>
-      </span>
-    );
   };
 
   // ─────────────────────────────────────────────────────────────

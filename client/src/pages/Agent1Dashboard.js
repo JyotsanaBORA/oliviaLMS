@@ -962,7 +962,7 @@ const Agent1Dashboard = () => {
       // Add updater information
       cleanFormData.lastUpdatedBy = user?.name || 'Agent1';
 
-      const response = await axios.put(`/api/leads/${editingLead.leadId}`, cleanFormData);
+      await axios.put(`/api/leads/${editingLead.leadId}`, cleanFormData);
       toast.success('Lead updated successfully!');
 
       // Reset form and close modal

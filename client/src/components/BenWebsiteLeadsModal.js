@@ -3,9 +3,10 @@ import {
   Globe, X, RefreshCw, Search, CheckCircle, XCircle,
   Download, Eye, MessageSquare, PhoneCall, Mail, MapPin,
   DollarSign, Smartphone, ChevronLeft, ChevronRight,
-  FileDown, Clock, Send, Lock,
+  FileDown, Clock, Send, Lock, Building,
 } from 'lucide-react';
 import axios from '../utils/axios';
+import { useAuth } from '../contexts/AuthContext';
 import toast from 'react-hot-toast';
 
 const STATUS_COLORS = {
@@ -25,10 +26,13 @@ const fmt     = (v) => (v === undefined || v === null || v === '') ? '—' : v;
 const fmtDate = (d) => d ? new Date(d).toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
 const fmtMoney = (n) => n != null ? `$${Number(n).toLocaleString()}` : '—';
 
-// canWrite comes from the API response — true for Reddington admin, false for Ben
-const BenWebsiteLeadsModal = ({ onClose }) => {
+// canWrite comes from the API response — true for Reddington admin / superadmin, false for tenant org admins
+const BenWebsiteLeadsModal = ({ onClose, targetOrgName, title }) => {
+  const { user } = useAuth();
   const [leads, setLeads]           = useState([]);
   const [summary, setSummary]       = useState({ new: 0, reviewed: 0, imported: 0, rejected: 0, total: 0 });
+  const [organizations, setOrganizations] = useState([]);
+  const [orgFilter, setOrgFilter]   = useState('');
   const [canWrite, setCanWrite]     = useState(false);
   const [loading, setLoading]       = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -64,53 +68,81 @@ const BenWebsiteLeadsModal = ({ onClose }) => {
     try {
       const params = new URLSearchParams({ page, limit: 50 });
       if (statusFilter) params.set('status', statusFilter);
+      if (orgFilter) {
+        params.set('organizationId', orgFilter);
+      } else if (targetOrgName) {
+        params.set('orgName', targetOrgName);
+      }
       if (search.trim()) params.set('search', search.trim());
 
       const res = await axios.get(`/api/ben-website-leads?${params}`);
       if (res.data?.success) {
         setLeads(res.data.data);
         setSummary(res.data.summary || {});
+        const orgList = res.data.organizations || [];
+        setOrganizations(orgList);
         setPagination(res.data.pagination || { page: 1, limit: 50, total: 0, pages: 0 });
         setCanWrite(!!res.data.canWrite);
+
+        // If targetOrgName is passed and no orgFilter is set yet, auto-select matching org
+        if (targetOrgName && !orgFilter && orgList.length > 0) {
+          const match = orgList.find(o => o.name?.toLowerCase().includes(targetOrgName.toLowerCase()));
+          if (match) {
+            setOrgFilter(match._id);
+          }
+        }
       }
     } catch (err) {
-      console.error('Fetch ben-website-leads:', err);
-      toast.error('Failed to load Ben website leads');
+      console.error('Fetch inbound website leads:', err);
+      toast.error('Failed to load leads');
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [statusFilter, search, pagination.page]);
+  }, [statusFilter, orgFilter, search, pagination.page, targetOrgName]);
 
-  useEffect(() => { fetchLeads({ page: 1 }); }, [statusFilter]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { fetchLeads({ page: 1 }); }, [statusFilter, orgFilter]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleExport = async () => {
     setExporting(true);
     try {
       const params = new URLSearchParams({ page: 1, limit: 5000 });
       if (statusFilter) params.set('status', statusFilter);
+      if (orgFilter) {
+        params.set('organizationId', orgFilter);
+      } else if (targetOrgName) {
+        params.set('orgName', targetOrgName);
+      }
       if (search.trim()) params.set('search', search.trim());
       const res = await axios.get(`/api/ben-website-leads?${params}`);
       const rows = res.data?.data || [];
       if (!rows.length) { toast.error('No leads to export'); return; }
 
-      const headers = ['Name','Email','Phone','Form Type','Message','Debt Amount','Status','Received'];
+      const headers = canWrite
+        ? ['Organization', 'Name', 'Email', 'Phone', 'Form Type', 'Message', 'Debt Amount', 'Status', 'Received']
+        : ['Name', 'Email', 'Phone', 'Form Type', 'Message', 'Debt Amount', 'Status', 'Received'];
       const esc = (v) => { if (v == null || v === '') return ''; const s = String(v); return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s; };
       const csvRows = [
         headers.join(','),
-        ...rows.map(r => [
-          esc(r.name), esc(r.email), esc(r.phone),
-          esc(r.formType === 'contact-form' ? 'Contact Form' : r.formType === 'qualify-form' ? 'Qualify Form' : 'Unknown'),
-          esc(r.message),
-          esc(r.totalDebtAmount != null ? r.totalDebtAmount : ''),
-          esc(r.status),
-          esc(r.createdAt ? new Date(r.createdAt).toLocaleString('en-US', { timeZone: 'America/New_York' }) : '')
-        ].join(','))
+        ...rows.map(r => {
+          const rowData = [
+            esc(r.name), esc(r.email), esc(r.phone),
+            esc(r.formType === 'contact-form' ? 'Contact Form' : r.formType === 'qualify-form' ? 'Qualify Form' : 'Unknown'),
+            esc(r.message),
+            esc(r.totalDebtAmount != null ? r.totalDebtAmount : ''),
+            esc(r.status),
+            esc(r.createdAt ? new Date(r.createdAt).toLocaleString('en-US', { timeZone: 'America/New_York' }) : '')
+          ];
+          if (canWrite) {
+            rowData.unshift(esc(r.organization?.name || ''));
+          }
+          return rowData.join(',');
+        })
       ];
       const blob = new Blob([csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
       const url  = URL.createObjectURL(blob);
       const a    = document.createElement('a');
-      a.href = url; a.download = `ben-website-leads-${new Date().toISOString().split('T')[0]}.csv`; a.click();
+      a.href = url; a.download = `inbound-leads-${new Date().toISOString().split('T')[0]}.csv`; a.click();
       URL.revokeObjectURL(url);
       toast.success(`Exported ${rows.length} leads`);
     } catch { toast.error('Export failed'); } finally { setExporting(false); }
@@ -172,9 +204,11 @@ const BenWebsiteLeadsModal = ({ onClose }) => {
                 <Globe className="h-5 w-5 text-white" />
               </div>
               <div>
-                <h2 className="text-lg font-bold text-white">Ben Website Leads</h2>
+                <h2 className="text-lg font-bold text-white">
+                  {title || (canWrite ? 'Inbound / Webhook Leads' : `${user?.organization?.name ? `${user.organization.name} Leads` : 'Inbound Leads'}`)}
+                </h2>
                 <p className="text-xs text-orange-100">
-                  Submissions from Ben's website · {canWrite ? 'Full access' : <span className="flex items-center gap-1 inline-flex"><Lock className="h-3 w-3" /> Read-only</span>}
+                  {targetOrgName ? `Submissions for ${title || targetOrgName}` : (canWrite ? 'Submissions across all organization webhook integrations' : `Submissions for ${user?.organization?.name || 'your organization'}`)} · {canWrite ? 'Full access' : <span className="flex items-center gap-1 inline-flex"><Lock className="h-3 w-3" /> Read-only</span>}
                 </p>
               </div>
             </div>
@@ -184,7 +218,7 @@ const BenWebsiteLeadsModal = ({ onClose }) => {
           </div>
 
           {/* Summary Badges + toolbar */}
-          <div className="flex gap-2 px-6 py-3 bg-gray-50 border-b flex-wrap flex-shrink-0">
+          <div className="flex gap-2 px-6 py-3 bg-gray-50 border-b flex-wrap flex-shrink-0 items-center">
             {[
               { key: '',         label: 'All',      count: summary.total },
               { key: 'new',      label: 'New',      count: summary.new },
@@ -205,6 +239,19 @@ const BenWebsiteLeadsModal = ({ onClose }) => {
                 </span>
               </button>
             ))}
+
+            {canWrite && organizations.length > 0 && (
+              <select
+                value={orgFilter}
+                onChange={(e) => { setOrgFilter(e.target.value); setPagination(p => ({ ...p, page: 1 })); }}
+                className="text-xs border border-gray-200 rounded-lg px-2.5 py-1 bg-white text-gray-700 font-medium focus:outline-none focus:ring-2 focus:ring-orange-400"
+              >
+                <option value="">All Organizations</option>
+                {organizations.map(o => (
+                  <option key={o._id} value={o._id}>{o.name}</option>
+                ))}
+              </select>
+            )}
 
             <div className="ml-auto flex items-center gap-2">
               <button onClick={handleExport} disabled={exporting}
@@ -244,13 +291,14 @@ const BenWebsiteLeadsModal = ({ onClose }) => {
             ) : leads.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-48 text-gray-400">
                 <Globe className="h-10 w-10 mb-2 opacity-40" />
-                <p className="text-sm font-medium">No Ben website leads found</p>
-                <p className="text-xs mt-1">Submissions from Ben's website will appear here</p>
+                <p className="text-sm font-medium">No inbound leads found</p>
+                <p className="text-xs mt-1">Submissions from webhook integrations will appear here</p>
               </div>
             ) : (
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 border-b sticky top-0">
                   <tr>
+                    {canWrite && <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Organization</th>}
                     <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Name</th>
                     <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Contact</th>
                     <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Form</th>
@@ -263,6 +311,13 @@ const BenWebsiteLeadsModal = ({ onClose }) => {
                 <tbody className="divide-y divide-gray-100">
                   {leads.map(lead => (
                     <tr key={lead._id} className="hover:bg-orange-50/40 transition-colors">
+                      {canWrite && (
+                        <td className="px-4 py-3 text-xs">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded font-medium bg-gray-100 text-gray-800 border border-gray-200 whitespace-nowrap">
+                            {lead.organization?.name || '—'}
+                          </span>
+                        </td>
+                      )}
                       <td className="px-4 py-3">
                         <button onClick={() => openDetail(lead)} className="font-semibold text-gray-900 hover:text-orange-600 text-left transition-colors">
                           {lead.name}
@@ -368,6 +423,7 @@ const BenWebsiteLeadsModal = ({ onClose }) => {
               {/* Contact */}
               <div className="bg-gray-50 rounded-xl p-4 space-y-2">
                 <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Contact</h4>
+                {detail.organization?.name && <Row icon={<Building className="h-4 w-4 text-orange-500" />} label="Organization" value={detail.organization.name} />}
                 <Row icon={<Mail className="h-4 w-4 text-blue-500" />} label="Email" value={fmt(detail.email)} />
                 <Row icon={<PhoneCall className="h-4 w-4 text-green-500" />} label="Phone" value={fmt(detail.phone)} />
               </div>

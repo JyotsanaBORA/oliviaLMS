@@ -200,7 +200,7 @@ const OrganizationManagement = () => {
   };
 
   const handleGenerateBenKey = async (org) => {
-    if (!window.confirm(`Generate a new Ben webhook API key for "${org.name}"? Any existing key will be replaced.`)) return;
+    if (!window.confirm(`Generate a new webhook API key for "${org.name}"? Any existing key will be replaced.`)) return;
     setBenKeyGenerating(true);
     try {
       const response = await axios.post(`/api/organizations/${org._id}/ben-webhook-key`);
@@ -208,7 +208,7 @@ const OrganizationManagement = () => {
       setCopiedField(null);
       setShowBenKeyModal(true);
     } catch (error) {
-      toast.error(error.response?.data?.message || 'Failed to generate Ben webhook key');
+      toast.error(error.response?.data?.message || 'Failed to generate webhook key');
     } finally {
       setBenKeyGenerating(false);
     }
@@ -470,7 +470,7 @@ const OrganizationManagement = () => {
                         onClick={() => handleGenerateBenKey(org)}
                         disabled={benKeyGenerating}
                         className="text-orange-500 hover:text-orange-700"
-                        title="Generate Ben Webhook API Key"
+                        title="Generate Webhook API Key"
                       >
                         <Key className="h-4 w-4" />
                       </button>
@@ -980,8 +980,8 @@ const OrganizationManagement = () => {
                     <Key className="h-5 w-5 text-orange-500" />
                   </div>
                   <div>
-                    <h3 className="text-lg font-medium text-gray-900">Ben Webhook API Key Generated</h3>
-                    <p className="text-sm text-gray-500">{benKeyData.orgName}</p>
+                    <h3 className="text-lg font-medium text-gray-900">{benKeyData.orgName} Webhook API Key</h3>
+                    <p className="text-sm text-gray-500">Inbound leads integration for {benKeyData.orgName}</p>
                   </div>
                 </div>
 
@@ -1023,7 +1023,7 @@ const OrganizationManagement = () => {
                   </div>
 
                   <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
-                    <p className="text-xs font-semibold text-gray-600 mb-2">Share with Ben's developer:</p>
+                    <p className="text-xs font-semibold text-gray-600 mb-2">Share with {benKeyData.orgName}'s developer:</p>
                     <pre className="text-xs text-gray-700 whitespace-pre-wrap font-mono">{`POST ${benKeyData.webhookUrl}
 Headers:
   x-api-key: ${benKeyData.benWebhookApiKey}

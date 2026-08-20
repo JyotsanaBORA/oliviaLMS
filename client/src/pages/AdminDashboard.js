@@ -164,6 +164,10 @@ const AdminDashboard = () => {
   const [benLeadsBadge, setBenLeadsBadge] = useState(0);
   const benLeadTotalRef = useRef(null);
 
+  // TruClick Leads modal
+  const [showTruClickLeads, setShowTruClickLeads] = useState(false);
+  const [truClickBadge, setTruClickBadge] = useState(0);
+
   // Loop leads modal (orgs with showLoopLeads === true)
   const [showLoopLeads, setShowLoopLeads] = useState(false);
   const [loopLeadsBadge, setLoopLeadsBadge] = useState(0);
@@ -802,8 +806,19 @@ const AdminDashboard = () => {
         const isMyLead = !leadOrgId || String(leadOrgId) === String(myOrgId);
         if (!isMyLead && !isReddingtonAdmin) return;
         if (benLeadTotalRef.current !== null) benLeadTotalRef.current += 1;
-        setBenLeadsBadge(n => n + 1);
-        toast.success(`New Ben website lead: ${data?.name || 'Unknown'}`, { duration: 5000, icon: '🟠' });
+        
+        const orgNameLower = (data?.organizationName || '').toLowerCase();
+        if (orgNameLower.includes('truclick') || orgNameLower.includes('tru click')) {
+          setTruClickBadge(n => n + 1);
+          toast.success(`New TruClick Media lead: ${data?.name || 'Unknown'}`, { duration: 5000, icon: '🔵' });
+        } else if (orgNameLower.includes('ben')) {
+          setBenLeadsBadge(n => n + 1);
+          toast.success(`New Ben website lead: ${data?.name || 'Unknown'}`, { duration: 5000, icon: '🟠' });
+        } else {
+          setBenLeadsBadge(n => n + 1);
+          const orgTag = isReddingtonAdmin && data?.organizationName ? `${data.organizationName}: ` : '';
+          toast.success(`New inbound lead: ${orgTag}${data?.name || 'Unknown'}`, { duration: 5000, icon: '🟠' });
+        }
       };
 
       socket.on('leadUpdated', handleLeadUpdated);
@@ -1115,8 +1130,8 @@ const AdminDashboard = () => {
                   )}
                 </button>
               )}
-              {/* Ben Website Leads button — all admins */}
-              {user?.role === 'admin' && (
+              {/* Ben Website Leads button — Reddington admin or Ben admin */}
+              {user?.role === 'admin' && (isReddingtonAdmin || user?.organization?.name?.toLowerCase().includes('ben')) && (
                 <button
                   onClick={() => { setShowBenWebsiteLeads(true); setBenLeadsBadge(0); }}
                   className="relative flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold text-white transition-all duration-200 active:scale-95 shadow-md"
@@ -1127,6 +1142,44 @@ const AdminDashboard = () => {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9" />
                   </svg>
                   Ben Website Leads
+                  {benLeadsBadge > 0 && (
+                    <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] flex items-center justify-center bg-red-500 text-white text-[10px] font-bold rounded-full px-1">
+                      {benLeadsBadge > 99 ? '99+' : benLeadsBadge}
+                    </span>
+                  )}
+                </button>
+              )}
+              {/* TruClick Media Leads button — Reddington admin or TruClick admin */}
+              {user?.role === 'admin' && (isReddingtonAdmin || user?.organization?.name?.toLowerCase().includes('truclick') || user?.organization?.name?.toLowerCase().includes('tru click')) && (
+                <button
+                  onClick={() => { setShowTruClickLeads(true); setTruClickBadge(0); }}
+                  className="relative flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold text-white transition-all duration-200 active:scale-95 shadow-md"
+                  style={{ background: 'linear-gradient(135deg,#0284c7,#0369a1)', boxShadow: '0 4px 12px rgba(2,132,199,0.4)' }}
+                  title="View TruClick Media leads"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9" />
+                  </svg>
+                  TruClick Media Leads
+                  {truClickBadge > 0 && (
+                    <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] flex items-center justify-center bg-red-500 text-white text-[10px] font-bold rounded-full px-1">
+                      {truClickBadge > 99 ? '99+' : truClickBadge}
+                    </span>
+                  )}
+                </button>
+              )}
+              {/* Generic Inbound Leads button for other non-Reddington tenant admins */}
+              {user?.role === 'admin' && !isReddingtonAdmin && !user?.organization?.name?.toLowerCase().includes('ben') && !user?.organization?.name?.toLowerCase().includes('truclick') && !user?.organization?.name?.toLowerCase().includes('tru click') && (
+                <button
+                  onClick={() => { setShowBenWebsiteLeads(true); setBenLeadsBadge(0); }}
+                  className="relative flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold text-white transition-all duration-200 active:scale-95 shadow-md"
+                  style={{ background: 'linear-gradient(135deg,#f97316,#d97706)', boxShadow: '0 4px 12px rgba(249,115,22,0.4)' }}
+                  title={`View ${user?.organization?.name || 'Inbound'} leads`}
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9" />
+                  </svg>
+                  {user?.organization?.name ? `${user.organization.name} Leads` : 'Inbound Leads'}
                   {benLeadsBadge > 0 && (
                     <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] flex items-center justify-center bg-red-500 text-white text-[10px] font-bold rounded-full px-1">
                       {benLeadsBadge > 99 ? '99+' : benLeadsBadge}
@@ -2852,9 +2905,22 @@ const AdminDashboard = () => {
         <WebsiteLeadsModal onClose={() => setShowWebsiteLeads(false)} />
       )}
 
-      {/* Ben Website Leads Modal — all admins */}
+      {/* Ben Website Leads Modal */}
       {showBenWebsiteLeads && (
-        <BenWebsiteLeadsModal onClose={() => setShowBenWebsiteLeads(false)} />
+        <BenWebsiteLeadsModal
+          targetOrgName={isReddingtonAdmin ? 'Ben' : undefined}
+          title="Ben Website Leads"
+          onClose={() => setShowBenWebsiteLeads(false)}
+        />
+      )}
+
+      {/* TruClick Media Leads Modal */}
+      {showTruClickLeads && (
+        <BenWebsiteLeadsModal
+          targetOrgName={isReddingtonAdmin ? 'TruClick' : undefined}
+          title="TruClick Media Leads"
+          onClose={() => setShowTruClickLeads(false)}
+        />
       )}
 
       {/* New Website Lead Popup — admin dashboard only */}

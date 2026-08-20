@@ -53,22 +53,30 @@ app.set('trust proxy', 1);
 // CORS Setup
 // =========================
 const getCorsOrigins = () => {
-  if (dev) {
-    return ['http://localhost:3000', 'http://127.0.0.1:3000'];
-  }
-
   const base = [
     'https://olivialms.cloud',
     'https://www.olivialms.cloud',
     'http://olivialms.cloud',
-    'http://www.olivialms.cloud'
+    'http://www.olivialms.cloud',
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+    'http://localhost:3001',
+    'http://127.0.0.1:3001',
+    'http://localhost:3002',
+    'http://127.0.0.1:3002',
+    'http://localhost:3004',
+    'http://127.0.0.1:3004',
+    'http://localhost:5000',
+    'http://127.0.0.1:5000',
   ];
 
   if (process.env.CORS_ORIGIN) {
-    base.push(process.env.CORS_ORIGIN);
+    process.env.CORS_ORIGIN.split(',').forEach(o => {
+      if (o.trim()) base.push(o.trim());
+    });
   }
 
-  return base;
+  return [...new Set(base)];
 };
 
 const corsOrigins = getCorsOrigins();
