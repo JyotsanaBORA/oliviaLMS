@@ -18,15 +18,16 @@ jobs:
           command_timeout: 600s
           script: |
             set -e
+            export GIT_TERMINAL_PROMPT=0
             echo "=== [1] Navigating to project ==="
             cd /root/Olivialms
 
             echo "=== [2] Authenticating git ==="
-            git remote set-url origin https://${{ secrets.GH_PAT }}@github.com/Reddington-Global-Consultancy-Pvt-Ltd/Olivialms.git
+            git remote set-url origin https://x-access-token:${{ secrets.GH_PAT }}@github.com/Reddington-Global-Consultancy-Pvt-Ltd/Olivialms.git
 
             echo "=== [3] Pulling latest code ==="
-            git reset --hard HEAD
-            git pull origin main
+            git fetch origin main
+            git reset --hard origin/main
             echo ">>> Code is now at: $(git log -1 --oneline)"
 
             echo "=== [3.5] Rescuing any uploads still inside old container ==="
