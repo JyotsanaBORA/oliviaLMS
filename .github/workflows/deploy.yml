@@ -13,8 +13,10 @@ jobs:
         with:
           host: ${{ secrets.VPS_HOST }}
           username: root
+          key: ${{ secrets.VPS_KEY }}
           password: ${{ secrets.VPS_PASSWORD }}
-          timeout: 600s
+          port: 22
+          timeout: 60s
           command_timeout: 600s
           script: |
             set -e
