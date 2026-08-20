@@ -130,22 +130,28 @@ const Layout = ({ onDashboardRefresh }) => {
   };
   // ── End notification state ────────────────────────────────────
 
-  // Prevent copying FROM the dashboard for restricted roles.
-  // Paste INTO the dashboard is intentionally allowed.
-  // Main org admins (isMainOrgAdmin) are exempt from copy restriction.
+  // Prevent copying & pasting on the dashboard for restricted roles.
+  // Main org admins (isMainOrgAdmin) and superadmin are exempt from restrictions.
   useEffect(() => {
     const restrictedRoles = ['admin', 'agent1', 'agent2', 'restricted_admin'];
-    if (!user || !restrictedRoles.includes(user.role) || user.isMainOrgAdmin) return;
+    if (!user || !restrictedRoles.includes(user.role) || user.isMainOrgAdmin) {
+      document.body.classList.remove('select-none');
+      return;
+    }
 
+    document.body.classList.add('select-none');
     const block = (e) => e.preventDefault();
 
     document.addEventListener('copy', block);
     document.addEventListener('cut', block);
+    document.addEventListener('paste', block);
     document.addEventListener('contextmenu', block);
 
     return () => {
+      document.body.classList.remove('select-none');
       document.removeEventListener('copy', block);
       document.removeEventListener('cut', block);
+      document.removeEventListener('paste', block);
       document.removeEventListener('contextmenu', block);
     };
   }, [user]);

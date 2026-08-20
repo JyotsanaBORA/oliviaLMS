@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -20,6 +20,31 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
 
 const AppRoutes = () => {
   const { isAuthenticated, user, bootstrapping } = useAuth();
+
+  // Prevent copy, cut, paste, and right-click context menu for restricted roles (domagent, dom_admin)
+  useEffect(() => {
+    const restrictedRoles = ['domagent', 'dom_admin'];
+    if (!user || !restrictedRoles.includes(user.role)) {
+      document.body.classList.remove('select-none');
+      return;
+    }
+
+    document.body.classList.add('select-none');
+    const block = (e) => e.preventDefault();
+
+    document.addEventListener('copy', block);
+    document.addEventListener('cut', block);
+    document.addEventListener('paste', block);
+    document.addEventListener('contextmenu', block);
+
+    return () => {
+      document.body.classList.remove('select-none');
+      document.removeEventListener('copy', block);
+      document.removeEventListener('cut', block);
+      document.removeEventListener('paste', block);
+      document.removeEventListener('contextmenu', block);
+    };
+  }, [user]);
 
   if (bootstrapping) return null; // don't render routes until auth is resolved
 
