@@ -7,6 +7,7 @@
  */
 
 const express = require('express');
+const mongoose = require('mongoose');
 const BenWebsiteLead = require('../models/BenWebsiteLead');
 const Lead = require('../models/Lead');
 const Organization = require('../models/Organization');
@@ -14,7 +15,7 @@ const { protect } = require('../middleware/auth');
 
 const router = express.Router();
 
-const MAIN_ORG = 'REDDINGTON GLOBAL CONSULTANCY';
+const MAIN_ORG = (process.env.MAIN_ORG_NAME || 'REDDINGTON GLOBAL CONSULTANCY').trim().toUpperCase();
 
 // Returns { allowed, canWrite, orgFilter }
 const getAccess = async (user) => {
@@ -22,10 +23,13 @@ const getAccess = async (user) => {
   if (user.role === 'superadmin') return { allowed: true, canWrite: true, orgFilter: null };
   if (user.role !== 'admin') return { allowed: false };
   try {
-    const org = await Organization.findById(user.organization).lean();
+    const orgId = user.organization?._id || user.organization;
+    if (!orgId) return { allowed: false };
+    const org = await Organization.findById(orgId).lean();
     if (!org) return { allowed: false };
-    const isMain = org.name === MAIN_ORG;
-    return { allowed: true, canWrite: isMain, orgFilter: isMain ? null : user.organization };
+    const orgName = (org.name || '').trim().toUpperCase();
+    const isMain = orgName === MAIN_ORG || orgName.includes('REDDINGTON');
+    return { allowed: true, canWrite: isMain, orgFilter: isMain ? null : org._id };
   } catch { return { allowed: false }; }
 };
 
@@ -45,9 +49,19 @@ router.get('/', protect, async (req, res) => {
     if (access.orgFilter) {
       filter.organization = access.orgFilter;
     } else if (req.query.organizationId) {
-      filter.organization = req.query.organizationId;
+      if (mongoose.isValidObjectId(req.query.organizationId)) {
+        filter.organization = new mongoose.Types.ObjectId(req.query.organizationId);
+      }
     } else if (req.query.orgName) {
-      const matchOrgs = await Organization.find({ name: { $regex: req.query.orgName.trim(), $options: 'i' } }).select('_id').lean();
+      const term = req.query.orgName.trim();
+      const matchOrgs = await Organization.find({
+        $or: [
+          { name: { $regex: term, $options: 'i' } },
+          { email: { $regex: term, $options: 'i' } },
+          { website: { $regex: term, $options: 'i' } },
+          ...(term.toLowerCase() === 'ben' ? [{ name: { $regex: 'intro', $options: 'i' } }] : [])
+        ]
+      }).select('_id').lean();
       if (matchOrgs.length > 0) {
         filter.organization = { $in: matchOrgs.map(o => o._id) };
       } else {
@@ -67,11 +81,24 @@ router.get('/', protect, async (req, res) => {
     const [leads, total, orgs] = await Promise.all([
       BenWebsiteLead.find(filter).populate('organization', 'name').sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
       BenWebsiteLead.countDocuments(filter),
-      !access.orgFilter ? Organization.find({ isActive: true }).select('name').sort({ name: 1 }).lean() : Promise.resolve([]),
+      !access.orgFilter ? Organization.find({ isActive: true }).select('name email website').sort({ name: 1 }).lean() : Promise.resolve([]),
     ]);
 
     const summaryFilter = {};
-    if (filter.organization) summaryFilter.organization = filter.organization;
+    if (filter.organization) {
+      if (filter.organization.$in) {
+        summaryFilter.organization = {
+          $in: filter.organization.$in.map(id => mongoose.isValidObjectId(id) ? new mongoose.Types.ObjectId(id) : id)
+        };
+      } else if (mongoose.isValidObjectId(filter.organization)) {
+        summaryFilter.organization = new mongoose.Types.ObjectId(filter.organization);
+      } else {
+        summaryFilter.organization = filter.organization;
+      }
+    }
+    if (filter.$or) {
+      summaryFilter.$or = filter.$or;
+    }
 
     const counts = await BenWebsiteLead.aggregate([
       { $match: summaryFilter },
@@ -99,6 +126,7 @@ router.patch('/:id/status', protect, async (req, res) => {
     const access = await getAccess(req.user);
     if (!access.allowed) return res.status(403).json({ success: false, message: 'Access denied.' });
     if (!access.canWrite) return res.status(403).json({ success: false, message: 'Read-only access.' });
+    if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ success: false, message: 'Invalid ID.' });
 
     const { status } = req.body;
     if (!['reviewed', 'rejected', 'new'].includes(status))
@@ -119,6 +147,7 @@ router.post('/:id/import', protect, async (req, res) => {
     const access = await getAccess(req.user);
     if (!access.allowed) return res.status(403).json({ success: false, message: 'Access denied.' });
     if (!access.canWrite) return res.status(403).json({ success: false, message: 'Read-only access.' });
+    if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ success: false, message: 'Invalid ID.' });
 
     const webLead = await BenWebsiteLead.findById(req.params.id);
     if (!webLead) return res.status(404).json({ success: false, message: 'Lead not found.' });
@@ -165,7 +194,7 @@ router.get('/:id', protect, async (req, res) => {
   try {
     const access = await getAccess(req.user);
     if (!access.allowed) return res.status(403).json({ success: false, message: 'Access denied.' });
-    if (!req.params.id.match(/^[a-f\d]{24}$/i)) return res.status(400).json({ success: false, message: 'Invalid ID.' });
+    if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ success: false, message: 'Invalid ID.' });
 
     const lead = await BenWebsiteLead.findById(req.params.id).populate('organization', 'name').lean();
     if (!lead) return res.status(404).json({ success: false, message: 'Lead not found.' });
@@ -185,7 +214,7 @@ router.post('/:id/comments', protect, async (req, res) => {
     const access = await getAccess(req.user);
     if (!access.allowed) return res.status(403).json({ success: false, message: 'Access denied.' });
     if (!access.canWrite) return res.status(403).json({ success: false, message: 'Read-only access.' });
-    if (!req.params.id.match(/^[a-f\d]{24}$/i)) return res.status(400).json({ success: false, message: 'Invalid ID.' });
+    if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ success: false, message: 'Invalid ID.' });
 
     const text = (req.body.text || '').trim();
     if (!text) return res.status(400).json({ success: false, message: 'Comment text is required.' });

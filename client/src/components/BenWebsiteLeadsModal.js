@@ -33,6 +33,7 @@ const BenWebsiteLeadsModal = ({ onClose, targetOrgName, title }) => {
   const [summary, setSummary]       = useState({ new: 0, reviewed: 0, imported: 0, rejected: 0, total: 0 });
   const [organizations, setOrganizations] = useState([]);
   const [orgFilter, setOrgFilter]   = useState('');
+  const [userSelectedOrg, setUserSelectedOrg] = useState(false);
   const [canWrite, setCanWrite]     = useState(false);
   const [loading, setLoading]       = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -70,7 +71,7 @@ const BenWebsiteLeadsModal = ({ onClose, targetOrgName, title }) => {
       if (statusFilter) params.set('status', statusFilter);
       if (orgFilter) {
         params.set('organizationId', orgFilter);
-      } else if (targetOrgName) {
+      } else if (targetOrgName && !userSelectedOrg) {
         params.set('orgName', targetOrgName);
       }
       if (search.trim()) params.set('search', search.trim());
@@ -85,8 +86,14 @@ const BenWebsiteLeadsModal = ({ onClose, targetOrgName, title }) => {
         setCanWrite(!!res.data.canWrite);
 
         // If targetOrgName is passed and no orgFilter is set yet, auto-select matching org
-        if (targetOrgName && !orgFilter && orgList.length > 0) {
-          const match = orgList.find(o => o.name?.toLowerCase().includes(targetOrgName.toLowerCase()));
+        if (targetOrgName && !orgFilter && !userSelectedOrg && orgList.length > 0) {
+          const targetLower = targetOrgName.toLowerCase();
+          const match = orgList.find(o => 
+            o.name?.toLowerCase().includes(targetLower) ||
+            o.email?.toLowerCase().includes(targetLower) ||
+            o.website?.toLowerCase().includes(targetLower) ||
+            (targetLower === 'ben' && o.name?.toLowerCase().includes('intro'))
+          );
           if (match) {
             setOrgFilter(match._id);
           }
@@ -99,7 +106,7 @@ const BenWebsiteLeadsModal = ({ onClose, targetOrgName, title }) => {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [statusFilter, orgFilter, search, pagination.page, targetOrgName]);
+  }, [statusFilter, orgFilter, search, pagination.page, targetOrgName, userSelectedOrg]);
 
   useEffect(() => { fetchLeads({ page: 1 }); }, [statusFilter, orgFilter]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -110,7 +117,7 @@ const BenWebsiteLeadsModal = ({ onClose, targetOrgName, title }) => {
       if (statusFilter) params.set('status', statusFilter);
       if (orgFilter) {
         params.set('organizationId', orgFilter);
-      } else if (targetOrgName) {
+      } else if (targetOrgName && !userSelectedOrg) {
         params.set('orgName', targetOrgName);
       }
       if (search.trim()) params.set('search', search.trim());
@@ -243,7 +250,11 @@ const BenWebsiteLeadsModal = ({ onClose, targetOrgName, title }) => {
             {canWrite && organizations.length > 0 && (
               <select
                 value={orgFilter}
-                onChange={(e) => { setOrgFilter(e.target.value); setPagination(p => ({ ...p, page: 1 })); }}
+                onChange={(e) => {
+                  setUserSelectedOrg(true);
+                  setOrgFilter(e.target.value);
+                  setPagination(p => ({ ...p, page: 1 }));
+                }}
                 className="text-xs border border-gray-200 rounded-lg px-2.5 py-1 bg-white text-gray-700 font-medium focus:outline-none focus:ring-2 focus:ring-orange-400"
               >
                 <option value="">All Organizations</option>
