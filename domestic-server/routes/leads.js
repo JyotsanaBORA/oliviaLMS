@@ -25,6 +25,22 @@ const OUTCOME_TO_WORK_STATUS = {
   other:          'in_progress',
 };
 
+const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+
+function buildIstDateRange(dateFrom, dateTo) {
+  if (!dateFrom && !dateTo) return null;
+  const cond = {};
+  if (dateFrom && /^\d{4}-\d{2}-\d{2}$/.test(dateFrom)) {
+    const [y, m, d] = dateFrom.split('-').map(Number);
+    cond.$gte = new Date(Date.UTC(y, m - 1, d) - IST_OFFSET_MS);
+  }
+  if (dateTo && /^\d{4}-\d{2}-\d{2}$/.test(dateTo)) {
+    const [y, m, d] = dateTo.split('-').map(Number);
+    cond.$lte = new Date(Date.UTC(y, m - 1, d + 1) - IST_OFFSET_MS - 1);
+  }
+  return Object.keys(cond).length ? cond : null;
+}
+
 //  POST /domestic-api/leads 
 // Domagent submits a worked lead  from a website lead, imported lead, or manual entry
 router.post('/', protect, authorize('domagent', 'dom_admin', 'dom_superadmin'), async (req, res) => {
@@ -268,19 +284,17 @@ router.get('/', protect, async (req, res) => {
 
     if (req.query.isManual === 'true') filter.isManual = true;
 
-    // Date range filter  parse as LOCAL date (handles India/IST timezone correctly)
-    if (req.query.dateFrom || req.query.dateTo) {
-      filter.createdAt = {};
-      if (req.query.dateFrom) {
-        const [y, m, d] = req.query.dateFrom.split('-').map(Number);
-        const start = new Date(y, m - 1, d, 0, 0, 0, 0);
-        filter.createdAt.$gte = start;
-      }
-      if (req.query.dateTo) {
-        const [y, m, d] = req.query.dateTo.split('-').map(Number);
-        const end = new Date(y, m - 1, d, 23, 59, 59, 999);
-        filter.createdAt.$lte = end;
-      }
+    const andConditions = [];
+
+    // Date range filter  matches leads created OR updated (worked) within the IST date range
+    const istRange = buildIstDateRange(req.query.dateFrom, req.query.dateTo);
+    if (istRange) {
+      andConditions.push({
+        $or: [
+          { createdAt: istRange },
+          { updatedAt: istRange },
+        ],
+      });
     }
 
     if (status && ['pending', 'completed', 'rejected'].includes(status)) {
@@ -301,7 +315,7 @@ router.get('/', protect, async (req, res) => {
     if (req.query.callOutcome) {
       const validOutcomes = ['interested', 'not_interested', 'not_eligible', 'callback', 'not_reachable', 'not_answering', 'wrong_number', 'other', 'none'];
       if (req.query.callOutcome === 'none') {
-        filter.$or = [{ callOutcome: '' }, { callOutcome: { $exists: false } }];
+        andConditions.push({ $or: [{ callOutcome: '' }, { callOutcome: { $exists: false } }] });
       } else if (validOutcomes.includes(req.query.callOutcome)) {
         filter.callOutcome = req.query.callOutcome;
       }
@@ -309,21 +323,25 @@ router.get('/', protect, async (req, res) => {
     if (search) {
       // Search by leadRef directly if it looks like a ref code (contains a dash)
       if (search.includes('-')) {
-        filter.$or = [
+        andConditions.push({ $or: [
           { leadRef: { $regex: search.replace(/-/g, '\\-'), $options: 'i' } },
           { name:    { $regex: search, $options: 'i' } },
           { mobile:  { $regex: search, $options: 'i' } },
-        ];
+        ]});
       } else {
-        filter.$or = [
+        andConditions.push({ $or: [
           { leadRef: { $regex: search, $options: 'i' } },
           { name:    { $regex: search, $options: 'i' } },
           { mobile:  { $regex: search, $options: 'i' } },
           { pan:     { $regex: search, $options: 'i' } },
           { email:   { $regex: search, $options: 'i' } },
           { city:    { $regex: search, $options: 'i' } },
-        ];
+        ]});
       }
+    }
+
+    if (andConditions.length > 0) {
+      filter.$and = andConditions;
     }
 
     const [leads, total] = await Promise.all([
@@ -419,13 +437,16 @@ router.get('/export', protect, authorize('dom_admin', 'dom_superadmin'), async (
       const batchLeadIds = await DomImportedLead.distinct('_id', { importBatchId: req.query.batchId });
       filter.sourceImportedLead = { $in: batchLeadIds };
     }
-    if (req.query.dateFrom || req.query.dateTo) {
-      filter.createdAt = {};
-      if (req.query.dateFrom) { const [y,m,d] = req.query.dateFrom.split('-').map(Number); filter.createdAt.$gte = new Date(y,m-1,d,0,0,0,0); }
-      if (req.query.dateTo)   { const [y,m,d] = req.query.dateTo.split('-').map(Number);   filter.createdAt.$lte = new Date(y,m-1,d,23,59,59,999); }
-    }
-    // Use $and to safely combine callOutcome and search without $or conflict
     const andConds = [];
+    const istRange = buildIstDateRange(req.query.dateFrom, req.query.dateTo);
+    if (istRange) {
+      andConds.push({
+        $or: [
+          { createdAt: istRange },
+          { updatedAt: istRange },
+        ],
+      });
+    }
     if (callOutcome) {
       if (callOutcome === 'none') andConds.push({ $or: [{ callOutcome: '' }, { callOutcome: { $exists: false } }] });
       else andConds.push({ callOutcome });
@@ -543,14 +564,17 @@ router.get('/export-zip', protect, authorize('dom_superadmin'), async (req, res)
     if (productType) filter.productType = productType;
 
     // Date range
-    if (req.query.dateFrom || req.query.dateTo) {
-      filter.createdAt = {};
-      if (req.query.dateFrom) { const [y,m,d] = req.query.dateFrom.split('-').map(Number); filter.createdAt.$gte = new Date(y,m-1,d,0,0,0,0); }
-      if (req.query.dateTo)   { const [y,m,d] = req.query.dateTo.split('-').map(Number);   filter.createdAt.$lte = new Date(y,m-1,d,23,59,59,999); }
-    }
-
     // Call outcome + search via $and to avoid $or conflict
     const andConditions = [];
+    const istRange = buildIstDateRange(req.query.dateFrom, req.query.dateTo);
+    if (istRange) {
+      andConditions.push({
+        $or: [
+          { createdAt: istRange },
+          { updatedAt: istRange },
+        ],
+      });
+    }
     if (callOutcome) {
       if (callOutcome === 'none') andConditions.push({ $or: [{ callOutcome: '' }, { callOutcome: { $exists: false } }] });
       else andConditions.push({ callOutcome });

@@ -9,6 +9,22 @@ const { protect, authorize } = require('../middleware/auth');
 
 const router = express.Router();
 
+const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+
+function buildIstDateRange(dateFrom, dateTo) {
+  if (!dateFrom && !dateTo) return null;
+  const cond = {};
+  if (dateFrom && /^\d{4}-\d{2}-\d{2}$/.test(dateFrom)) {
+    const [y, m, d] = dateFrom.split('-').map(Number);
+    cond.$gte = new Date(Date.UTC(y, m - 1, d) - IST_OFFSET_MS);
+  }
+  if (dateTo && /^\d{4}-\d{2}-\d{2}$/.test(dateTo)) {
+    const [y, m, d] = dateTo.split('-').map(Number);
+    cond.$lte = new Date(Date.UTC(y, m - 1, d + 1) - IST_OFFSET_MS - 1);
+  }
+  return Object.keys(cond).length ? cond : null;
+}
+
 // In-memory storage – we parse the buffer and discard the raw file
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -360,17 +376,10 @@ router.get('/', protect, async (req, res) => {
       filter.status     = 'assigned';
     }
 
-    // Date range filter – parse as LOCAL date
-    if (req.query.dateFrom || req.query.dateTo) {
-      filter.createdAt = {};
-      if (req.query.dateFrom) {
-        const [y, m, d] = req.query.dateFrom.split('-').map(Number);
-        filter.createdAt.$gte = new Date(y, m - 1, d, 0, 0, 0, 0);
-      }
-      if (req.query.dateTo) {
-        const [y, m, d] = req.query.dateTo.split('-').map(Number);
-        filter.createdAt.$lte = new Date(y, m - 1, d, 23, 59, 59, 999);
-      }
+    // Date range filter – handles India/IST timezone correctly
+    const istRange = buildIstDateRange(req.query.dateFrom, req.query.dateTo);
+    if (istRange) {
+      filter.createdAt = istRange;
     }
 
     // Search filter
@@ -388,8 +397,8 @@ router.get('/', protect, async (req, res) => {
     const [data, total] = await Promise.all([
       DomImportedLead.find(filter)
         .populate('assignedTo', 'name email')
-        // Populate the worked DomLead to expose documents + callOutcome + cibilScoreRange for badges/filters
-        .populate('domLeadId', 'documents callOutcome status name cibilScoreRange callCount updateCount')
+        // Populate the worked DomLead to expose documents + callOutcome + cibilScoreRange + leadRef + timestamps for badges/filters
+        .populate('domLeadId', 'documents callOutcome status name cibilScoreRange callCount updateCount leadRef createdAt updatedAt')
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
@@ -681,11 +690,8 @@ router.get('/export', protect, authorize('dom_admin', 'dom_superadmin'), async (
       if (req.query.agentId) filter.assignedTo = req.query.agentId;
     }
 
-    if (req.query.dateFrom || req.query.dateTo) {
-      filter.createdAt = {};
-      if (req.query.dateFrom) { const [y,m,d] = req.query.dateFrom.split('-').map(Number); filter.createdAt.$gte = new Date(y,m-1,d,0,0,0,0); }
-      if (req.query.dateTo)   { const [y,m,d] = req.query.dateTo.split('-').map(Number);   filter.createdAt.$lte = new Date(y,m-1,d,23,59,59,999); }
-    }
+    const istRangeExport = buildIstDateRange(req.query.dateFrom, req.query.dateTo);
+    if (istRangeExport) filter.createdAt = istRangeExport;
 
     if (req.query.search) {
       const s = req.query.search.trim();

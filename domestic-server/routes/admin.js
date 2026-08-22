@@ -110,8 +110,18 @@ router.get('/agents', async (req, res) => {
     const buildDateCond = (field) => {
       if (!req.query.dateFrom && !req.query.dateTo) return {};
       const cond = {};
-      if (req.query.dateFrom) { const [y,m,d] = req.query.dateFrom.split('-').map(Number); cond.$gte = new Date(y,m-1,d,0,0,0,0); }
-      if (req.query.dateTo)   { const [y,m,d] = req.query.dateTo.split('-').map(Number);   cond.$lte = new Date(y,m-1,d,23,59,59,999); }
+      if (req.query.dateFrom && /^\d{4}-\d{2}-\d{2}$/.test(req.query.dateFrom)) {
+        const [y, m, d] = req.query.dateFrom.split('-').map(Number);
+        cond.$gte = new Date(Date.UTC(y, m - 1, d) - IST_OFFSET_MS);
+      }
+      if (req.query.dateTo && /^\d{4}-\d{2}-\d{2}$/.test(req.query.dateTo)) {
+        const [y, m, d] = req.query.dateTo.split('-').map(Number);
+        cond.$lte = new Date(Date.UTC(y, m - 1, d + 1) - IST_OFFSET_MS - 1);
+      }
+      if (!Object.keys(cond).length) return {};
+      if (Array.isArray(field)) {
+        return { $or: field.map(f => ({ [f]: cond })) };
+      }
       return { [field]: cond };
     };
 
@@ -125,7 +135,7 @@ router.get('/agents', async (req, res) => {
         { $group: { _id: '$loadedBy', count: { $sum: 1 } } },
       ]),
       DomLead.aggregate([
-        { $match: { assignedTo: { $in: agentIds }, ...buildDateCond('createdAt') } },
+        { $match: { assignedTo: { $in: agentIds }, ...buildDateCond(['createdAt', 'updatedAt']) } },
         { $group: { _id: '$assignedTo', count: { $sum: 1 } } },
       ]),
       // Pool / imported leads stats  total assigned (lifetime) + worked in date range
@@ -138,11 +148,11 @@ router.get('/agents', async (req, res) => {
         }},
       ]),
       DomLead.aggregate([
-        { $match: { assignedTo: { $in: agentIds }, callOutcome: 'interested', ...buildDateCond('createdAt') } },
+        { $match: { assignedTo: { $in: agentIds }, callOutcome: 'interested', ...buildDateCond(['createdAt', 'updatedAt']) } },
         { $group: { _id: '$assignedTo', count: { $sum: 1 } } },
       ]),
       DomLead.aggregate([
-        { $match: { assignedTo: { $in: agentIds }, callOutcome: 'callback', ...buildDateCond('createdAt') } },
+        { $match: { assignedTo: { $in: agentIds }, callOutcome: 'callback', ...buildDateCond(['createdAt', 'updatedAt']) } },
         { $group: { _id: '$assignedTo', count: { $sum: 1 } } },
       ]),
     ]);

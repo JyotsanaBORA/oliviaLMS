@@ -250,8 +250,12 @@ const DomAgentDashboard = () => {
 
   const workedLeads = useMemo(() => [
     ...myLeads.filter(l => l.isWorked).map(l => ({ ...l, _src: 'website' })),
-    ...assignedLeads.filter(l => l.workStatus && l.workStatus !== 'new').map(l => ({ ...l, _src: 'pool' })),
-  ].sort((a,b) => new Date(b.loadedAt || b.createdAt) - new Date(a.loadedAt || a.createdAt)), [myLeads, assignedLeads]);
+    ...assignedLeads.filter(l => (l.domLeadId || (l.workStatus && l.workStatus !== 'new'))).map(l => ({ ...l, _src: 'pool' })),
+  ].sort((a,b) => {
+    const timeA = new Date(a.workedAt || a.completedAt || a.domLeadId?.createdAt || a.loadedAt || a.createdAt).getTime();
+    const timeB = new Date(b.workedAt || b.completedAt || b.domLeadId?.createdAt || b.loadedAt || b.createdAt).getTime();
+    return timeB - timeA;
+  }), [myLeads, assignedLeads]);
 
   const filteredToWork = useMemo(() => {
     const q = searchQuery.toLowerCase();
@@ -273,8 +277,8 @@ const DomAgentDashboard = () => {
     return workedLeads.filter(l => {
       // Use the date the agent actually worked the lead
       const d = l._src === 'website'
-        ? (l.completedAt || l.loadedAt   || l.createdAt)
-        : (l.workedAt    || l.assignedAt || l.createdAt);
+        ? (l.completedAt || l.domLead?.createdAt || l.updatedAt)
+        : (l.workedAt    || l.domLeadId?.createdAt || (l.workStatus !== 'new' ? l.updatedAt : null));
       const dateOk = !dateFilter || (d && toISTDateStr(d) === dateFilter);
       const searchOk = !q || (l.name||'').toLowerCase().includes(q) || (l.mobile||'').includes(q);
       const docList = l._src === 'website' ? (l.domLead?.documents || []) : (l.domLeadId?.documents || []);
@@ -746,9 +750,14 @@ const DomAgentDashboard = () => {
                             </div>
                           </td>
                           <td className="px-3 py-3.5">
-                            {isWebsite && lead.domLead?.leadRef
-                              ? <span className="font-mono text-xs font-bold bg-gray-900 text-emerald-400 px-1.5 py-0.5 rounded">{lead.domLead.leadRef}</span>
-                              : <span className="text-gray-300 text-xs italic"></span>}
+                            {(() => {
+                              const ref = isWebsite ? lead.domLead?.leadRef : (lead.domLeadId?.leadRef || lead.leadRef);
+                              return ref ? (
+                                <span className="font-mono text-xs font-bold bg-gray-900 text-emerald-400 px-1.5 py-0.5 rounded">{ref}</span>
+                              ) : (
+                                <span className="text-gray-300 text-xs italic"></span>
+                              );
+                            })()}
                           </td>
                           <td className="px-3 py-3.5">
                             <div className="flex items-center gap-2">
