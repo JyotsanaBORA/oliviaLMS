@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 //  Force IST (Indian Standard Time = UTC+5:30) for all date operations 
 process.env.TZ = 'Asia/Kolkata';
 
@@ -67,23 +67,19 @@ app.use(cors({
   credentials: true,
 }));
 
-// Rate limiting — /domestic-api routes
-const isDev = process.env.NODE_ENV !== 'production';
-const generalLimiter = rateLimit({
+// Rate limiting  global
+app.use(rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: isDev ? 2000 : 5000,
+  max: 200,
   standardHeaders: true,
   legacyHeaders: false,
   message: { success: false, message: 'Too many requests, please try again later.' },
-});
-app.use('/domestic-api', generalLimiter);
+}));
 
-// Auth rate limiter (allow enough attempts for office IPs sharing NAT)
+// Stricter limit for auth routes
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: isDev ? 100 : 200,
-  standardHeaders: true,
-  legacyHeaders: false,
+  max: 20,
   message: { success: false, message: 'Too many login attempts, please try again later.' },
 });
 
