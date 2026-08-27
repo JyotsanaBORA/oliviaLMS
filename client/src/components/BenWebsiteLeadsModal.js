@@ -45,6 +45,8 @@ const BenWebsiteLeadsModal = ({ onClose, targetOrgName, title }) => {
   const [exporting, setExporting]   = useState(false);
   const [commentText, setCommentText]   = useState('');
   const [commentSubmitting, setCommentSubmitting] = useState(false);
+  const [selectedLeads, setSelectedLeads] = useState(new Set());
+  const [bulkImporting, setBulkImporting] = useState(false);
   const commentSectionRef = useRef(null);
 
   const openDetail = useCallback(async (lead, scrollToComments = false) => {
@@ -108,7 +110,10 @@ const BenWebsiteLeadsModal = ({ onClose, targetOrgName, title }) => {
     }
   }, [statusFilter, orgFilter, search, pagination.page, targetOrgName, userSelectedOrg]);
 
-  useEffect(() => { fetchLeads({ page: 1 }); }, [statusFilter, orgFilter]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { 
+    fetchLeads({ page: 1 }); 
+    setSelectedLeads(new Set());
+  }, [statusFilter, orgFilter]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleExport = async () => {
     setExporting(true);
@@ -179,6 +184,25 @@ const BenWebsiteLeadsModal = ({ onClose, targetOrgName, title }) => {
         if (detail?._id === lead._id) setDetail(d => ({ ...d, status: 'imported' }));
       }
     } catch (err) { toast.error(err.response?.data?.message || 'Import failed'); } finally { setActionLoading(null); }
+  };
+
+  const handleBulkImport = async () => {
+    if (!canWrite || selectedLeads.size === 0) return;
+    if (!window.confirm(`Import ${selectedLeads.size} selected leads into the main collection?`)) return;
+    setBulkImporting(true);
+    let successCount = 0;
+    for (const id of selectedLeads) {
+      try {
+        const res = await axios.post(`/api/ben-website-leads/${id}/import`);
+        if (res.data?.success) successCount++;
+      } catch (err) {
+        console.error(`Import failed for ${id}`, err);
+      }
+    }
+    toast.success(`Imported ${successCount} leads`);
+    setSelectedLeads(new Set());
+    fetchLeads({ silent: true });
+    setBulkImporting(false);
   };
 
   const handleAddComment = async (e) => {
@@ -265,6 +289,13 @@ const BenWebsiteLeadsModal = ({ onClose, targetOrgName, title }) => {
             )}
 
             <div className="ml-auto flex items-center gap-2">
+              {canWrite && selectedLeads.size > 0 && (
+                <button onClick={handleBulkImport} disabled={bulkImporting}
+                  className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50">
+                  <Download className={`h-3.5 w-3.5 ${bulkImporting ? 'animate-bounce' : ''}`} />
+                  {bulkImporting ? 'Importing…' : `Import Selected (${selectedLeads.size})`}
+                </button>
+              )}
               <button onClick={handleExport} disabled={exporting}
                 className="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 text-white text-xs font-semibold rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-50">
                 <FileDown className={`h-3.5 w-3.5 ${exporting ? 'animate-bounce' : ''}`} />
@@ -309,6 +340,25 @@ const BenWebsiteLeadsModal = ({ onClose, targetOrgName, title }) => {
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 border-b sticky top-0">
                   <tr>
+                    {canWrite && (
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider w-10">
+                        <input
+                          type="checkbox"
+                          checked={leads.length > 0 && leads.filter(l => l.status !== 'imported').length > 0 && leads.filter(l => l.status !== 'imported').every(l => selectedLeads.has(l._id))}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              const importable = leads.filter(l => l.status !== 'imported').map(l => l._id);
+                              setSelectedLeads(new Set([...selectedLeads, ...importable]));
+                            } else {
+                              const pageIds = new Set(leads.map(l => l._id));
+                              const next = new Set([...selectedLeads].filter(id => !pageIds.has(id)));
+                              setSelectedLeads(next);
+                            }
+                          }}
+                          className="rounded text-orange-500 focus:ring-orange-500 cursor-pointer"
+                        />
+                      </th>
+                    )}
                     {canWrite && <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Organization</th>}
                     <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Name</th>
                     <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Contact</th>
@@ -322,6 +372,26 @@ const BenWebsiteLeadsModal = ({ onClose, targetOrgName, title }) => {
                 <tbody className="divide-y divide-gray-100">
                   {leads.map(lead => (
                     <tr key={lead._id} className="hover:bg-orange-50/40 transition-colors">
+                      {canWrite && (
+                        <td className="px-4 py-3">
+                          <input
+                            type="checkbox"
+                            disabled={lead.status === 'imported'}
+                            checked={selectedLeads.has(lead._id)}
+                            onChange={(e) => {
+                              const next = new Set(selectedLeads);
+                              if (e.target.checked) {
+                                next.add(lead._id);
+                              } else {
+                                next.delete(lead._id);
+                              }
+                              setSelectedLeads(next);
+                            }}
+                            className="rounded text-orange-500 focus:ring-orange-500 disabled:opacity-50 cursor-pointer"
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                        </td>
+                      )}
                       {canWrite && (
                         <td className="px-4 py-3 text-xs">
                           <span className="inline-flex items-center px-2 py-0.5 rounded font-medium bg-gray-100 text-gray-800 border border-gray-200 whitespace-nowrap">
