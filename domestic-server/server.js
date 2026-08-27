@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 //  Force IST (Indian Standard Time = UTC+5:30) for all date operations 
 process.env.TZ = 'Asia/Kolkata';
 
@@ -67,19 +67,25 @@ app.use(cors({
   credentials: true,
 }));
 
-// Rate limiting  global
+const isDev = process.env.NODE_ENV !== 'production';
+
+// Rate limiting — global
 app.use(rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 200,
+  max: isDev ? 1000 : 5000,
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { xForwardedForHeader: false },
   message: { success: false, message: 'Too many requests, please try again later.' },
 }));
 
-// Stricter limit for auth routes
+// Limit for auth routes
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 20,
+  max: isDev ? 50 : 200,
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { xForwardedForHeader: false },
   message: { success: false, message: 'Too many login attempts, please try again later.' },
 });
 
