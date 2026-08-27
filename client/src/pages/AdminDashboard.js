@@ -881,29 +881,65 @@ const AdminDashboard = () => {
     }));
   };
 
-  // Enhanced lead update with proper data types
+  // Enhanced lead update with proper data types and sanitized fields
   const handleLeadUpdate = async () => {
     if (!editedLead || !isReddingtonAdmin) return;
 
     setIsUpdating(true);
     try {
-      // Prepare the update data with proper data types
-      const updateData = {
-        ...editedLead,
-        totalDebtAmount: editedLead.totalDebtAmount ? parseInt(editedLead.totalDebtAmount) : undefined,
-        numberOfCreditors: editedLead.numberOfCreditors ? parseInt(editedLead.numberOfCreditors) : undefined,
-        monthlyDebtPayment: editedLead.monthlyDebtPayment ? parseInt(editedLead.monthlyDebtPayment) : undefined,
-        conversionValue: editedLead.conversionValue ? parseInt(editedLead.conversionValue) : undefined,
-        completionPercentage: editedLead.completionPercentage ? parseInt(editedLead.completionPercentage) : undefined,
-      };
+      const cleanData = {};
 
-      const response = await axios.put(`/api/leads/${editedLead._id}`, updateData);
+      if (editedLead.name !== undefined) cleanData.name = editedLead.name?.trim() || '';
+      if (editedLead.email !== undefined) cleanData.email = editedLead.email?.trim() || '';
+      if (editedLead.phone !== undefined) cleanData.phone = editedLead.phone?.trim() || '';
+      if (editedLead.alternatePhone !== undefined) cleanData.alternatePhone = editedLead.alternatePhone?.trim() || '';
+
+      if (editedLead.address !== undefined) cleanData.address = editedLead.address?.trim() || '';
+      if (editedLead.city !== undefined) cleanData.city = editedLead.city?.trim() || '';
+      if (editedLead.state !== undefined) cleanData.state = editedLead.state?.trim() || '';
+      if (editedLead.zipcode !== undefined) cleanData.zipcode = editedLead.zipcode?.trim() || '';
+
+      if (editedLead.debtCategory) cleanData.debtCategory = editedLead.debtCategory;
+      if (editedLead.source !== undefined) cleanData.source = editedLead.source?.trim() || '';
+      if (editedLead.totalDebtAmount !== undefined && editedLead.totalDebtAmount !== '' && editedLead.totalDebtAmount !== null) {
+        cleanData.totalDebtAmount = parseFloat(editedLead.totalDebtAmount) || 0;
+      }
+      if (editedLead.numberOfCreditors !== undefined && editedLead.numberOfCreditors !== '' && editedLead.numberOfCreditors !== null) {
+        cleanData.numberOfCreditors = parseInt(editedLead.numberOfCreditors, 10) || 0;
+      }
+      if (editedLead.monthlyDebtPayment !== undefined && editedLead.monthlyDebtPayment !== '' && editedLead.monthlyDebtPayment !== null) {
+        cleanData.monthlyDebtPayment = parseFloat(editedLead.monthlyDebtPayment) || 0;
+      }
+      if (editedLead.creditScoreRange) cleanData.creditScoreRange = editedLead.creditScoreRange;
+
+      if (editedLead.category) cleanData.category = editedLead.category;
+      if (editedLead.qualificationStatus) cleanData.qualificationStatus = editedLead.qualificationStatus;
+      if (editedLead.status) cleanData.status = editedLead.status;
+      if (editedLead.company !== undefined) cleanData.company = editedLead.company?.trim() || '';
+
+      if (editedLead.leadProgressStatus) cleanData.leadProgressStatus = editedLead.leadProgressStatus;
+      if (editedLead.followUpDate) cleanData.followUpDate = editedLead.followUpDate;
+      if (editedLead.followUpTime) cleanData.followUpTime = editedLead.followUpTime;
+      if (editedLead.clientId !== undefined) cleanData.clientId = editedLead.clientId?.trim() || '';
+      if (editedLead.conversionValue !== undefined && editedLead.conversionValue !== '' && editedLead.conversionValue !== null) {
+        cleanData.conversionValue = parseFloat(editedLead.conversionValue) || 0;
+      }
+
+      if (editedLead.notes !== undefined) cleanData.notes = editedLead.notes?.trim() || '';
+      if (editedLead.assignmentNotes !== undefined) cleanData.assignmentNotes = editedLead.assignmentNotes?.trim() || '';
+      if (editedLead.followUpNotes !== undefined) cleanData.followUpNotes = editedLead.followUpNotes?.trim() || '';
+
+      cleanData.lastUpdatedBy = user?.name || 'Admin';
+      cleanData.lastUpdatedAt = getEasternNow().toISOString();
+
+      const leadIdToUse = editedLead._id || editedLead.leadId;
+      const response = await axios.put(`/api/leads/${leadIdToUse}`, cleanData);
       
       if (response.data) {
         // Update the lead in our local state
         setLeads(prevLeads => 
           prevLeads.map(lead => 
-            lead._id === editedLead._id ? response.data.data.lead : lead
+            (lead._id === editedLead._id || lead.leadId === editedLead.leadId) ? response.data.data.lead : lead
           )
         );
         
@@ -2357,20 +2393,19 @@ const AdminDashboard = () => {
                     </div>
                     <div className="space-y-3">
                       <div className="flex justify-between items-start">
-                        <span className="text-sm font-medium text-gray-600">Category:</span>
+                        <span className="text-sm font-medium text-gray-600">Debt Category:</span>
                         {isReddingtonAdmin && isEditing ? (
                           <select
-                            value={editedLead.debtCategory || editedLead.category || ''}
+                            value={editedLead.debtCategory || ''}
                             onChange={(e) => handleInputChange('debtCategory', e.target.value)}
-                            className="text-sm border border-gray-300 rounded px-2 py-1 w-24"
+                            className="text-sm border border-gray-300 rounded px-2 py-1 w-28"
                           >
                             <option value="">Select</option>
-                            <option value="hot">Hot</option>
-                            <option value="warm">Warm</option>
-                            <option value="cold">Cold</option>
+                            <option value="unsecured">Unsecured</option>
+                            <option value="secured">Secured</option>
                           </select>
                         ) : (
-                          <span className="text-sm text-gray-900 text-right capitalize">{selectedLead.debtCategory || selectedLead.category || '—'}</span>
+                          <span className="text-sm text-gray-900 text-right capitalize">{selectedLead.debtCategory || '—'}</span>
                         )}
                       </div>
                       <div className="flex justify-between items-start">
@@ -2442,11 +2477,11 @@ const AdminDashboard = () => {
                             className="text-sm border border-gray-300 rounded px-2 py-1 w-32"
                           >
                             <option value="">Select Range</option>
-                            <option value="Poor (300-579)">Poor (300-579)</option>
-                            <option value="Fair (580-669)">Fair (580-669)</option>
-                            <option value="Good (670-739)">Good (670-739)</option>
-                            <option value="Very Good (740-799)">Very Good (740-799)</option>
-                            <option value="Excellent (800-850)">Excellent (800-850)</option>
+                            <option value="300-549">300-549 (Poor)</option>
+                            <option value="550-649">550-649 (Fair)</option>
+                            <option value="650-699">650-699 (Good)</option>
+                            <option value="700-749">700-749 (Very Good)</option>
+                            <option value="750-850">750-850 (Excellent)</option>
                           </select>
                         ) : (
                           <span className="text-sm text-gray-900 text-right">{selectedLead.creditScoreRange || '—'}</span>
@@ -2548,12 +2583,12 @@ const AdminDashboard = () => {
                             onChange={(e) => handleInputChange('status', e.target.value)}
                             className="text-sm border border-gray-300 rounded px-2 py-1 w-32"
                           >
-                            {/* <option value="">Select Status</option>
+                            <option value="">Select Status</option>
                             <option value="new">New</option>
                             <option value="interested">Interested</option>
                             <option value="not-interested">Not Interested</option>
                             <option value="successful">Successful</option>
-                            <option value="follow-up">Follow-up</option> */}
+                            <option value="follow-up">Follow-up</option>
                           </select>
                         ) : (
                           <div className="text-right">{getStatusBadge(selectedLead.status)}</div>

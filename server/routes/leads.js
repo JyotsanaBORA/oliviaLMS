@@ -250,16 +250,16 @@ const createLeadValidation = [
 
 const updateLeadValidation = [
   body('name')
-    .optional()
+    .optional({ nullable: true, checkFalsy: true })
     .trim()
-    .isLength({ min: 2, max: 100 })
-    .withMessage('Name must be between 2 and 100 characters'),
+    .isLength({ min: 1, max: 100 })
+    .withMessage('Name cannot exceed 100 characters'),
   body('email')
     .optional({ nullable: true, checkFalsy: true })
     .isEmail()
     .withMessage('Please enter a valid email'),
   body('phone')
-    .optional()
+    .optional({ nullable: true, checkFalsy: true })
     .custom((value) => {
       if (!value || value.trim() === '') return true; // allow empty or missing
       if (typeof value !== 'string') throw new Error('Phone must be a string');
@@ -304,8 +304,12 @@ const updateLeadValidation = [
     .withMessage('Credit score must be a whole number between 0 and 900'),
   body('creditScoreRange')
     .optional({ nullable: true, checkFalsy: true })
-    .isIn(['300-549', '550-649', '650-699', '700-749', '750-850'])
-    .withMessage('Credit score range must be 300-549, 550-649, 650-699, 700-749, or 750-850'),
+    .isIn([
+      '300-549', '550-649', '650-699', '700-749', '750-850',
+      'Poor (300-579)', 'Fair (580-669)', 'Good (670-739)', 'Very Good (740-799)', 'Excellent (800-850)',
+      'Poor (300-549)', 'Fair (550-649)', 'Good (650-699)', 'Very Good (700-749)', 'Excellent (750-850)'
+    ])
+    .withMessage('Credit score range must be a valid range'),
   body('address')
     .optional({ nullable: true, checkFalsy: true })
     .isLength({ max: 200 })
@@ -332,15 +336,19 @@ const updateLeadValidation = [
     .withMessage('Company name cannot exceed 100 characters'),
   body('source')
     .optional({ nullable: true, checkFalsy: true })
-    .isIn([
-      'Personal Debt', 'Secured Debt', 'Unsecured Debt', 'Revolving Debt', 
-      'Installment Debt', 'Credit Card Debt', 'Mortgage Debt', 'Student Loans',
-      'Auto Loans', 'Personal Loans', 'Medical Debt', 'Home Equity Loans (HELOCs)',
-      'Payday Loans', 'Buy Now, Pay Later (BNPL) loans'
-    ])
-    .withMessage('Invalid debt type'),
+    .isString()
+    .isLength({ max: 100 })
+    .withMessage('Source must be a string'),
+  body('category')
+    .optional({ nullable: true, checkFalsy: true })
+    .isIn(['hot', 'warm', 'cold'])
+    .withMessage('Category must be hot, warm, or cold'),
+  body('qualificationStatus')
+    .optional({ nullable: true, checkFalsy: true })
+    .isIn(['qualified', 'not-qualified', 'disqualified', 'unqualified', 'pending'])
+    .withMessage('Invalid qualification status'),
   body('status')
-    .optional()
+    .optional({ nullable: true, checkFalsy: true })
     .isIn(['new', 'interested', 'not-interested', 'successful', 'follow-up'])
     .withMessage('Invalid status'),
   body('leadStatus')
@@ -1862,8 +1870,12 @@ router.put('/:id', protect, updateLeadValidation, handleValidationErrors, async 
       console.log('User is admin, checking organization access...');
       // Get admin's organization
       const adminOrganization = await Organization.findById(req.user.organization);
+      const isReddington = adminOrganization && (
+        (adminOrganization.name || '').trim().toUpperCase() === 'REDDINGTON GLOBAL CONSULTANCY' ||
+        adminOrganization._id.toString() === '68b9c76d2c29dac1220cb81c'
+      );
       
-      if (adminOrganization && adminOrganization.name === 'REDDINGTON GLOBAL CONSULTANCY') {
+      if (isReddington) {
         // REDDINGTON GLOBAL CONSULTANCY Admin can update leads from all organizations
         console.log('REDDINGTON GLOBAL CONSULTANCY Admin authorized to update any lead');
       } else {
@@ -1900,8 +1912,12 @@ router.put('/:id', protect, updateLeadValidation, handleValidationErrors, async 
     } else if (req.user.role === 'admin') {
       // Check if admin is from REDDINGTON GLOBAL CONSULTANCY
       const adminOrganization = await Organization.findById(req.user.organization);
+      const isReddington = adminOrganization && (
+        (adminOrganization.name || '').trim().toUpperCase() === 'REDDINGTON GLOBAL CONSULTANCY' ||
+        adminOrganization._id.toString() === '68b9c76d2c29dac1220cb81c'
+      );
       
-      if (adminOrganization && adminOrganization.name === 'REDDINGTON GLOBAL CONSULTANCY') {
+      if (isReddington) {
         // REDDINGTON GLOBAL CONSULTANCY Admin can update ALL fields
         allowedFields = [
           // Basic lead information
