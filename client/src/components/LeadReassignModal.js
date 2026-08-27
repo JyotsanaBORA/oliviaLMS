@@ -7,7 +7,8 @@ import LoadingSpinner from './LoadingSpinner';
 const LeadReassignModal = ({ 
   isOpen, 
   onClose, 
-  lead, 
+  lead,
+  leads, // Array of leads for bulk reassign
   onLeadReassigned 
 }) => {
   const [agents, setAgents] = useState([]);
@@ -15,6 +16,8 @@ const LeadReassignModal = ({
   const [assignmentNotes, setAssignmentNotes] = useState('');
   const [loading, setLoading] = useState(false);
   const [fetchingAgents, setFetchingAgents] = useState(false);
+
+  const isBulk = leads && leads.length > 0;
 
   useEffect(() => {
     if (isOpen) {
@@ -45,24 +48,37 @@ const LeadReassignModal = ({
 
   const handleReassign = async () => {
     if (!selectedAgent) {
-      toast.error('Please select an agent to reassign the lead to');
+      toast.error('Please select an agent to reassign the lead(s) to');
       return;
     }
 
     setLoading(true);
     try {
-      const response = await axios.put(`/api/leads/${lead._id}/reassign`, {
-        assignedTo: selectedAgent,
-        assignmentNotes: assignmentNotes.trim()
-      });
+      if (isBulk) {
+        const response = await axios.put('/api/leads/bulk-reassign', {
+          leadIds: leads.map(l => l._id),
+          assignedTo: selectedAgent,
+          assignmentNotes: assignmentNotes.trim()
+        });
+        if (response.data.success) {
+          toast.success(`Successfully reassigned ${response.data.count} leads!`);
+          if (onLeadReassigned) onLeadReassigned(leads);
+          onClose();
+        }
+      } else {
+        const response = await axios.put(`/api/leads/${lead._id}/reassign`, {
+          assignedTo: selectedAgent,
+          assignmentNotes: assignmentNotes.trim()
+        });
 
-      if (response.data.success) {
-        toast.success('Lead reassigned successfully!');
-        onLeadReassigned(response.data.lead);
-        onClose();
+        if (response.data.success) {
+          toast.success('Lead reassigned successfully!');
+          if (onLeadReassigned) onLeadReassigned(response.data.lead);
+          onClose();
+        }
       }
     } catch (error) {
-      const message = error.response?.data?.message || 'Error reassigning lead';
+      const message = error.response?.data?.message || 'Error reassigning lead(s)';
       toast.error(message);
       console.error('Reassign lead error:', error);
     } finally {
@@ -80,7 +96,7 @@ const LeadReassignModal = ({
           <div className="flex items-center space-x-2">
             <UserCheck className="h-5 w-5 text-blue-600" />
             <h2 className="text-lg font-semibold text-gray-900">
-              Reassign Lead
+              {isBulk ? `Reassign ${leads.length} Leads` : 'Reassign Lead'}
             </h2>
           </div>
           <button
@@ -95,13 +111,19 @@ const LeadReassignModal = ({
         <div className="p-6 space-y-4">
           {/* Lead Information */}
           <div className="bg-gray-50 rounded-lg p-4 space-y-2">
-            <h3 className="font-medium text-gray-900">Lead Information</h3>
+            <h3 className="font-medium text-gray-900">{isBulk ? 'Bulk Assignment' : 'Lead Information'}</h3>
             <div className="text-sm text-gray-600 space-y-1">
-              <div><span className="font-medium">Name:</span> {lead?.name}</div>
-              <div><span className="font-medium">Lead ID:</span> {lead?.leadId || lead?._id}</div>
-              <div><span className="font-medium">Current Status:</span> {lead?.status || 'New'}</div>
-              {lead?.assignedTo && (
-                <div><span className="font-medium">Currently Assigned To:</span> {lead.assignedTo.name || lead.assignedTo.email}</div>
+              {isBulk ? (
+                <div><span className="font-medium">Selected Leads:</span> {leads.length}</div>
+              ) : (
+                <>
+                  <div><span className="font-medium">Name:</span> {lead?.name}</div>
+                  <div><span className="font-medium">Lead ID:</span> {lead?.leadId || lead?._id}</div>
+                  <div><span className="font-medium">Current Status:</span> {lead?.status || 'New'}</div>
+                  {lead?.assignedTo && (
+                    <div><span className="font-medium">Currently Assigned To:</span> {lead.assignedTo.name || lead.assignedTo.email}</div>
+                  )}
+                </>
               )}
             </div>
           </div>

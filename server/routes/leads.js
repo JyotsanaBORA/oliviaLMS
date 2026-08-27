@@ -2818,6 +2818,71 @@ router.put('/:id/reassign', protect, [
   }
 });
 
+// @desc    Bulk reassign leads to another agent
+// @route   PUT /api/leads/bulk-reassign
+// @access  Private (Admin of REDDINGTON GLOBAL CONSULTANCY only)
+router.put('/bulk-reassign', protect, [
+  body('leadIds').isArray({ min: 1 }).withMessage('leadIds must be a non-empty array'),
+  body('assignedTo').notEmpty().withMessage('assignedTo is required').isMongoId().withMessage('assignedTo must be a valid user ID'),
+  body('assignmentNotes').optional().trim().isLength({ max: 500 }).withMessage('Assignment notes cannot exceed 500 characters')
+], handleValidationErrors, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin' && req.user.role !== 'superadmin') {
+      return res.status(403).json({ success: false, message: 'Only admins can reassign leads' });
+    }
+    if (req.user.role === 'admin') {
+      const adminOrganization = await Organization.findById(req.user.organization);
+      if (!adminOrganization || adminOrganization.name !== 'REDDINGTON GLOBAL CONSULTANCY') {
+        return res.status(403).json({ success: false, message: 'Only REDDINGTON GLOBAL CONSULTANCY admins can reassign leads' });
+      }
+    }
+
+    const targetAgent = await User.findById(req.body.assignedTo);
+    if (!targetAgent || targetAgent.role !== 'agent2' || !targetAgent.isActive) {
+      return res.status(400).json({ success: false, message: 'Valid, active Agent 2 target required' });
+    }
+
+    let successCount = 0;
+    for (const leadId of req.body.leadIds) {
+      let lead;
+      if (leadId.match(/^[0-9a-fA-F]{24}$/)) {
+        lead = await Lead.findById(leadId).populate('assignedTo createdBy', 'name email');
+      } else {
+        lead = await Lead.findByLeadId(leadId).populate('assignedTo createdBy', 'name email');
+      }
+      if (!lead) continue;
+
+      const previousAssignedTo = lead.assignedTo;
+      lead.assignedTo = req.body.assignedTo;
+      lead.assignedBy = req.user._id;
+      lead.assignedAt = getEasternNow();
+      lead.assignmentNotes = req.body.assignmentNotes || '';
+      lead.lastUpdatedBy = req.user.name || req.user.email;
+      lead.lastUpdatedAt = getEasternNow();
+      lead.updatedBy = req.user._id;
+      lead.adminProcessed = false;
+
+      await lead.save();
+      await lead.populate(['assignedTo assignedBy createdBy updatedBy', 'name email']);
+
+      if (req.io) {
+        const updateData = { lead: lead, reassignedBy: req.user.name, previousAgent: previousAssignedTo ? previousAssignedTo.name : 'Unassigned', newAgent: targetAgent.name };
+        req.io.emit('leadReassigned', updateData);
+        req.io.to('admin').emit('leadReassigned', updateData);
+        req.io.to('agent2').emit('leadReassigned', updateData);
+        if (previousAssignedTo) req.io.to(`user_${previousAssignedTo._id}`).emit('leadReassigned', updateData);
+        req.io.to(`user_${targetAgent._id}`).emit('leadReassigned', updateData);
+      }
+      successCount++;
+    }
+
+    res.status(200).json({ success: true, count: successCount, message: `Successfully reassigned ${successCount} leads` });
+  } catch (error) {
+    console.error('Bulk reassignment error:', error);
+    res.status(500).json({ success: false, message: 'Error bulk reassigning leads' });
+  }
+});
+
 // @route   PUT /api/leads/:id/qualification-status
 // @desc    Update lead qualification status (Agent2 only)
 // @access  Private

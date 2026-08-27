@@ -50,6 +50,7 @@ const BenWebsiteLeadsModal = ({ onClose, targetOrgName, title }) => {
   const [bulkImporting, setBulkImporting] = useState(false);
   const [reassignModalOpen, setReassignModalOpen] = useState(false);
   const [leadToReassign, setLeadToReassign] = useState(null);
+  const [bulkLeadsToReassign, setBulkLeadsToReassign] = useState([]);
   const commentSectionRef = useRef(null);
 
   const openDetail = useCallback(async (lead, scrollToComments = false) => {
@@ -191,11 +192,23 @@ const BenWebsiteLeadsModal = ({ onClose, targetOrgName, title }) => {
 
   const handleBulkImport = async () => {
     if (!canWrite || selectedLeads.size === 0) return;
-    if (!window.confirm(`Import ${selectedLeads.size} selected leads into the main collection?`)) return;
+    
+    // Only import leads that aren't already imported
+    const importableIds = Array.from(selectedLeads).filter(id => {
+      const lead = leads.find(l => l._id === id);
+      return lead && lead.status !== 'imported';
+    });
+
+    if (importableIds.length === 0) {
+      toast.error('All selected leads are already imported.');
+      return;
+    }
+
+    if (!window.confirm(`Import ${importableIds.length} selected leads into the main collection?`)) return;
     setBulkImporting(true);
     try {
       const res = await axios.post('/api/ben-website-leads/bulk-import', {
-        leadIds: Array.from(selectedLeads)
+        leadIds: importableIds
       });
       if (res.data?.success) {
         toast.success(`Imported ${res.data.count} leads successfully`);
@@ -233,8 +246,48 @@ const BenWebsiteLeadsModal = ({ onClose, targetOrgName, title }) => {
       }
       setActionLoading(null);
     }
-    
     setLeadToReassign({ ...lead, _id: targetLeadId });
+    setReassignModalOpen(true);
+  };
+
+  const handleBulkAssignClick = async () => {
+    if (!canWrite || selectedLeads.size === 0) return;
+
+    // Separate selected leads into imported and unimported
+    const selectedObjs = Array.from(selectedLeads).map(id => leads.find(l => l._id === id)).filter(Boolean);
+    const unimported = selectedObjs.filter(l => l.status !== 'imported' || !l.importedLeadId);
+
+    if (unimported.length > 0) {
+      if (!window.confirm(`${unimported.length} of the selected leads are not imported yet. They must be imported before they can be assigned. Auto-import them now?`)) {
+        return;
+      }
+      setBulkImporting(true);
+      try {
+        const res = await axios.post('/api/ben-website-leads/bulk-import', {
+          leadIds: unimported.map(l => l._id)
+        });
+        if (res.data?.success) {
+          toast.success(`Imported ${res.data.count} leads automatically.`);
+          // Refresh leads to get the importedLeadId for the newly imported leads
+          await fetchLeads({ silent: true });
+        } else {
+          throw new Error(res.data?.message || 'Bulk import failed');
+        }
+      } catch (err) {
+        console.error('Auto bulk import error:', err);
+        toast.error(err.response?.data?.message || 'Error during auto-import');
+        setBulkImporting(false);
+        return;
+      }
+      setBulkImporting(false);
+      return; // We must return and let the user click bulk assign again after the refresh, OR we can proceed if we know the new IDs. 
+      // Actually, since we need the newly generated `importedLeadId`s, the safest is to tell them to click again.
+      // Better yet, `fetchLeads` doesn't return the leads. But we can just toast: "Imported. Please click Bulk Assign again."
+    }
+
+    // All are imported, proceed to assign
+    const targetLeads = selectedObjs.map(l => ({ ...l, _id: l.importedLeadId }));
+    setBulkLeadsToReassign(targetLeads);
     setReassignModalOpen(true);
   };
 
@@ -323,11 +376,18 @@ const BenWebsiteLeadsModal = ({ onClose, targetOrgName, title }) => {
 
             <div className="ml-auto flex items-center gap-2">
               {canWrite && selectedLeads.size > 0 && (
-                <button onClick={handleBulkImport} disabled={bulkImporting}
-                  className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50">
-                  <Download className={`h-3.5 w-3.5 ${bulkImporting ? 'animate-bounce' : ''}`} />
-                  {bulkImporting ? 'Importing…' : `Import Selected (${selectedLeads.size})`}
-                </button>
+                <>
+                  <button onClick={handleBulkAssignClick}
+                    className="flex items-center gap-1 px-3 py-1.5 bg-indigo-600 text-white text-xs font-semibold rounded-lg hover:bg-indigo-700 transition-colors">
+                    <UserPlus className="h-3.5 w-3.5" />
+                    Bulk Assign Lead ({selectedLeads.size})
+                  </button>
+                  <button onClick={handleBulkImport} disabled={bulkImporting}
+                    className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50">
+                    <Download className={`h-3.5 w-3.5 ${bulkImporting ? 'animate-bounce' : ''}`} />
+                    {bulkImporting ? 'Importing…' : `Import Selected (${selectedLeads.size})`}
+                  </button>
+                </>
               )}
               <button onClick={handleExport} disabled={exporting}
                 className="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 text-white text-xs font-semibold rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-50">
@@ -377,11 +437,11 @@ const BenWebsiteLeadsModal = ({ onClose, targetOrgName, title }) => {
                       <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider w-10">
                         <input
                           type="checkbox"
-                          checked={leads.length > 0 && leads.filter(l => l.status !== 'imported').length > 0 && leads.filter(l => l.status !== 'imported').every(l => selectedLeads.has(l._id))}
+                          checked={leads.length > 0 && leads.every(l => selectedLeads.has(l._id))}
                           onChange={(e) => {
                             if (e.target.checked) {
-                              const importable = leads.filter(l => l.status !== 'imported').map(l => l._id);
-                              setSelectedLeads(new Set([...selectedLeads, ...importable]));
+                              const allIds = leads.map(l => l._id);
+                              setSelectedLeads(new Set([...selectedLeads, ...allIds]));
                             } else {
                               const pageIds = new Set(leads.map(l => l._id));
                               const next = new Set([...selectedLeads].filter(id => !pageIds.has(id)));
@@ -409,19 +469,14 @@ const BenWebsiteLeadsModal = ({ onClose, targetOrgName, title }) => {
                         <td className="px-4 py-3">
                           <input
                             type="checkbox"
-                            disabled={lead.status === 'imported'}
                             checked={selectedLeads.has(lead._id)}
                             onChange={(e) => {
                               const next = new Set(selectedLeads);
-                              if (e.target.checked) {
-                                next.add(lead._id);
-                              } else {
-                                next.delete(lead._id);
-                              }
+                              if (e.target.checked) next.add(lead._id);
+                              else next.delete(lead._id);
                               setSelectedLeads(next);
                             }}
-                            className="rounded text-orange-500 focus:ring-orange-500 disabled:opacity-50 cursor-pointer"
-                            onClick={(e) => e.stopPropagation()}
+                            className="rounded text-orange-500 focus:ring-orange-500 cursor-pointer"
                           />
                         </td>
                       )}
@@ -648,10 +703,15 @@ const BenWebsiteLeadsModal = ({ onClose, targetOrgName, title }) => {
       
       <LeadReassignModal
         isOpen={reassignModalOpen}
-        onClose={() => { setReassignModalOpen(false); setLeadToReassign(null); }}
+        onClose={() => { setReassignModalOpen(false); setLeadToReassign(null); setBulkLeadsToReassign([]); }}
         lead={leadToReassign}
-        onLeadReassigned={(updatedLead) => {
+        leads={bulkLeadsToReassign}
+        onLeadReassigned={(updatedLeadOrLeads) => {
           // Toast is already shown by LeadReassignModal
+          // We can optionally refresh the list or clear selections
+          if (bulkLeadsToReassign.length > 0) {
+             setSelectedLeads(new Set());
+          }
         }}
       />
     </>
