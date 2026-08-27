@@ -3,11 +3,12 @@ import {
   Globe, X, RefreshCw, Search, CheckCircle, XCircle,
   Download, Eye, MessageSquare, PhoneCall, Mail, MapPin,
   DollarSign, Smartphone, ChevronLeft, ChevronRight,
-  FileDown, Clock, Send, Lock, Building,
+  FileDown, Clock, Send, Lock, Building, UserPlus
 } from 'lucide-react';
 import axios from '../utils/axios';
 import { useAuth } from '../contexts/AuthContext';
 import toast from 'react-hot-toast';
+import LeadReassignModal from './LeadReassignModal';
 
 const STATUS_COLORS = {
   new:      'bg-blue-100 text-blue-800',
@@ -47,6 +48,8 @@ const BenWebsiteLeadsModal = ({ onClose, targetOrgName, title }) => {
   const [commentSubmitting, setCommentSubmitting] = useState(false);
   const [selectedLeads, setSelectedLeads] = useState(new Set());
   const [bulkImporting, setBulkImporting] = useState(false);
+  const [reassignModalOpen, setReassignModalOpen] = useState(false);
+  const [leadToReassign, setLeadToReassign] = useState(null);
   const commentSectionRef = useRef(null);
 
   const openDetail = useCallback(async (lead, scrollToComments = false) => {
@@ -190,19 +193,49 @@ const BenWebsiteLeadsModal = ({ onClose, targetOrgName, title }) => {
     if (!canWrite || selectedLeads.size === 0) return;
     if (!window.confirm(`Import ${selectedLeads.size} selected leads into the main collection?`)) return;
     setBulkImporting(true);
-    let successCount = 0;
-    for (const id of selectedLeads) {
-      try {
-        const res = await axios.post(`/api/ben-website-leads/${id}/import`);
-        if (res.data?.success) successCount++;
-      } catch (err) {
-        console.error(`Import failed for ${id}`, err);
+    try {
+      const res = await axios.post('/api/ben-website-leads/bulk-import', {
+        leadIds: Array.from(selectedLeads)
+      });
+      if (res.data?.success) {
+        toast.success(`Imported ${res.data.count} leads successfully`);
+        setSelectedLeads(new Set());
+        fetchLeads({ silent: true });
+      } else {
+        throw new Error(res.data?.message || 'Bulk import failed');
       }
+    } catch (err) {
+      console.error('Bulk import error:', err);
+      toast.error(err.response?.data?.message || 'Error during bulk import');
     }
-    toast.success(`Imported ${successCount} leads`);
-    setSelectedLeads(new Set());
-    fetchLeads({ silent: true });
     setBulkImporting(false);
+  };
+
+  const handleAssignClick = async (lead) => {
+    let targetLeadId = lead.importedLeadId;
+    if (lead.status !== 'imported' || !targetLeadId) {
+      if (!window.confirm(`This lead must be imported before it can be assigned to an agent. Import "${lead.name}" now?`)) return;
+      setActionLoading(lead._id);
+      try {
+        const res = await axios.post(`/api/ben-website-leads/${lead._id}/import`);
+        if (res.data?.success) {
+          targetLeadId = res.data.data.importedLeadId;
+          setLeads(prev => prev.map(l => l._id === lead._id ? { ...l, status: 'imported', importedLeadId: targetLeadId } : l));
+          if (detail?._id === lead._id) setDetail(d => ({ ...d, status: 'imported', importedLeadId: targetLeadId }));
+          toast.success('Lead imported automatically.');
+        } else {
+          throw new Error('Import failed');
+        }
+      } catch (err) {
+        toast.error(err.response?.data?.message || 'Failed to import lead.');
+        setActionLoading(null);
+        return;
+      }
+      setActionLoading(null);
+    }
+    
+    setLeadToReassign({ ...lead, _id: targetLeadId });
+    setReassignModalOpen(true);
   };
 
   const handleAddComment = async (e) => {
@@ -433,6 +466,10 @@ const BenWebsiteLeadsModal = ({ onClose, targetOrgName, title }) => {
                                 <Download className="h-3.5 w-3.5" />
                               </button>
                             )}
+                            <button disabled={actionLoading === lead._id} onClick={() => handleAssignClick(lead)}
+                              className="p-1.5 rounded-lg hover:bg-blue-100 text-blue-600 transition-colors disabled:opacity-50" title="Assign to Agent">
+                              <UserPlus className="h-3.5 w-3.5" />
+                            </button>
                             {lead.status === 'new' && (
                               <button disabled={actionLoading === lead._id} onClick={() => handleStatusChange(lead, 'rejected')}
                                 className="p-1.5 rounded-lg hover:bg-red-100 text-red-500 transition-colors disabled:opacity-50" title="Reject">
@@ -608,6 +645,15 @@ const BenWebsiteLeadsModal = ({ onClose, targetOrgName, title }) => {
           </div>
         </div>
       )}
+      
+      <LeadReassignModal
+        isOpen={reassignModalOpen}
+        onClose={() => { setReassignModalOpen(false); setLeadToReassign(null); }}
+        lead={leadToReassign}
+        onLeadReassigned={(updatedLead) => {
+          // Toast is already shown by LeadReassignModal
+        }}
+      />
     </>
   );
 };

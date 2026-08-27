@@ -189,6 +189,62 @@ router.post('/:id/import', protect, async (req, res) => {
   }
 });
 
+// POST /api/ben-website-leads/bulk-import (write — Reddington only)
+router.post('/bulk-import', protect, async (req, res) => {
+  try {
+    const access = await getAccess(req.user);
+    if (!access.allowed) return res.status(403).json({ success: false, message: 'Access denied.' });
+    if (!access.canWrite) return res.status(403).json({ success: false, message: 'Read-only access.' });
+
+    const { leadIds } = req.body;
+    if (!Array.isArray(leadIds) || leadIds.length === 0) {
+      return res.status(400).json({ success: false, message: 'No leads selected.' });
+    }
+
+    let successCount = 0;
+    for (const id of leadIds) {
+      if (!mongoose.isValidObjectId(id)) continue;
+      const webLead = await BenWebsiteLead.findById(id);
+      if (!webLead || webLead.status === 'imported') continue;
+
+      const notesParts = [];
+      const formLabel = webLead.formType === 'contact-form' ? '[Ben Website – Contact Form]' : '[Ben Website – Qualify Form]';
+      notesParts.push(formLabel);
+      if (webLead.message) notesParts.push(`Message: ${webLead.message}`);
+      notesParts.push(`SMS Opt-In: ${webLead.smsOptIn ? 'YES' : 'NO'}`);
+
+      const leadData = {
+        name: webLead.name || 'Ben Website Lead',
+        organization: webLead.organization,
+        notes: notesParts.join('\n'),
+        createdBy: req.user._id,
+      };
+
+      if (webLead.email) {
+        const sanitized = webLead.email.replace(/(\.\w{2,3})\w+$/, '$1');
+        if (/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/.test(sanitized)) leadData.email = sanitized;
+      }
+      if (webLead.phone)           leadData.phone           = webLead.phone;
+      if (webLead.streetAddress)   leadData.address         = webLead.streetAddress;
+      if (webLead.city)            leadData.city            = webLead.city;
+      if (webLead.state)           leadData.state           = webLead.state;
+      if (webLead.zipCode)         leadData.zipcode         = webLead.zipCode;
+      if (webLead.totalDebtAmount) leadData.totalDebtAmount = webLead.totalDebtAmount;
+
+      const imported = await Lead.create(leadData);
+      webLead.status = 'imported';
+      webLead.importedLeadId = imported._id;
+      await webLead.save();
+      successCount++;
+    }
+
+    return res.status(200).json({ success: true, count: successCount, message: `Imported ${successCount} leads.` });
+  } catch (err) {
+    console.error('Bulk import ben-website-leads error:', err);
+    return res.status(500).json({ success: false, message: 'Error during bulk import.' });
+  }
+});
+
 // GET /api/ben-website-leads/:id
 router.get('/:id', protect, async (req, res) => {
   try {
