@@ -278,8 +278,24 @@ router.post('/', async (req, res) => {
         // Remove undefined fields to keep document clean
         Object.keys(doc).forEach(k => { if (doc[k] === undefined) delete doc[k]; });
 
-        // 5. Save to same WebsiteLead collection (shared review pipeline)
-        const websiteLead = await WebsiteLead.create(doc);
+        // 5. Check for duplicate lead by phone number for this organization
+        let websiteLead;
+        if (doc.phone) {
+          const existing = await WebsiteLead.findOne({
+            organization: org._id,
+            phone: doc.phone,
+          }).sort({ createdAt: -1 });
+
+          if (existing) {
+            Object.assign(existing, doc);
+            websiteLead = await existing.save();
+            console.log(`[Meta Webhook] Duplicate lead updated: ${websiteLead.name} | org: ${org.name} | phone: ${doc.phone}`);
+            continue;
+          }
+        }
+
+        // Save new lead to WebsiteLead collection
+        websiteLead = await WebsiteLead.create(doc);
 
         // 6. Real-time notification to admins (same event as website leads)
         if (req.io) {

@@ -133,8 +133,27 @@ router.post('/leads', webhookLimiter, async (req, res) => {
       if (!isNaN(amount) && amount >= 0) doc.totalDebtAmount = amount;
     }
 
-    // 6. Save to websiteleads collection
-    const websiteLead = await WebsiteLead.create(doc);
+    // 6. Check for duplicate lead by phone number for this organization
+    let websiteLead;
+    if (doc.phone) {
+      const existing = await WebsiteLead.findOne({
+        organization: org._id,
+        phone: doc.phone,
+      }).sort({ createdAt: -1 });
+
+      if (existing) {
+        Object.assign(existing, doc);
+        websiteLead = await existing.save();
+        return res.status(200).json({
+          success: true,
+          message: 'Submission received and updated.',
+          leadId: websiteLead._id,
+        });
+      }
+    }
+
+    // Save to websiteleads collection
+    websiteLead = await WebsiteLead.create(doc);
 
     // 7. Real-time notification to Reddington admin
     if (req.io) {

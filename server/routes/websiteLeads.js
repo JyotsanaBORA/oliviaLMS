@@ -44,7 +44,7 @@ router.get('/', protect, async (req, res) => {
     }
 
     const page   = Math.max(1, parseInt(req.query.page)  || 1);
-    const limit  = Math.min(100, parseInt(req.query.limit) || 50);
+    const limit  = Math.min(10000, parseInt(req.query.limit) || 50);
     const skip   = (page - 1) * limit;
     const status = req.query.status; // 'new' | 'reviewed' | 'imported' | 'rejected'
     const search = (req.query.search || '').trim();
@@ -61,22 +61,70 @@ router.get('/', protect, async (req, res) => {
       ];
     }
 
-    const [leads, total] = await Promise.all([
-      WebsiteLead.find(filter)
-        .populate('organization', 'name')
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limit)
-        .lean(),
-      WebsiteLead.countDocuments(filter),
+    // Deduplicate leads by phone number (keeping the latest submission per phone)
+    const pipeline = [
+      { $match: filter },
+      { $sort: { createdAt: -1 } },
+      {
+        $group: {
+          _id: {
+            $cond: [
+              { $and: [{ $ne: ['$phone', null] }, { $ne: ['$phone', ''] }] },
+              '$phone',
+              '$_id'
+            ]
+          },
+          doc: { $first: '$$ROOT' }
+        }
+      },
+      { $replaceRoot: { newRoot: '$doc' } },
+      { $sort: { createdAt: -1 } },
+      {
+        $facet: {
+          data: [{ $skip: skip }, { $limit: limit }],
+          totalCount: [{ $count: 'count' }]
+        }
+      }
+    ];
+
+    const [facetResult] = await Promise.all([
+      WebsiteLead.aggregate(pipeline)
     ]);
 
-    // Summary counts
-    const counts = await WebsiteLead.aggregate([
-      { $group: { _id: '$status', count: { $sum: 1 } } }
+    const leads = facetResult[0]?.data || [];
+    const total = facetResult[0]?.totalCount[0]?.count || 0;
+
+    await WebsiteLead.populate(leads, { path: 'organization', select: 'name' });
+
+    // Summary counts based on deduplicated unique leads
+    const summaryFilter = {};
+    if (filter.$or) summaryFilter.$or = filter.$or;
+
+    const summaryCounts = await WebsiteLead.aggregate([
+      { $match: summaryFilter },
+      { $sort: { createdAt: -1 } },
+      {
+        $group: {
+          _id: {
+            $cond: [
+              { $and: [{ $ne: ['$phone', null] }, { $ne: ['$phone', ''] }] },
+              '$phone',
+              '$_id'
+            ]
+          },
+          status: { $first: '$status' }
+        }
+      },
+      {
+        $group: {
+          _id: '$status',
+          count: { $sum: 1 }
+        }
+      }
     ]);
+
     const summary = { new: 0, reviewed: 0, imported: 0, rejected: 0, total: 0 };
-    counts.forEach(({ _id, count }) => {
+    summaryCounts.forEach(({ _id, count }) => {
       if (_id in summary) summary[_id] = count;
       summary.total += count;
     });

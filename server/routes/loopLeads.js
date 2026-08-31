@@ -117,16 +117,65 @@ router.get('/', protect, async (req, res) => {
       }
     }
 
-    const [leads, total, statusCounts] = await Promise.all([
-      LoopLead.find(filter)
-        .sort({ receivedAt: -1 })
-        .skip(skip)
-        .limit(limit)
-        .lean(),
-      LoopLead.countDocuments(filter),
-      LoopLead.aggregate([
-        { $group: { _id: '$status', count: { $sum: 1 } } },
-      ]),
+    // Deduplicate leads by phone number (keeping latest submission per phone)
+    const pipeline = [
+      { $match: filter },
+      { $sort: { receivedAt: -1 } },
+      {
+        $group: {
+          _id: {
+            $cond: [
+              { $and: [{ $ne: ['$phone', null] }, { $ne: ['$phone', ''] }] },
+              '$phone',
+              '$_id'
+            ]
+          },
+          doc: { $first: '$$ROOT' }
+        }
+      },
+      { $replaceRoot: { newRoot: '$doc' } },
+      { $sort: { receivedAt: -1 } },
+      {
+        $facet: {
+          data: [{ $skip: skip }, { $limit: limit }],
+          totalCount: [{ $count: 'count' }]
+        }
+      }
+    ];
+
+    const [facetResult] = await Promise.all([
+      LoopLead.aggregate(pipeline)
+    ]);
+
+    const leads = facetResult[0]?.data || [];
+    const total = facetResult[0]?.totalCount[0]?.count || 0;
+
+    // Summary counts based on deduplicated unique leads
+    const summaryFilter = {};
+    if (filter.$or) summaryFilter.$or = filter.$or;
+    if (filter.receivedAt) summaryFilter.receivedAt = filter.receivedAt;
+
+    const statusCounts = await LoopLead.aggregate([
+      { $match: summaryFilter },
+      { $sort: { receivedAt: -1 } },
+      {
+        $group: {
+          _id: {
+            $cond: [
+              { $and: [{ $ne: ['$phone', null] }, { $ne: ['$phone', ''] }] },
+              '$phone',
+              '$_id'
+            ]
+          },
+          status: { $first: '$status' }
+        }
+      },
+      {
+        $group: {
+          _id: '$status',
+          count: { $sum: 1 }
+        }
+      }
     ]);
 
     // Build summary { new: N, reviewed: N, imported: N, total: N }

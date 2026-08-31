@@ -104,8 +104,24 @@ router.post('/', loopWebhookLimiter, async (req, res) => {
     if (fields.dob          !== undefined) doc.dob           = str(fields.dob,           50);
     if (fields.trusted_form !== undefined) doc.trusted_form  = str(fields.trusted_form, 500);
 
-    // ── 4. Persist to `loop` collection ───────────────────────────────────
-    const saved = await LoopLead.create(doc);
+    // ── 4. Check for duplicate lead by phone ───────────────────────────────
+    let saved;
+    if (doc.phone) {
+      const existing = await LoopLead.findOne({ phone: doc.phone }).sort({ receivedAt: -1 });
+      if (existing) {
+        Object.assign(existing, doc);
+        saved = await existing.save();
+        console.log(`[Loop Webhook] Duplicate lead updated. ID: ${saved._id}, Phone: ${doc.phone}`);
+        return res.status(200).json({
+          success: true,
+          message: 'Lead received and updated.',
+          id: saved._id,
+        });
+      }
+    }
+
+    // Persist new to `loop` collection
+    saved = await LoopLead.create(doc);
 
     console.log(`[Loop Webhook] Lead stored. ID: ${saved._id}, Phone: ${doc.phone || 'N/A'}, IP: ${doc.sourceIp}`);
 
