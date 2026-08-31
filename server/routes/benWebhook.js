@@ -137,8 +137,27 @@ const handleWebhookSubmission = async (req, res) => {
     if (preferredContactSlot) doc.preferredContactSlot = preferredContactSlot;
     if (preferredContactCustomTime) doc.preferredContactCustomTime = preferredContactCustomTime;
 
-    // 11. Save to database
-    const lead = await BenWebsiteLead.create(doc);
+    // 11. Check for duplicate lead by phone number for this organization
+    let lead;
+    if (doc.phone) {
+      const existing = await BenWebsiteLead.findOne({
+        organization: org._id,
+        phone: doc.phone,
+      }).sort({ createdAt: -1 });
+
+      if (existing) {
+        Object.assign(existing, doc);
+        lead = await existing.save();
+        return res.status(200).json({
+          success: true,
+          message: 'Submission received and updated.',
+          leadId: lead._id,
+        });
+      }
+    }
+
+    // Save new lead to database
+    lead = await BenWebsiteLead.create(doc);
 
     // 12. Real-time notification
     if (req.io) {

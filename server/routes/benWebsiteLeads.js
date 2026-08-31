@@ -40,14 +40,14 @@ router.get('/', protect, async (req, res) => {
     if (!access.allowed) return res.status(403).json({ success: false, message: 'Access denied.' });
 
     const page   = Math.max(1, parseInt(req.query.page) || 1);
-    const limit  = Math.min(100, parseInt(req.query.limit) || 50);
+    const limit  = Math.min(10000, parseInt(req.query.limit) || 50);
     const skip   = (page - 1) * limit;
     const status = req.query.status;
     const search = (req.query.search || '').trim();
 
     const filter = {};
     if (access.orgFilter) {
-      filter.organization = access.orgFilter;
+      filter.organization = mongoose.isValidObjectId(access.orgFilter) ? new mongoose.Types.ObjectId(access.orgFilter) : access.orgFilter;
     } else if (req.query.organizationId) {
       if (mongoose.isValidObjectId(req.query.organizationId)) {
         filter.organization = new mongoose.Types.ObjectId(req.query.organizationId);
@@ -63,7 +63,7 @@ router.get('/', protect, async (req, res) => {
         ]
       }).select('_id').lean();
       if (matchOrgs.length > 0) {
-        filter.organization = { $in: matchOrgs.map(o => o._id) };
+        filter.organization = { $in: matchOrgs.map(o => new mongoose.Types.ObjectId(o._id)) };
       } else {
         filter.organization = new mongoose.Types.ObjectId();
       }
@@ -78,34 +78,76 @@ router.get('/', protect, async (req, res) => {
       ];
     }
 
-    const [leads, total, orgs] = await Promise.all([
-      BenWebsiteLead.find(filter).populate('organization', 'name').sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
-      BenWebsiteLead.countDocuments(filter),
+    // Deduplicate leads by phone number (keeping the latest submission per phone)
+    const pipeline = [
+      { $match: filter },
+      { $sort: { createdAt: -1 } },
+      {
+        $group: {
+          _id: {
+            $cond: [
+              { $and: [{ $ne: ['$phone', null] }, { $ne: ['$phone', ''] }] },
+              '$phone',
+              '$_id'
+            ]
+          },
+          doc: { $first: '$$ROOT' }
+        }
+      },
+      { $replaceRoot: { newRoot: '$doc' } },
+      { $sort: { createdAt: -1 } },
+      {
+        $facet: {
+          data: [{ $skip: skip }, { $limit: limit }],
+          totalCount: [{ $count: 'count' }]
+        }
+      }
+    ];
+
+    const [facetResult, orgs] = await Promise.all([
+      BenWebsiteLead.aggregate(pipeline),
       !access.orgFilter ? Organization.find({ isActive: true }).select('name email website').sort({ name: 1 }).lean() : Promise.resolve([]),
     ]);
 
+    const leads = facetResult[0]?.data || [];
+    const total = facetResult[0]?.totalCount[0]?.count || 0;
+
+    await BenWebsiteLead.populate(leads, { path: 'organization', select: 'name' });
+
+    // Summary counts based on deduplicated unique leads
     const summaryFilter = {};
     if (filter.organization) {
-      if (filter.organization.$in) {
-        summaryFilter.organization = {
-          $in: filter.organization.$in.map(id => mongoose.isValidObjectId(id) ? new mongoose.Types.ObjectId(id) : id)
-        };
-      } else if (mongoose.isValidObjectId(filter.organization)) {
-        summaryFilter.organization = new mongoose.Types.ObjectId(filter.organization);
-      } else {
-        summaryFilter.organization = filter.organization;
-      }
+      summaryFilter.organization = filter.organization;
     }
     if (filter.$or) {
       summaryFilter.$or = filter.$or;
     }
 
-    const counts = await BenWebsiteLead.aggregate([
+    const summaryCounts = await BenWebsiteLead.aggregate([
       { $match: summaryFilter },
-      { $group: { _id: '$status', count: { $sum: 1 } } },
+      { $sort: { createdAt: -1 } },
+      {
+        $group: {
+          _id: {
+            $cond: [
+              { $and: [{ $ne: ['$phone', null] }, { $ne: ['$phone', ''] }] },
+              '$phone',
+              '$_id'
+            ]
+          },
+          status: { $first: '$status' }
+        }
+      },
+      {
+        $group: {
+          _id: '$status',
+          count: { $sum: 1 }
+        }
+      }
     ]);
+
     const summary = { new: 0, reviewed: 0, imported: 0, rejected: 0, total: 0 };
-    counts.forEach(({ _id, count }) => { if (_id in summary) summary[_id] = count; summary.total += count; });
+    summaryCounts.forEach(({ _id, count }) => { if (_id in summary) summary[_id] = count; summary.total += count; });
 
     return res.status(200).json({
       success: true, data: leads,
