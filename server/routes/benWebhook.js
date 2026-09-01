@@ -11,6 +11,7 @@ const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 const BenWebsiteLead = require('../models/BenWebsiteLead');
 const Organization = require('../models/Organization');
+const Lead = require('../models/Lead');
 
 const router = express.Router();
 
@@ -139,14 +140,51 @@ const handleWebhookSubmission = async (req, res) => {
 
     // 11. Check for duplicate lead by phone number for this organization
     let lead;
+    let primaryLead;
+    
     if (doc.phone) {
       const existing = await BenWebsiteLead.findOne({
         organization: org._id,
         phone: doc.phone,
       }).sort({ createdAt: -1 });
 
+      const existingPrimaryLead = await Lead.findOne({
+        organization: org._id,
+        phone: doc.phone,
+      }).sort({ createdAt: -1 });
+
       if (existing) {
         Object.assign(existing, doc);
+        
+        if (existingPrimaryLead) {
+          // Update primary lead notes with new submission message
+          existingPrimaryLead.notes = existingPrimaryLead.notes 
+            ? existingPrimaryLead.notes + '\n\n' + (doc.message || '') 
+            : doc.message;
+          if (doc.totalDebtAmount) existingPrimaryLead.totalDebtAmount = doc.totalDebtAmount;
+          primaryLead = await existingPrimaryLead.save();
+          existing.importedLeadId = primaryLead._id;
+        } else {
+          // Create standard Lead even if BenWebsiteLead exists but Lead doesn't
+          const standardLeadData = {
+            name: doc.name || 'Unknown',
+            email: doc.email,
+            phone: doc.phone,
+            totalDebtAmount: doc.totalDebtAmount,
+            notes: doc.message,
+            address: doc.streetAddress,
+            city: doc.city,
+            state: doc.state,
+            zipcode: doc.zipCode,
+            organization: doc.organization,
+            source: 'TruClick Webhook',
+            category: 'warm',
+            qualificationStatus: 'pending',
+          };
+          primaryLead = await Lead.create(standardLeadData);
+          existing.importedLeadId = primaryLead._id;
+        }
+
         lead = await existing.save();
         return res.status(200).json({
           success: true,
@@ -155,6 +193,29 @@ const handleWebhookSubmission = async (req, res) => {
         });
       }
     }
+
+    // Prepare standard Lead payload
+    const standardLeadData = {
+      name: doc.name || 'Unknown',
+      email: doc.email,
+      phone: doc.phone,
+      totalDebtAmount: doc.totalDebtAmount,
+      notes: doc.message,
+      address: doc.streetAddress,
+      city: doc.city,
+      state: doc.state,
+      zipcode: doc.zipCode,
+      organization: doc.organization,
+      source: 'TruClick Webhook',
+      category: 'warm',
+      qualificationStatus: 'pending',
+    };
+    
+    // Create standard Lead in primary collection
+    primaryLead = await Lead.create(standardLeadData);
+    
+    // Link BenWebsiteLead to the standard Lead
+    doc.importedLeadId = primaryLead._id;
 
     // Save new lead to database
     lead = await BenWebsiteLead.create(doc);
