@@ -178,7 +178,7 @@ const handleWebhookSubmission = async (req, res) => {
             zipcode: doc.zipCode,
             organization: doc.organization,
             createdBy: doc.organization,
-            source: 'TruClick Webhook',
+            sourceId: 'TruClickWebhook',
             category: 'warm',
             qualificationStatus: 'pending',
           };
@@ -208,7 +208,7 @@ const handleWebhookSubmission = async (req, res) => {
       zipcode: doc.zipCode,
       organization: doc.organization,
       createdBy: doc.organization,
-      source: 'TruClick Webhook',
+      sourceId: 'TruClickWebhook',
       category: 'warm',
       qualificationStatus: 'pending',
     };
