@@ -69,9 +69,9 @@ const handleWebhookSubmission = async (req, res) => {
 
     // 3. Extract names flexibly
     const rawName = str(body.name || body.fullName || body.full_name || body.contact_name || body.lead_name, 100);
-    const first   = str(body.firstName || body.first_name || body.fname || body.given_name || (rawName ? rawName.split(' ')[0] : ''), 50);
-    const last    = str(body.lastName || body.last_name || body.lname || body.family_name || body.surname || (rawName ? rawName.split(' ').slice(1).join(' ') : ''), 50);
-    
+    const first = str(body.firstName || body.first_name || body.fname || body.given_name || (rawName ? rawName.split(' ')[0] : ''), 50);
+    const last = str(body.lastName || body.last_name || body.lname || body.family_name || body.surname || (rawName ? rawName.split(' ').slice(1).join(' ') : ''), 50);
+
     let fullName = [first, last].filter(Boolean).join(' ') || rawName;
     if (!fullName) {
       const fallbackEmail = body.email || body.emailAddress || body.email_address;
@@ -97,16 +97,16 @@ const handleWebhookSubmission = async (req, res) => {
 
     // 7. Extract address fields
     const streetAddress = str(body.streetAddress || body.street_address || body.address || body.address1 || body.street, 200);
-    const city          = str(body.city || body.town || body.municipality, 100);
-    const state         = str(body.state || body.province || body.region || body.state_code, 50);
-    const zipCode       = str(body.zipCode || body.zip_code || body.zip || body.postalCode || body.postal_code || body.postcode, 20);
+    const city = str(body.city || body.town || body.municipality, 100);
+    const state = str(body.state || body.province || body.region || body.state_code, 50);
+    const zipCode = str(body.zipCode || body.zip_code || body.zip || body.postalCode || body.postal_code || body.postcode, 20);
 
     // 8. SMS & scheduling
     const rawSms = body.smsOptIn ?? body.sms_opt_in ?? body.smsConsent ?? body.sms_consent ?? body.optIn;
     const smsOptIn = rawSms === true || rawSms === 'true' || rawSms === 1 || rawSms === '1';
 
-    const preferredContactDate       = str(body.preferredContactDate || body.preferred_contact_date || body.contact_date || body.date, 40);
-    const preferredContactSlot       = str(body.preferredContactSlot || body.preferred_contact_slot || body.time_slot || body.timeSlot || body.slot, 100);
+    const preferredContactDate = str(body.preferredContactDate || body.preferred_contact_date || body.contact_date || body.date, 40);
+    const preferredContactSlot = str(body.preferredContactSlot || body.preferred_contact_slot || body.time_slot || body.timeSlot || body.slot, 100);
     const preferredContactCustomTime = str(body.preferredContactCustomTime || body.preferred_contact_custom_time || body.custom_time || body.time, 30);
 
     // 9. Determine form type
@@ -118,12 +118,12 @@ const handleWebhookSubmission = async (req, res) => {
     // 10. Build document
     const doc = {
       organization: org._id,
-      firstName:    first || undefined,
-      lastName:     last || undefined,
-      name:         fullName.substring(0, 100),
+      firstName: first || undefined,
+      lastName: last || undefined,
+      name: fullName.substring(0, 100),
       smsOptIn,
       formType,
-      rawPayload:   body,
+      rawPayload: body,
     };
 
     if (rawEmail) doc.email = rawEmail.toLowerCase();
@@ -141,7 +141,7 @@ const handleWebhookSubmission = async (req, res) => {
     // 11. Check for duplicate lead by phone number for this organization
     let lead;
     let primaryLead;
-    
+
     if (doc.phone) {
       const existing = await BenWebsiteLead.findOne({
         organization: org._id,
@@ -155,11 +155,11 @@ const handleWebhookSubmission = async (req, res) => {
 
       if (existing) {
         Object.assign(existing, doc);
-        
+
         if (existingPrimaryLead) {
           // Update primary lead notes with new submission message
-          existingPrimaryLead.notes = existingPrimaryLead.notes 
-            ? existingPrimaryLead.notes + '\n\n' + (doc.message || '') 
+          existingPrimaryLead.notes = existingPrimaryLead.notes
+            ? existingPrimaryLead.notes + '\n\n' + (doc.message || '')
             : doc.message;
           if (doc.totalDebtAmount) existingPrimaryLead.totalDebtAmount = doc.totalDebtAmount;
           primaryLead = await existingPrimaryLead.save();
@@ -212,25 +212,25 @@ const handleWebhookSubmission = async (req, res) => {
       category: 'warm',
       qualificationStatus: 'pending',
     };
-    
+
     // Create standard Lead in primary collection
     primaryLead = await Lead.create(standardLeadData);
-    
+
     // Link BenWebsiteLead to the standard Lead
     doc.importedLeadId = primaryLead._id;
 
     // Save new lead to database
     lead = await BenWebsiteLead.create(doc);
 
-    // 12. Real-time notification
+    // 12. Real-time notification /
     if (req.io) {
       req.io.emit('newBenWebsiteLead', {
-        _id:              lead._id,
-        name:             lead.name,
+        _id: lead._id,
+        name: lead.name,
         formType,
-        organizationId:   String(lead.organization),
+        organizationId: String(lead.organization),
         organizationName: org.name,
-        createdAt:        lead.createdAt,
+        createdAt: lead.createdAt,
       });
     }
 
