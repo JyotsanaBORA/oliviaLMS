@@ -2087,6 +2087,39 @@ router.put('/:id', protect, updateLeadValidation, handleValidationErrors, async 
       console.log('Ignoring GTI-only disposition fields for non-GTI organization lead:', lead._id);
     }
 
+    // Automatic Status Resolution based on GTI Disposition
+    if (isGtiOrg && hasDispositionField) {
+      const disp = typeof req.body.disposition1 === 'string' ? req.body.disposition1.trim() : '';
+      
+      if (disp === 'SALE - Sale Made') {
+        lead.qualificationStatus = 'qualified';
+        lead.leadProgressStatus = 'SALE';
+      } else if (disp === 'XFER - Call Transferred' || disp === 'HLEAD - Hot Lead') {
+        lead.qualificationStatus = 'qualified';
+      } else if (
+        disp === 'DEC - Declined Sale' ||
+        disp === 'NI - Not Interested' ||
+        disp === 'NP - No Pitch No Price' ||
+        disp === 'Loan - LOAN' ||
+        disp === 'ND - No Debt' ||
+        disp === 'NIAP - Not Interested After Pitch' ||
+        disp === 'NIBP - Not Interested Before Pitch'
+      ) {
+        lead.qualificationStatus = 'not-qualified';
+      } else if (
+        disp === 'A - Answering Machine' ||
+        disp === 'B - Busy' ||
+        disp === 'DAIR - Dead Air' ||
+        disp === 'DC - Disconnected Number' ||
+        disp === 'DNC - DO NOT CALL' ||
+        disp === 'N - No Answer' ||
+        disp === 'HU - Hangup' ||
+        disp === 'LB - Language Barrier'
+      ) {
+        lead.qualificationStatus = 'disqualified';
+      }
+    }
+
     if (hasDraftDateField) {
       if (!isGtiOrg) {
         console.log('Ignoring draft date update for non-GTI organization lead:', lead._id);
