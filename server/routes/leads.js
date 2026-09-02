@@ -2,6 +2,7 @@ const express = require('express');
 const { body, query } = require('express-validator');
 const moment = require('moment-timezone');
 const Lead = require('../models/Lead');
+const BenWebsiteLead = require('../models/BenWebsiteLead');
 const User = require('../models/User');
 const Organization = require('../models/Organization');
 const { protect, authorize } = require('../middleware/auth');
@@ -2157,6 +2158,23 @@ router.put('/:id', protect, updateLeadValidation, handleValidationErrors, async 
 
     lead.updatedBy = req.user._id;
     await lead.save();
+
+    // Sync qualificationStatus to BenWebsiteLead if applicable
+    try {
+      if (['not-qualified', 'disqualified', 'unqualified'].includes(lead.qualificationStatus)) {
+        await BenWebsiteLead.updateMany(
+          { importedLeadId: lead._id, status: { $ne: 'rejected' } },
+          { $set: { status: 'rejected' } }
+        );
+      } else if (lead.qualificationStatus === 'qualified') {
+        await BenWebsiteLead.updateMany(
+          { importedLeadId: lead._id, status: { $ne: 'reviewed' } },
+          { $set: { status: 'reviewed' } }
+        );
+      }
+    } catch (err) {
+      console.error('Failed to sync BenWebsiteLead status:', err);
+    }
 
     console.log('Lead saved successfully');
 
