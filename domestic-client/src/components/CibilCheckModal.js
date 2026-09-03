@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { X, ShieldCheck, CheckCircle, AlertCircle, FileText } from 'lucide-react';
 import api from '../utils/axios';
 import toast from 'react-hot-toast';
@@ -59,7 +59,8 @@ const CibilCheckModal = ({ onClose }) => {
         if (!isNaN(score)) toast.success(`CIBIL Score: ${score} (${mapScoreToRange(scores[0].score).replace(/_/g, ' ')})`);
       }
     } catch (err) {
-      const raw = err.response?.data?.message;
+      const data = err.response?.data;
+      const raw = data?.message || data?.details?.error?.message || data?.details?.message || (typeof data?.details === 'string' ? data.details : null);
       setError(typeof raw === 'string' ? raw : raw ? JSON.stringify(raw) : (err.message || 'CIBIL check failed.'));
     } finally {
       setChecking(false);

@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 const https   = require('https');
 const express = require('express');
 const router  = express.Router();
@@ -103,12 +103,14 @@ router.post(
       });
 
       if (result.statusCode !== 200) {
+        console.error('[CIBIL] Signzy response error:', result.statusCode, JSON.stringify(result.body));
         const httpStatus = (result.statusCode >= 400 && result.statusCode < 600)
           ? result.statusCode
           : 502;
+        const msg = result.body?.error?.message || result.body?.message || (typeof result.body === 'string' ? result.body : 'CIBIL check failed.');
         return res.status(httpStatus).json({
           success: false,
-          message: 'CIBIL check failed.',
+          message: msg,
           details: result.body,
         });
       }

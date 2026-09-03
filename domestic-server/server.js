@@ -59,8 +59,8 @@ app.use(helmet({
 app.use(cors({
   origin: (origin, callback) => {
     // Always allow the configured origins plus the Olivia client (port 3000) which proxies domestic-api
-    const base = (process.env.CORS_ORIGIN || 'http://localhost:3004').split(',').map(s => s.trim());
-    const allowed = [...new Set([...base, 'http://localhost:3000', 'http://localhost:3004'])];
+    const base = (process.env.CORS_ORIGIN || 'http://localhost:3002').split(',').map(s => s.trim());
+    const allowed = [...new Set([...base, 'http://localhost:3000', 'http://localhost:3002', 'http://localhost:3004'])];
     if (!origin || allowed.includes(origin)) return callback(null, true);
     callback(new Error('Not allowed by CORS'));
   },
