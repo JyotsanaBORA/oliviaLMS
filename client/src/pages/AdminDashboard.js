@@ -1204,25 +1204,6 @@ const AdminDashboard = () => {
                   )}
                 </button>
               )}
-              {/* Generic Inbound Leads button for other non-Reddington tenant admins */}
-              {user?.role === 'admin' && !isReddingtonAdmin && !user?.organization?.name?.toLowerCase().includes('ben') && !user?.organization?.name?.toLowerCase().includes('truclick') && !user?.organization?.name?.toLowerCase().includes('tru click') && (
-                <button
-                  onClick={() => { setShowBenWebsiteLeads(true); setBenLeadsBadge(0); }}
-                  className="relative flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold text-white transition-all duration-200 active:scale-95 shadow-md"
-                  style={{ background: 'linear-gradient(135deg,#f97316,#d97706)', boxShadow: '0 4px 12px rgba(249,115,22,0.4)' }}
-                  title={`View ${user?.organization?.name || 'Inbound'} leads`}
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9" />
-                  </svg>
-                  {user?.organization?.name ? `${user.organization.name} Leads` : 'Inbound Leads'}
-                  {benLeadsBadge > 0 && (
-                    <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] flex items-center justify-center bg-red-500 text-white text-[10px] font-bold rounded-full px-1">
-                      {benLeadsBadge > 99 ? '99+' : benLeadsBadge}
-                    </span>
-                  )}
-                </button>
-              )}
               {/* MyDebt Review Leads button — orgs with showLoopLeads or main-org admin */}
               {canAccessLoopLeads && (
                 <button
