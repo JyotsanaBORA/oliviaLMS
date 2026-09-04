@@ -249,7 +249,8 @@ const Layout = ({ onDashboardRefresh }) => {
     } else if (user.role === 'admin') {
       const isVendorDataEnabled = user.isMainOrgAdmin ||
         user.organization?.showVendorData === true ||
-        user.organization?.name?.toLowerCase().includes('westlake');
+        user.organization?.name?.toLowerCase().includes('westlake') ||
+        user.organization?.name?.toLowerCase().includes('social');
 
       const adminItems = [
         { name: 'Dashboard', href: '/admin', icon: BarChart3 },

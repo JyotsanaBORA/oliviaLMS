@@ -185,7 +185,8 @@ router.get('/vendors', protect, requireAdminOrSuper, async (req, res) => {
     const enabledOrgs = await Organization.find({
       $or: [
         { showVendorData: true },
-        { name: { $regex: /westlake/i } }
+        { name: { $regex: /westlake/i } },
+        { name: { $regex: /social/i } }
       ]
     }).select('_id').lean();
     const enabledOrgIds = enabledOrgs.map(o => o._id);
@@ -266,7 +267,8 @@ router.post(
       const parsedRunDate = runDate ? new Date(runDate) : new Date();
 
       // Decode base64 → parse workbook
-      const buffer = Buffer.from(fileData, 'base64');
+      const base64Clean = fileData.includes(',') ? fileData.split(',')[1] : fileData;
+      const buffer = Buffer.from(base64Clean, 'base64');
       const workbook = XLSX.read(buffer, { type: 'buffer' });
       const sheetName = workbook.SheetNames[0];
       if (!sheetName) {
