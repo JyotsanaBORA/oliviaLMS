@@ -800,14 +800,29 @@ const AdminDashboard = () => {
       };
 
       const handleNewWebsiteLead = (data) => {
-        if (isReddingtonAdmin) {
-          if (websiteLeadTotalRef.current !== null) {
-            websiteLeadTotalRef.current += 1;
+        if (user?.role !== 'admin') return;
+        const myOrgId = user?.organization?._id || user?.organization;
+        const leadOrgId = data?.organizationId;
+        const orgNameLower = (data?.organizationName || '').toLowerCase();
+        const isWestlakeLead = orgNameLower.includes('westlake') || String(leadOrgId) === '6a99733c2ea3d7d9c3927bf0';
+
+        if (isWestlakeLead) {
+          const isMyOrg = String(leadOrgId) === String(myOrgId);
+          if (isMyOrg || isReddingtonAdmin) {
+            setWestlakeLeadsBadge(n => n + 1);
+            toast.success(`New Westlake lead: ${data?.name || 'Unknown'}`, { duration: 5000, icon: '🌐' });
           }
-          setWebsiteLeadsBadge(n => n + 1);
-          setLatestWebsiteLead(data || null);
-          setShowWebsiteLeadPopup(true);
-          toast.success(`New website lead: ${data?.name || 'Unknown'}`, { duration: 5000, icon: '🌐' });
+        } else {
+          // Main Reddington website lead
+          if (isReddingtonAdmin) {
+            if (websiteLeadTotalRef.current !== null) {
+              websiteLeadTotalRef.current += 1;
+            }
+            setWebsiteLeadsBadge(n => n + 1);
+            setLatestWebsiteLead(data || null);
+            setShowWebsiteLeadPopup(true);
+            toast.success(`New website lead: ${data?.name || 'Unknown'}`, { duration: 5000, icon: '🌐' });
+          }
         }
       };
 

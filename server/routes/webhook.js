@@ -155,14 +155,15 @@ router.post('/leads', webhookLimiter, async (req, res) => {
     // Save to websiteleads collection
     websiteLead = await WebsiteLead.create(doc);
 
-    // 7. Real-time notification to Reddington admin
+    // 7. Real-time notification
     if (req.io) {
       req.io.emit('newWebsiteLead', {
-        _id:            websiteLead._id,
-        name:           websiteLead.name,
+        _id:              websiteLead._id,
+        name:             websiteLead.name,
         formType,
-        organizationId: String(websiteLead.organization),
-        createdAt:      websiteLead.createdAt,
+        organizationId:   String(websiteLead.organization),
+        organizationName: org.name,
+        createdAt:        websiteLead.createdAt,
       });
     }
 
