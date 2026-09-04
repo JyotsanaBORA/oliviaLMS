@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   BarChart3, 
   Users, 
@@ -43,6 +44,7 @@ import {
 } from '../utils/dateUtils';
 
 const AdminDashboard = () => {
+  const navigate = useNavigate();
   const { socket } = useSocket();
   const { user } = useAuth();
   const { registerRefreshCallback, unregisterRefreshCallback } = useRefresh();
@@ -167,6 +169,10 @@ const AdminDashboard = () => {
   // TruClick Leads modal
   const [showTruClickLeads, setShowTruClickLeads] = useState(false);
   const [truClickBadge, setTruClickBadge] = useState(0);
+
+  // Westlake Leads modal
+  const [showWestlakeLeads, setShowWestlakeLeads] = useState(false);
+  const [westlakeLeadsBadge, setWestlakeLeadsBadge] = useState(0);
 
   // Loop leads modal (orgs with showLoopLeads === true)
   const [showLoopLeads, setShowLoopLeads] = useState(false);
@@ -588,6 +594,13 @@ const AdminDashboard = () => {
     const isReddingtonById = user?.organization === '68b9c76d2c29dac1220cb81c' || user?.organization?._id === '68b9c76d2c29dac1220cb81c';
 
     return isReddingtonByName || isReddingtonById;
+  }, [user]);
+
+  // True when the current user is an admin of Westlake Origination Center
+  const isWestlakeAdmin = useMemo(() => {
+    const orgName = (user?.organization?.name || '').trim().toLowerCase();
+    const orgId = user?.organization?._id || user?.organization;
+    return user?.role === 'admin' && (orgName.includes('westlake') || String(orgId) === '6a99733c2ea3d7d9c3927bf0');
   }, [user]);
 
   // True when the current user's organisation has showLoopLeads enabled
@@ -1166,6 +1179,25 @@ const AdminDashboard = () => {
                   )}
                 </button>
               )}
+              {/* Westlake Leads button — Reddington admin or Westlake admin */}
+              {user?.role === 'admin' && (isReddingtonAdmin || isWestlakeAdmin) && (
+                <button
+                  onClick={() => { setShowWestlakeLeads(true); setWestlakeLeadsBadge(0); }}
+                  className="relative flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold text-white transition-all duration-200 active:scale-95 shadow-md"
+                  style={{ background: 'linear-gradient(135deg,#0d9488,#0891b2)', boxShadow: '0 4px 12px rgba(8,145,178,0.4)' }}
+                  title="View Westlake leads"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9" />
+                  </svg>
+                  Westlake Leads
+                  {westlakeLeadsBadge > 0 && (
+                    <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] flex items-center justify-center bg-red-500 text-white text-[10px] font-bold rounded-full px-1">
+                      {westlakeLeadsBadge > 99 ? '99+' : westlakeLeadsBadge}
+                    </span>
+                  )}
+                </button>
+              )}
               {/* Ben Website Leads button — Reddington admin or Ben admin */}
               {user?.role === 'admin' && (isReddingtonAdmin || user?.organization?.name?.toLowerCase().includes('ben')) && (
                 <button
@@ -1235,6 +1267,18 @@ const AdminDashboard = () => {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z" />
                   </svg>
                   People Search
+                </button>
+              )}
+              {/* Data Vendor Portal button */}
+              {isReddingtonAdmin && (
+                <button
+                  onClick={() => navigate('/vendor-dashboard')}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold text-white transition-all duration-200 active:scale-95 shadow-md"
+                  style={{ background: 'linear-gradient(135deg,#7c3aed,#9333ea)', boxShadow: '0 4px 12px rgba(147,51,234,0.4)' }}
+                  title="Open Data Vendor Portal, Lists & Sales Tracker"
+                >
+                  <Database className="w-4 h-4" />
+                  Vendor Data
                 </button>
               )}
               <button
@@ -2919,6 +2963,15 @@ const AdminDashboard = () => {
       {/* Website Leads Modal — Reddington admin only */}
       {isReddingtonAdmin && showWebsiteLeads && (
         <WebsiteLeadsModal onClose={() => setShowWebsiteLeads(false)} />
+      )}
+
+      {/* Westlake Leads Modal */}
+      {showWestlakeLeads && (
+        <WebsiteLeadsModal
+          targetOrgName={isReddingtonAdmin ? 'Westlake' : undefined}
+          title="Westlake Leads"
+          onClose={() => setShowWestlakeLeads(false)}
+        />
       )}
 
       {/* Ben Website Leads Modal */}

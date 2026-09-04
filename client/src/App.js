@@ -111,13 +111,13 @@ function App() {
                 } />
 
                 <Route path="vendor-dashboard" element={
-                  <ProtectedRoute roles={['data_vendor', 'superadmin']}>
+                  <ProtectedRoute roles={['data_vendor', 'superadmin', 'admin']}>
                     <DataVendorDashboard />
                   </ProtectedRoute>
                 } />
 
                 <Route path="vendor-payment-status" element={
-                  <ProtectedRoute roles={['data_vendor', 'superadmin']}>
+                  <ProtectedRoute roles={['data_vendor', 'superadmin', 'admin']}>
                     <DataVendorDashboard />
                   </ProtectedRoute>
                 } />

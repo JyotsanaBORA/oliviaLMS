@@ -10,6 +10,7 @@ import {
 import axios from '../utils/axios';
 import toast from 'react-hot-toast';
 import LoadingSpinner from '../components/LoadingSpinner';
+import { useAuth } from '../contexts/AuthContext';
 
 // ── All 45 ViciDial columns for the records view ──────────────────
 const ALL_COLUMNS = [
@@ -108,8 +109,21 @@ function fmtCurrency(val) {
 
 // ─────────────────────────────────────────────────────────────────
 const DataVendorDashboard = () => {
+  const { user } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+
+  const isMainOrg = user?.role === 'superadmin' || (user?.organization?.name && user.organization.name.trim().toUpperCase() === 'REDDINGTON GLOBAL CONSULTANCY');
+  const [vendorsList, setVendorsList] = useState([]);
+  const [selectedVendorFilter, setSelectedVendorFilter] = useState('');
+
+  useEffect(() => {
+    if (isMainOrg) {
+      axios.get('/api/data-vendor-uploads/vendors')
+        .then(res => { if (res.data?.success) setVendorsList(res.data.data || []); })
+        .catch(() => {});
+    }
+  }, [isMainOrg]);
 
   // Three-level navigation state
   const [view, setView] = useState(
@@ -181,11 +195,13 @@ const DataVendorDashboard = () => {
     if (!quiet) setListsLoading(true);
     else setListsRefreshing(true);
     try {
-      const res = await axios.get('/api/data-vendor-uploads/lists');
+      const params = {};
+      if (isMainOrg && selectedVendorFilter) params.vendorId = selectedVendorFilter;
+      const res = await axios.get('/api/data-vendor-uploads/lists', { params });
       if (res.data?.success) setLists(res.data.data || []);
     } catch { toast.error('Failed to load lists'); }
     finally { setListsLoading(false); setListsRefreshing(false); }
-  }, []);
+  }, [isMainOrg, selectedVendorFilter]);
 
   useEffect(() => { fetchLists(); }, [fetchLists]);
 
@@ -193,7 +209,9 @@ const DataVendorDashboard = () => {
   const fetchRuns = useCallback(async (listName) => {
     setRunsLoading(true);
     try {
-      const res = await axios.get(`/api/data-vendor-uploads/lists/${encodeURIComponent(listName)}/runs`);
+      const params = {};
+      if (isMainOrg && selectedVendorFilter) params.vendorId = selectedVendorFilter;
+      const res = await axios.get(`/api/data-vendor-uploads/lists/${encodeURIComponent(listName)}/runs`, { params });
       if (res.data?.success) {
         const data = res.data.data || [];
         setRuns(data);
@@ -210,7 +228,7 @@ const DataVendorDashboard = () => {
       }
     } catch { toast.error('Failed to load runs'); }
     finally { setRunsLoading(false); }
-  }, []);
+  }, [isMainOrg, selectedVendorFilter]);
 
   // ── Fetch records for a run ──────────────────────────────────
   const fetchRecords = useCallback(async (runBatchId, page = 1) => {
@@ -219,6 +237,7 @@ const DataVendorDashboard = () => {
       const params = { page, limit: pagination.limit };
       if (statusFilter) params.statusFilter = statusFilter;
       if (searchRef.current) params.search = searchRef.current;
+      if (isMainOrg && selectedVendorFilter) params.vendorId = selectedVendorFilter;
 
       const res = await axios.get(`/api/data-vendor-uploads/runs/${runBatchId}`, { params });
       if (res.data?.success) {
@@ -227,15 +246,17 @@ const DataVendorDashboard = () => {
       }
     } catch { toast.error('Failed to load records'); }
     finally { setRecordsLoading(false); }
-  }, [pagination.limit, statusFilter]);
+  }, [pagination.limit, statusFilter, isMainOrg, selectedVendorFilter]);
 
   // Fetch run stats when entering records view
   const fetchRunStats = useCallback(async (runBatchId) => {
     try {
-      const res = await axios.get(`/api/data-vendor-uploads/runs/${runBatchId}/stats`);
+      const params = {};
+      if (isMainOrg && selectedVendorFilter) params.vendorId = selectedVendorFilter;
+      const res = await axios.get(`/api/data-vendor-uploads/runs/${runBatchId}/stats`, { params });
       if (res.data?.success) setRunStats(res.data.data);
     } catch {}
-  }, []);
+  }, [isMainOrg, selectedVendorFilter]);
 
   // ── Fetch sales / enrolled-debt stats ───────────────────────
   const fetchSalesStats = useCallback(async (startDate = '', endDate = '') => {
@@ -244,6 +265,7 @@ const DataVendorDashboard = () => {
       const params = {};
       if (startDate) params.startDate = startDate;
       if (endDate) params.endDate = endDate;
+      if (isMainOrg && selectedVendorFilter) params.vendorId = selectedVendorFilter;
       const res = await axios.get('/api/data-vendor-uploads/sales-stats', { params });
       if (res.data?.success) {
         setSalesStats(res.data.data);
@@ -253,7 +275,7 @@ const DataVendorDashboard = () => {
       }
     } catch { toast.error('Failed to load sales stats'); }
     finally { setSalesLoading(false); }
-  }, []);
+  }, [isMainOrg, selectedVendorFilter]);
 
   // ── Fetch payment status records (vendor's own SALE leads) ────
   const fetchPaymentStatus = useCallback(async () => {
@@ -264,6 +286,7 @@ const DataVendorDashboard = () => {
       if (psStartDate)            params.startDate          = psStartDate;
       if (psEndDate)              params.endDate            = psEndDate;
       if (psPaymentFilter !== '') params.paymentStatusFilter = psPaymentFilter;
+      if (isMainOrg && selectedVendorFilter) params.vendorId = selectedVendorFilter;
       const res = await axios.get('/api/data-vendor-uploads/payment-status/vendor-sales', { params });
       setPsRecords(res.data.data || []);
       setPsTotal(res.data.total || 0);
@@ -271,7 +294,7 @@ const DataVendorDashboard = () => {
       setPsStatusBreakdown(res.data.statusBreakdown || {});
     } catch { toast.error('Failed to load payment status records'); }
     finally { setPsLoading(false); }
-  }, [psPage, psSearch, psStartDate, psEndDate, psPaymentFilter]);
+  }, [psPage, psSearch, psStartDate, psEndDate, psPaymentFilter, isMainOrg, selectedVendorFilter]);
 
   useEffect(() => {
     if (view === 'payment-status') fetchPaymentStatus();
@@ -282,7 +305,7 @@ const DataVendorDashboard = () => {
   useEffect(() => {
     if (!listsLoading) fetchSalesStats();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [listsLoading]);
+  }, [listsLoading, selectedVendorFilter]);
 
   // Refetch when statusFilter changes (records view)
   useEffect(() => {
@@ -461,7 +484,13 @@ const DataVendorDashboard = () => {
               )}
             </div>
             <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
-              {view === 'lists' ? 'Data Vendor Dashboard' :
+              {view === 'lists' ? (
+                isMainOrg ? (
+                  selectedVendorFilter ? `${vendorsList.find(v => v._id === selectedVendorFilter)?.name || 'Vendor'} Data Dashboard` : 'Data Vendor Dashboard'
+                ) : (
+                  user?.organization?.name ? `${user.organization.name} Data Portal` : 'Data Vendor Dashboard'
+                )
+              ) :
                view === 'payment-status' ? 'Payment Status' :
                view === 'runs' ? selectedList?.listName :
                `Run #${selectedRun?.runNumber}${selectedRun?.runLabel ? ` — ${selectedRun.runLabel}` : ''}`}
@@ -476,6 +505,27 @@ const DataVendorDashboard = () => {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          {isMainOrg && vendorsList.length > 0 && view === 'lists' && (
+            <div className="flex items-center gap-1.5 bg-slate-800 px-3 py-2 rounded-xl border border-slate-600">
+              <span className="text-xs text-slate-300 font-semibold">Vendor:</span>
+              <select
+                value={selectedVendorFilter}
+                onChange={e => {
+                  setSelectedVendorFilter(e.target.value);
+                  setSelectedList(null);
+                  setSelectedRun(null);
+                }}
+                className="bg-transparent text-white text-xs font-semibold focus:outline-none cursor-pointer"
+              >
+                <option value="" className="bg-slate-800 text-white">All Vendors</option>
+                {vendorsList.map(v => (
+                  <option key={v._id} value={v._id} className="bg-slate-800 text-white">
+                    {v.name} {v.organization?.name ? `(${v.organization.name})` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           {view !== 'lists' && (
             <button onClick={goBack}
               className="px-3 py-2.5 text-sm font-medium bg-slate-700 hover:bg-slate-600 text-white border border-slate-600 rounded-xl flex items-center gap-1.5 transition-all">

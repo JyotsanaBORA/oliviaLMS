@@ -21,13 +21,15 @@ const getWebsiteLeadsAccess = async (user) => {
   if (user.role === 'superadmin') return { allowed: true, canWrite: true, orgFilter: null };
   if (user.role !== 'admin') return { allowed: false };
   try {
-    const org = await Organization.findById(user.organization).lean();
+    const orgId = user.organization?._id || user.organization;
+    if (!orgId) return { allowed: false };
+    const org = await Organization.findById(orgId).lean();
     if (!org) return { allowed: false };
-    const isGlobal = org.name === 'REDDINGTON GLOBAL CONSULTANCY';
+    const isGlobal = (org.name || '').trim().toUpperCase() === 'REDDINGTON GLOBAL CONSULTANCY';
     return {
       allowed: true,
-      canWrite: isGlobal,
-      orgFilter: isGlobal ? null : user.organization,
+      canWrite: true,
+      orgFilter: isGlobal ? null : org._id,
     };
   } catch { return { allowed: false }; }
 };
@@ -39,8 +41,8 @@ const getWebsiteLeadsAccess = async (user) => {
 router.get('/', protect, async (req, res) => {
   try {
     const access = await getWebsiteLeadsAccess(req.user);
-    if (!access.allowed || !access.canWrite) {
-      return res.status(403).json({ success: false, message: 'Access restricted to Reddington admin.' });
+    if (!access.allowed) {
+      return res.status(403).json({ success: false, message: 'Access denied.' });
     }
 
     const page   = Math.max(1, parseInt(req.query.page)  || 1);
@@ -50,6 +52,18 @@ router.get('/', protect, async (req, res) => {
     const search = (req.query.search || '').trim();
 
     const filter = {};
+    if (access.orgFilter) {
+      filter.organization = access.orgFilter;
+    } else if (req.query.organizationId) {
+      filter.organization = req.query.organizationId;
+    } else if (req.query.orgName) {
+      const matchOrgs = await Organization.find({
+        name: { $regex: req.query.orgName.trim(), $options: 'i' }
+      }).select('_id').lean();
+      if (matchOrgs.length > 0) {
+        filter.organization = { $in: matchOrgs.map(o => o._id) };
+      }
+    }
     if (status && ['new', 'reviewed', 'imported', 'rejected'].includes(status)) {
       filter.status = status;
     }
@@ -98,6 +112,7 @@ router.get('/', protect, async (req, res) => {
 
     // Summary counts based on deduplicated unique leads
     const summaryFilter = {};
+    if (filter.organization) summaryFilter.organization = filter.organization;
     if (filter.$or) summaryFilter.$or = filter.$or;
 
     const summaryCounts = await WebsiteLead.aggregate([
@@ -148,8 +163,8 @@ router.get('/', protect, async (req, res) => {
 router.patch('/:id/status', protect, async (req, res) => {
   try {
     const access = await getWebsiteLeadsAccess(req.user);
-    if (!access.allowed || !access.canWrite) {
-      return res.status(403).json({ success: false, message: 'Access restricted to Reddington admin.' });
+    if (!access.allowed) {
+      return res.status(403).json({ success: false, message: 'Access denied.' });
     }
 
     const { status } = req.body;
@@ -157,8 +172,11 @@ router.patch('/:id/status', protect, async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid status value.' });
     }
 
-    const lead = await WebsiteLead.findByIdAndUpdate(
-      req.params.id,
+    const leadQuery = { _id: req.params.id };
+    if (access.orgFilter) leadQuery.organization = access.orgFilter;
+
+    const lead = await WebsiteLead.findOneAndUpdate(
+      leadQuery,
       { status },
       { new: true, runValidators: true }
     ).lean();
@@ -178,11 +196,14 @@ router.patch('/:id/status', protect, async (req, res) => {
 router.post('/:id/import', protect, async (req, res) => {
   try {
     const access = await getWebsiteLeadsAccess(req.user);
-    if (!access.allowed || !access.canWrite) {
-      return res.status(403).json({ success: false, message: 'Access restricted to Reddington admin.' });
+    if (!access.allowed) {
+      return res.status(403).json({ success: false, message: 'Access denied.' });
     }
 
-    const websiteLead = await WebsiteLead.findById(req.params.id);
+    const leadQuery = { _id: req.params.id };
+    if (access.orgFilter) leadQuery.organization = access.orgFilter;
+
+    const websiteLead = await WebsiteLead.findOne(leadQuery);
     if (!websiteLead) {
       return res.status(404).json({ success: false, message: 'Website lead not found.' });
     }
@@ -247,15 +268,18 @@ router.post('/:id/import', protect, async (req, res) => {
 router.get('/:id', protect, async (req, res) => {
   try {
     const access = await getWebsiteLeadsAccess(req.user);
-    if (!access.allowed || !access.canWrite) {
-      return res.status(403).json({ success: false, message: 'Access restricted to Reddington admin.' });
+    if (!access.allowed) {
+      return res.status(403).json({ success: false, message: 'Access denied.' });
     }
 
     if (!req.params.id.match(/^[a-f\d]{24}$/i)) {
       return res.status(400).json({ success: false, message: 'Invalid lead ID.' });
     }
 
-    const lead = await WebsiteLead.findById(req.params.id)
+    const leadQuery = { _id: req.params.id };
+    if (access.orgFilter) leadQuery.organization = access.orgFilter;
+
+    const lead = await WebsiteLead.findOne(leadQuery)
       .populate('organization', 'name')
       .lean();
 
@@ -274,8 +298,8 @@ router.get('/:id', protect, async (req, res) => {
 router.post('/:id/comments', protect, async (req, res) => {
   try {
     const access = await getWebsiteLeadsAccess(req.user);
-    if (!access.allowed || !access.canWrite) {
-      return res.status(403).json({ success: false, message: 'Access restricted to Reddington admin.' });
+    if (!access.allowed) {
+      return res.status(403).json({ success: false, message: 'Access denied.' });
     }
 
     if (!req.params.id.match(/^[a-f\d]{24}$/i)) {
@@ -297,8 +321,11 @@ router.post('/:id/comments', protect, async (req, res) => {
       createdAt:  new Date(),
     };
 
-    const lead = await WebsiteLead.findByIdAndUpdate(
-      req.params.id,
+    const leadQuery = { _id: req.params.id };
+    if (access.orgFilter) leadQuery.organization = access.orgFilter;
+
+    const lead = await WebsiteLead.findOneAndUpdate(
+      leadQuery,
       { $push: { comments: newComment } },
       { new: true, runValidators: true }
     ).lean();

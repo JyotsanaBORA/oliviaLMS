@@ -1,4 +1,4 @@
-﻿const express = require('express');
+const express = require('express');
 const { body } = require('express-validator');
 const User = require('../models/User');
 const Organization = require('../models/Organization');
@@ -192,7 +192,7 @@ router.post('/create-agent', protect, registerValidation, handleValidationErrors
     });
 
     // Populate organization for response
-    await user.populate('organization', 'name showLoopLeads');
+    await user.populate('organization', 'name showLoopLeads showVendorData');
 
     res.status(201).json({
       success: true,
@@ -405,7 +405,7 @@ router.post('/login', loginValidation, handleValidationErrors, async (req, res) 
     }
 
     // Populate organization name for client-side role checks
-    await user.populate('organization', 'name showLoopLeads');
+    await user.populate('organization', 'name showLoopLeads showVendorData');
 
     // Update last login
     user.lastLogin = new Date();
@@ -485,7 +485,7 @@ router.get('/me', protect, async (req, res) => {
     const user = req.user;
 
     if (user && user.populate) {
-      await user.populate('organization', 'name showLoopLeads');
+      await user.populate('organization', 'name showLoopLeads showVendorData');
     }
 
     const mainOrgAdmin = user.role === 'admin' ? await isMainOrgAdminUser(user) : false;
@@ -692,7 +692,7 @@ router.get('/agents', protect, async (req, res) => {
     }
 
     const agents = await User.find(query)
-      .populate('organization', 'name showLoopLeads')
+      .populate('organization', 'name showLoopLeads showVendorData')
       .populate('createdBy', 'name email')
       .select('-password');
 
@@ -1043,7 +1043,7 @@ router.get('/admins', protect, async (req, res) => {
     const admins = await User.find(query)
       .select('-password')
       .populate('createdBy', 'name email')
-      .populate('organization', 'name showLoopLeads');
+      .populate('organization', 'name showLoopLeads showVendorData');
 
     res.status(200).json({
       success: true,

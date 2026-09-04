@@ -89,6 +89,11 @@ const organizationSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+  // When true, the Vendor Data workflow is enabled for this organisation.
+  showVendorData: {
+    type: Boolean,
+    default: false,
+  },
   isActive: {
     type: Boolean,
     default: true

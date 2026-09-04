@@ -40,7 +40,7 @@ const fmt = (v) => (v === undefined || v === null || v === '') ? '—' : v;
 const fmtDate = (d) => d ? new Date(d).toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
 const fmtMoney = (n) => n != null ? `$${Number(n).toLocaleString()}` : '—';
 
-const WebsiteLeadsModal = ({ onClose }) => {
+const WebsiteLeadsModal = ({ onClose, title = 'Website Leads', targetOrgName }) => {
   const [leads, setLeads]           = useState([]);
   const [summary, setSummary]       = useState({ new: 0, reviewed: 0, imported: 0, rejected: 0, total: 0 });
   const [loading, setLoading]       = useState(true);
@@ -78,6 +78,7 @@ const WebsiteLeadsModal = ({ onClose }) => {
     try {
       const params = new URLSearchParams({ page, limit: 50 });
       if (statusFilter) params.set('status', statusFilter);
+      if (targetOrgName) params.set('orgName', targetOrgName);
       if (search.trim()) params.set('search', search.trim());
 
       const res = await axios.get(`/api/website-leads?${params}`);
@@ -93,7 +94,7 @@ const WebsiteLeadsModal = ({ onClose }) => {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [statusFilter, search, pagination.page]);
+  }, [statusFilter, search, targetOrgName, pagination.page]);
 
   useEffect(() => { fetchLeads({ page: 1 }); }, [statusFilter]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -104,6 +105,7 @@ const WebsiteLeadsModal = ({ onClose }) => {
       // Fetch all pages (up to 5000 rows) without pagination
       const params = new URLSearchParams({ page: 1, limit: 5000 });
       if (statusFilter) params.set('status', statusFilter);
+      if (targetOrgName) params.set('orgName', targetOrgName);
       if (search.trim()) params.set('search', search.trim());
       const res = await axios.get(`/api/website-leads?${params}`);
       const rows = res.data?.data || [];
@@ -224,8 +226,8 @@ const WebsiteLeadsModal = ({ onClose }) => {
                 <Globe className="h-5 w-5 text-white" />
               </div>
               <div>
-                <h2 className="text-lg font-bold text-white">Website Leads</h2>
-                <p className="text-xs text-teal-100">Submissions from marketing website forms</p>
+                <h2 className="text-lg font-bold text-white">{title}</h2>
+                <p className="text-xs text-teal-100">Submissions from campaign forms and webhook integration</p>
               </div>
             </div>
             <button onClick={onClose} className="text-white hover:text-teal-200 transition-colors p-1">

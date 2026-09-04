@@ -83,7 +83,11 @@ const organizationValidation = [
   body('showLoopLeads')
     .optional()
     .isBoolean()
-    .withMessage('showLoopLeads must be a boolean value')
+    .withMessage('showLoopLeads must be a boolean value'),
+  body('showVendorData')
+    .optional()
+    .isBoolean()
+    .withMessage('showVendorData must be a boolean value')
 ];
 
 const organizationCreateValidation = [
@@ -336,7 +340,7 @@ router.put('/:id', protect, organizationValidation, handleValidationErrors, asyn
       });
     }
 
-    const { name, description, address, phone, email, website, isActive, sourceIds, inboundDids, showLoopLeads } = req.body;
+    const { name, description, address, phone, email, website, isActive, sourceIds, inboundDids, showLoopLeads, showVendorData } = req.body;
 
     // Check if organization exists
     const organization = await Organization.findById(req.params.id);
@@ -382,6 +386,11 @@ router.put('/:id', protect, organizationValidation, handleValidationErrors, asyn
     // Only update showLoopLeads when explicitly provided
     if (typeof showLoopLeads === 'boolean') {
       updateData.showLoopLeads = showLoopLeads;
+    }
+
+    // Only update showVendorData when explicitly provided
+    if (typeof showVendorData === 'boolean') {
+      updateData.showVendorData = showVendorData;
     }
 
     // Update organization
@@ -725,9 +734,9 @@ router.post('/:id/webhook-key', protect, async (req, res) => {
 // @access  Private (SuperAdmin or Reddington admin)
 const generateWebhookKeyHandler = async (req, res) => {
   try {
-    const allowed = req.user.role === 'superadmin' || (await isReddingtonAdmin(req.user));
+    const allowed = req.user.role === 'superadmin' || (await isReddingtonAdmin(req.user)) || (req.user.role === 'admin' && String(req.user.organization) === String(req.params.id));
     if (!allowed) {
-      return res.status(403).json({ success: false, message: 'Only superadmin or Reddington admin can generate webhook keys.' });
+      return res.status(403).json({ success: false, message: 'Only superadmin, Reddington admin, or organization admin can generate webhook keys.' });
     }
 
     const organization = await Organization.findById(req.params.id);
@@ -736,7 +745,10 @@ const generateWebhookKeyHandler = async (req, res) => {
     }
 
     const newKey = crypto.randomBytes(32).toString('hex');
+    organization.webhookApiKey = newKey;
     organization.benWebhookApiKey = newKey;
+    await organization.save();
+
     const lowerName = (organization.name || '').toLowerCase();
     let webhookPath = '/api/webhook/leads';
     if (lowerName.includes('truclick') || lowerName.includes('tru click')) {
@@ -750,6 +762,7 @@ const generateWebhookKeyHandler = async (req, res) => {
       message: 'Webhook API key generated. Save it now — it will not be shown again in full.',
       data: {
         organizationId: organization._id,
+        webhookApiKey: newKey,
         benWebhookApiKey: newKey,
         webhookUrl: `${req.protocol}://${req.get('host')}${webhookPath}`
       }

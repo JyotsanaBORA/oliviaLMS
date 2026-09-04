@@ -133,26 +133,72 @@ function requireRoles(...roles) {
 }
 
 // Helper: build sharedWith match for data_vendor vs admin viewing
-function buildVendorMatch(req) {
+async function buildVendorMatch(req) {
   if (req.user.role === 'data_vendor') {
     return { sharedWith: req.user._id };
   }
   if (req.query.vendorId) {
     return { sharedWith: new mongoose.Types.ObjectId(req.query.vendorId) };
   }
-  return {};
+
+  // Check if admin is from Reddington (main org) or superadmin
+  let isMainOrg = req.user.role === 'superadmin';
+  if (!isMainOrg && req.user.organization) {
+    let org = req.user.organization;
+    if (mongoose.Types.ObjectId.isValid(org)) {
+      const Organization = require('../models/Organization');
+      const foundOrg = await Organization.findById(org).select('name').lean();
+      if (foundOrg && foundOrg.name === 'REDDINGTON GLOBAL CONSULTANCY') {
+        isMainOrg = true;
+      }
+    } else if (typeof org === 'object' && org.name === 'REDDINGTON GLOBAL CONSULTANCY') {
+      isMainOrg = true;
+    }
+  }
+
+  if (isMainOrg) {
+    return {};
+  }
+
+  // For tenant admin (e.g. Westlake Origination Center):
+  if (req.user.organization) {
+    const orgId = req.user.organization._id || req.user.organization;
+    const orgUsers = await User.find({ organization: orgId }).select('_id').lean();
+    const userIds = orgUsers.map(u => u._id);
+    if (!userIds.some(id => id.toString() === req.user._id.toString())) {
+      userIds.push(req.user._id);
+    }
+    return { sharedWith: { $in: userIds } };
+  }
+
+  return { sharedWith: req.user._id };
 }
 
 // ─────────────────────────────────────────────────────────────────
 // GET /api/data-vendor-uploads/vendors
-// List all data_vendor users (for admin share dropdown)
+// List data_vendor users + authorized tenant orgs (for admin share dropdown)
 // Access: admin, superadmin
 // ─────────────────────────────────────────────────────────────────
 router.get('/vendors', protect, requireAdminOrSuper, async (req, res) => {
   try {
-    const vendors = await User.find({ role: 'data_vendor', isActive: true })
-      .select('name email organization')
-      .populate('organization', 'name')
+    const Organization = require('../models/Organization');
+    const enabledOrgs = await Organization.find({
+      $or: [
+        { showVendorData: true },
+        { name: { $regex: /westlake/i } }
+      ]
+    }).select('_id').lean();
+    const enabledOrgIds = enabledOrgs.map(o => o._id);
+
+    const vendors = await User.find({
+      $or: [
+        { role: 'data_vendor' },
+        { role: 'admin', organization: { $in: enabledOrgIds } }
+      ],
+      isActive: true
+    })
+      .select('name email role organization')
+      .populate('organization', 'name showVendorData')
       .lean();
     res.json({ success: true, data: vendors });
   } catch (err) {
@@ -206,8 +252,8 @@ router.post(
 
       // Validate vendor
       const targetVendor = await User.findById(vendorId);
-      if (!targetVendor || targetVendor.role !== 'data_vendor') {
-        return res.status(400).json({ success: false, message: 'Invalid data vendor user' });
+      if (!targetVendor || !['data_vendor', 'admin'].includes(targetVendor.role)) {
+        return res.status(400).json({ success: false, message: 'Invalid data vendor or organisation admin user' });
       }
 
       // Auto-calculate run number: count existing runs for this vendor+list
@@ -289,7 +335,7 @@ router.post(
 // ─────────────────────────────────────────────────────────────────
 router.get('/lists', protect, requireRoles('data_vendor', 'admin', 'superadmin'), async (req, res) => {
   try {
-    const match = buildVendorMatch(req);
+    const match = await buildVendorMatch(req);
 
     const lists = await DataVendorUpload.aggregate([
       { $match: match },
@@ -330,7 +376,8 @@ router.get('/lists', protect, requireRoles('data_vendor', 'admin', 'superadmin')
 router.get('/lists/:listName/runs', protect, requireRoles('data_vendor', 'admin', 'superadmin'), async (req, res) => {
   try {
     const listName = decodeURIComponent(req.params.listName);
-    const match = { listName, ...buildVendorMatch(req) };
+    const vendorMatch = await buildVendorMatch(req);
+    const match = { listName, ...vendorMatch };
 
     // Two-stage aggregation: status counts per run, then pivot into dispositions map
     const runs = await DataVendorUpload.aggregate([
@@ -395,9 +442,8 @@ router.get('/runs/:runBatchId', protect, requireRoles('data_vendor', 'admin', 's
     const limitNum = Math.min(500, Math.max(1, parseInt(limit)));
 
     const query = { runBatchId };
-    if (req.user.role === 'data_vendor') {
-      query.sharedWith = req.user._id;
-    }
+    const vendorMatch = await buildVendorMatch(req);
+    Object.assign(query, vendorMatch);
 
     if (statusFilter) {
       query.status = { $regex: new RegExp(`^${statusFilter.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') };
@@ -445,7 +491,8 @@ router.get('/runs/:runBatchId/stats', protect, requireRoles('data_vendor', 'admi
   try {
     const { runBatchId } = req.params;
     const query = { runBatchId };
-    if (req.user.role === 'data_vendor') query.sharedWith = req.user._id;
+    const vendorMatch = await buildVendorMatch(req);
+    Object.assign(query, vendorMatch);
 
     const [result] = await DataVendorUpload.aggregate([
       { $match: query },
@@ -490,7 +537,8 @@ router.get('/runs/:runBatchId/export', protect, requireRoles('data_vendor', 'adm
   try {
     const { runBatchId } = req.params;
     const query = { runBatchId };
-    if (req.user.role === 'data_vendor') query.sharedWith = req.user._id;
+    const vendorMatch = await buildVendorMatch(req);
+    Object.assign(query, vendorMatch);
 
     const records = await DataVendorUpload.find(query)
       .select('-__v -_id -entryDateParsed -sharedWith -uploadedBy -organization')
@@ -541,7 +589,8 @@ router.get('/runs/:runBatchId/export', protect, requireRoles('data_vendor', 'adm
 router.get('/lists/:listName/export', protect, requireRoles('data_vendor', 'admin', 'superadmin'), async (req, res) => {
   try {
     const listName = decodeURIComponent(req.params.listName);
-    const query = { listName, ...buildVendorMatch(req) };
+    const vendorMatch = await buildVendorMatch(req);
+    const query = { listName, ...vendorMatch };
 
     const records = await DataVendorUpload.find(query)
       .select('-__v -_id -entryDateParsed -sharedWith -uploadedBy -organization')
@@ -593,7 +642,7 @@ router.get('/lists/:listName/export', protect, requireRoles('data_vendor', 'admi
 // ─────────────────────────────────────────────────────────────────
 router.get('/export', protect, requireRoles('data_vendor', 'admin', 'superadmin'), async (req, res) => {
   try {
-    const query = buildVendorMatch(req);
+    const query = await buildVendorMatch(req);
 
     const records = await DataVendorUpload.find(query)
       .select('-__v -_id -entryDateParsed -sharedWith -uploadedBy -organization')
@@ -736,7 +785,7 @@ router.post('/manual-sale', protect, requireAdminOrSuper, async (req, res) => {
 // ─────────────────────────────────────────────────────────────────
 router.get('/sales-stats', protect, requireRoles('data_vendor', 'admin', 'superadmin'), async (req, res) => {
   try {
-    const match = buildVendorMatch(req);
+    const match = await buildVendorMatch(req);
 
     // Only SALE records (case-insensitive)
     match.status = { $regex: /^SALE$/i };
@@ -861,7 +910,7 @@ router.get('/sales-stats', protect, requireRoles('data_vendor', 'admin', 'supera
 // ─────────────────────────────────────────────────────────────────
 router.get('/sales-export', protect, requireRoles('data_vendor', 'admin', 'superadmin'), async (req, res) => {
   try {
-    const match = buildVendorMatch(req);
+    const match = await buildVendorMatch(req);
     match.status = { $regex: /^SALE$/i };
 
     if (req.query.startDate || req.query.endDate) {
@@ -935,7 +984,7 @@ router.get('/sales-records-day', protect, requireRoles('data_vendor', 'admin', '
       return res.status(400).json({ success: false, message: 'date param required (YYYY-MM-DD)' });
     }
 
-    const match = buildVendorMatch(req);
+    const match = await buildVendorMatch(req);
     match.status = { $regex: /^SALE$/i };
 
     const dayStart = new Date(date + 'T00:00:00.000Z');
@@ -968,7 +1017,7 @@ router.get('/sales-export-day', protect, requireRoles('data_vendor', 'admin', 's
       return res.status(400).json({ success: false, message: 'date param required (YYYY-MM-DD)' });
     }
 
-    const match = buildVendorMatch(req);
+    const match = await buildVendorMatch(req);
     match.status = { $regex: /^SALE$/i };
 
     // Use UTC day boundaries — consistent with the $dateToString grouping in sales-stats
@@ -1231,7 +1280,8 @@ router.get('/payment-status/vendor-sales', protect, requireRoles('data_vendor', 
   try {
     const { search, startDate, endDate, paymentStatusFilter, page = 1, limit = 50 } = req.query;
 
-    const match = { status: { $regex: /^SALE$/i }, ...buildVendorMatch(req) };
+    const vendorMatch = await buildVendorMatch(req);
+    const match = { status: { $regex: /^SALE$/i }, ...vendorMatch };
 
     if (paymentStatusFilter !== undefined && paymentStatusFilter !== '') {
       if (paymentStatusFilter === 'not_set') {
@@ -1322,7 +1372,8 @@ router.get('/payment-status/vendor-sales-export', protect, requireRoles('data_ve
   try {
     const { search, startDate, endDate, paymentStatusFilter } = req.query;
 
-    const match = { status: { $regex: /^SALE$/i }, ...buildVendorMatch(req) };
+    const vendorMatch = await buildVendorMatch(req);
+    const match = { status: { $regex: /^SALE$/i }, ...vendorMatch };
 
     if (paymentStatusFilter && paymentStatusFilter !== '') {
       if (paymentStatusFilter === 'not_set') {

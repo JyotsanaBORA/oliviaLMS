@@ -224,7 +224,9 @@ const DataVendorShareModal = ({ isOpen, onClose }) => {
               >
                 <option value="">Select a data vendor…</option>
                 {vendors.map(v => (
-                  <option key={v._id} value={v._id}>{v.name} — {v.email}</option>
+                  <option key={v._id} value={v._id}>
+                    {v.name} ({v.email}){v.organization?.name ? ` — [${v.organization.name}]` : ''}
+                  </option>
                 ))}
               </select>
             )}

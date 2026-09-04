@@ -247,11 +247,21 @@ const Layout = ({ onDashboardRefresh }) => {
         ...baseItems
       ];
     } else if (user.role === 'admin') {
+      const isVendorDataEnabled = user.isMainOrgAdmin ||
+        user.organization?.showVendorData === true ||
+        user.organization?.name?.toLowerCase().includes('westlake');
+
       const adminItems = [
         { name: 'Dashboard', href: '/admin', icon: BarChart3 },
         { name: 'Today Leads', href: '/leads', icon: Users },
-        { name: 'Chat', href: '/chat', icon: MessageSquare },
       ];
+
+      if (isVendorDataEnabled) {
+        adminItems.push({ name: 'Vendor Data', href: '/vendor-dashboard', icon: Database });
+      }
+
+      adminItems.push({ name: 'Chat', href: '/chat', icon: MessageSquare });
+
       if (user.isMainOrgAdmin) {
         adminItems.push({ name: 'Payment Status', href: '/payment-status', icon: CreditCard });
       }
@@ -408,7 +418,9 @@ const Layout = ({ onDashboardRefresh }) => {
               
               <div className="ml-4 md:ml-0">
                 <h2 className={`text-xl font-semibold ${showRedTopbarAlert ? 'text-white' : 'text-gray-900'}`}>
-                  {user.role === 'admin' ? 'Admin Dashboard' :
+                  {location.pathname === '/vendor-dashboard' ? 'Data Vendor Dashboard' :
+                   location.pathname === '/vendor-payment-status' || location.pathname === '/payment-status' ? 'Payment Status' :
+                   user.role === 'admin' ? 'Admin Dashboard' :
                    user.role === 'agent2' ? 'Leads Management' :
                    user.role === 'restricted_admin' ? 'Restricted Admin Dashboard' : 'Lead Generator'}
                 </h2>
