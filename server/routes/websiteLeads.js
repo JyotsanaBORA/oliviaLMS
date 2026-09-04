@@ -63,6 +63,14 @@ router.get('/', protect, async (req, res) => {
       if (matchOrgs.length > 0) {
         filter.organization = { $in: matchOrgs.map(o => o._id) };
       }
+    } else {
+      // Default to Reddington / main org only so other organizations' leads do not mix into Website Leads
+      const mainOrg = await Organization.findOne({
+        name: { $regex: 'REDDINGTON', $options: 'i' }
+      }).select('_id').lean();
+      if (mainOrg) {
+        filter.organization = mainOrg._id;
+      }
     }
     if (status && ['new', 'reviewed', 'imported', 'rejected'].includes(status)) {
       filter.status = status;

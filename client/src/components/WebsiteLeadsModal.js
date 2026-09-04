@@ -96,7 +96,7 @@ const WebsiteLeadsModal = ({ onClose, title = 'Website Leads', targetOrgName }) 
     }
   }, [statusFilter, search, targetOrgName, pagination.page]);
 
-  useEffect(() => { fetchLeads({ page: 1 }); }, [statusFilter]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { fetchLeads({ page: 1 }); }, [statusFilter, targetOrgName]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Export all matching leads to CSV
   const handleExport = async () => {
