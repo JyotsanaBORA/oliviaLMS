@@ -272,7 +272,7 @@ const AdminDashboard = () => {
     }
     
     try {
-      const response = await axios.get('/api/leads/dashboard/stats');
+      const response = await axios.get(`/api/leads/dashboard/stats?_t=${Date.now()}`);
       // Handle the nested response structure
       const statsData = response.data?.data || response.data;
       setStats(statsData);

@@ -3,6 +3,7 @@ const WebsiteLead = require('../models/WebsiteLead');
 const Lead = require('../models/Lead');
 const Organization = require('../models/Organization');
 const { protect } = require('../middleware/auth');
+const cache = require('../utils/cache');
 
 const router = express.Router();
 
@@ -257,6 +258,23 @@ router.post('/:id/import', protect, async (req, res) => {
     websiteLead.status = 'imported';
     websiteLead.importedLeadId = importedLead._id;
     await websiteLead.save();
+
+    // Clear stats cache so dashboard cards update in real time
+    cache.clear();
+
+    // Emit real-time leadCreated event
+    if (req.io) {
+      const eventData = {
+        lead: importedLead,
+        createdBy: req.user.name || 'Admin',
+        organizationId: importedLead.organization
+      };
+      req.io.emit('leadCreated', eventData);
+      req.io.to('admin').emit('leadCreated', eventData);
+      req.io.to('superadmin').emit('leadCreated', eventData);
+      req.io.to('agent2').emit('leadCreated', eventData);
+      req.io.to('agent1').emit('leadCreated', eventData);
+    }
 
     return res.status(201).json({
       success: true,

@@ -107,15 +107,13 @@ const buildAdminLeadScopeFilter = async (user) => {
   if (adminOrg.name === 'REDDINGTON GLOBAL CONSULTANCY') return null; // no restriction
   const hasSourceIds = Array.isArray(adminOrg.sourceIds) && adminOrg.sourceIds.length > 0;
   const hasInboundDids = Array.isArray(adminOrg.inboundDids) && adminOrg.inboundDids.length > 0;
-  if (hasSourceIds && hasInboundDids) {
-    return { $or: [
-      { sourceId: { $in: adminOrg.sourceIds } },
-      { vicidialDid: { $in: adminOrg.inboundDids } }
-    ]};
-  }
-  if (hasSourceIds) return { sourceId: { $in: adminOrg.sourceIds } };
-  if (hasInboundDids) return { vicidialDid: { $in: adminOrg.inboundDids } };
-  return { organization: user.organization };
+  
+  const orgConditions = [{ organization: user.organization }];
+  if (hasSourceIds) orgConditions.push({ sourceId: { $in: adminOrg.sourceIds } });
+  if (hasInboundDids) orgConditions.push({ vicidialDid: { $in: adminOrg.inboundDids } });
+  
+  if (orgConditions.length === 1) return orgConditions[0];
+  return { $or: orgConditions };
 };
 
 // Validation rules
@@ -1922,16 +1920,19 @@ router.put('/:id', protect, updateLeadValidation, handleValidationErrors, async 
 
     // Check permissions based on user role
     if (req.user.role === 'agent1') {
-      console.log('User is agent1, checking if they created this lead...');
-      // Agent1 can only update their own leads
-      if (lead.createdBy._id.toString() !== req.user._id.toString()) {
-        console.log('Agent1 trying to update lead they did not create');
+      console.log('User is agent1, checking authorization...');
+      const isCreator = lead.createdBy && (lead.createdBy._id ? lead.createdBy._id.toString() === req.user._id.toString() : lead.createdBy.toString() === req.user._id.toString());
+      const isAssigned = lead.assignedTo && (lead.assignedTo._id ? lead.assignedTo._id.toString() === req.user._id.toString() : lead.assignedTo.toString() === req.user._id.toString());
+      const isSameOrg = (lead.organization && req.user.organization && lead.organization.toString() === req.user.organization.toString());
+
+      if (!isCreator && !isAssigned && !isSameOrg) {
+        console.log('Agent1 not authorized to update this lead');
         return res.status(403).json({
           success: false,
-          message: 'Agent1 can only update leads they created'
+          message: 'Agent1 is not authorized to update this lead'
         });
       }
-      console.log('Agent1 authorized to update their own lead');
+      console.log('Agent1 authorized to update lead');
     } else if (req.user.role === 'admin') {
       console.log('User is admin, checking organization access...');
       // Get admin's organization
@@ -1969,11 +1970,12 @@ router.put('/:id', protect, updateLeadValidation, handleValidationErrors, async 
     let allowedFields = [];
     
     if (req.user.role === 'agent1') {
-      // Agent1 can update basic lead information but not status fields
+      // Agent1 can update basic lead information, notes, and status/disposition fields
       allowedFields = [
         'name', 'email', 'phone', 'alternatePhone', 'debtCategory', 'debtTypes',
         'totalDebtAmount', 'numberOfCreditors', 'monthlyDebtPayment', 'creditScore', 'creditScoreRange',
-        'address', 'city', 'state', 'zipcode', 'notes', 'company', 'source'
+        'address', 'city', 'state', 'zipcode', 'notes', 'company', 'source',
+        'status', 'leadStatus', 'contactStatus', 'disposition1', 'isDisposed', 'leadProgressStatus', 'qualificationStatus'
       ];
     } else if (req.user.role === 'admin') {
       // Check if admin is from REDDINGTON GLOBAL CONSULTANCY
@@ -1995,7 +1997,7 @@ router.put('/:id', protect, updateLeadValidation, handleValidationErrors, async 
           'callDisposition', 'engagementOutcome', 'disqualification',
           'followUpDate', 'followUpTime', 'followUpNotes', 'conversionValue', 'requestedLoanAmount',
           'leadProgressStatus', 'agent2LastAction', 'lastUpdatedBy', 'lastUpdatedAt',
-          'qualificationStatus', 'assignmentNotes', 'clientId'
+          'qualificationStatus', 'assignmentNotes', 'clientId', 'isDisposed', 'disposition1'
         ];
       } else {
         // Other organization admins have limited update access
@@ -2004,7 +2006,7 @@ router.put('/:id', protect, updateLeadValidation, handleValidationErrors, async 
           'callDisposition', 'engagementOutcome', 'disqualification',
           'followUpDate', 'followUpTime', 'followUpNotes', 'conversionValue', 'requestedLoanAmount',
           'leadProgressStatus', 'agent2LastAction', 'lastUpdatedBy', 'lastUpdatedAt',
-          'qualificationStatus', 'clientId'
+          'qualificationStatus', 'clientId', 'isDisposed', 'disposition1'
         ];
       }
     } else if (['agent2', 'superadmin'].includes(req.user.role)) {
@@ -2019,7 +2021,7 @@ router.put('/:id', protect, updateLeadValidation, handleValidationErrors, async 
         'callDisposition', 'engagementOutcome', 'disqualification',
         'followUpDate', 'followUpTime', 'followUpNotes', 'conversionValue', 'requestedLoanAmount',
         'leadProgressStatus', 'agent2LastAction', 'lastUpdatedBy', 'lastUpdatedAt',
-        'qualificationStatus', 'assignmentNotes', 'clientId'
+        'qualificationStatus', 'assignmentNotes', 'clientId', 'isDisposed', 'disposition1'
       ];
     }
 
@@ -2043,7 +2045,7 @@ router.put('/:id', protect, updateLeadValidation, handleValidationErrors, async 
     const canEditDraftDate = ['agent2', 'admin', 'superadmin'].includes(req.user.role);
     let normalizedDispositionInput;
 
-    if (isGtiOrg && hasDispositionField) {
+    if (hasDispositionField) {
       const rawDisposition = typeof req.body.disposition1 === 'string' ? req.body.disposition1.trim() : '';
       normalizedDispositionInput = rawDisposition;
 
@@ -2060,7 +2062,7 @@ router.put('/:id', protect, updateLeadValidation, handleValidationErrors, async 
       }
     }
 
-    if (isGtiOrg && hasIsDisposedField) {
+    if (hasIsDisposedField) {
       const shouldDispose = req.body.isDisposed === true;
       const effectiveDisposition = typeof normalizedDispositionInput === 'string'
         ? normalizedDispositionInput
@@ -2084,12 +2086,10 @@ router.put('/:id', protect, updateLeadValidation, handleValidationErrors, async 
         lead.isDisposed = false;
         lead.disposedBy = undefined;
       }
-    } else if (!isGtiOrg && (hasDispositionField || hasIsDisposedField)) {
-      console.log('Ignoring GTI-only disposition fields for non-GTI organization lead:', lead._id);
     }
 
-    // Automatic Status Resolution based on GTI Disposition
-    if (isGtiOrg && hasDispositionField) {
+    // Automatic Status Resolution based on Disposition
+    if (hasDispositionField) {
       const disp = typeof req.body.disposition1 === 'string' ? req.body.disposition1.trim() : '';
       
       if (disp === 'SALE - Sale Made') {
@@ -2104,7 +2104,8 @@ router.put('/:id', protect, updateLeadValidation, handleValidationErrors, async 
         disp === 'Loan - LOAN' ||
         disp === 'ND - No Debt' ||
         disp === 'NIAP - Not Interested After Pitch' ||
-        disp === 'NIBP - Not Interested Before Pitch'
+        disp === 'NIBP - Not Interested Before Pitch' ||
+        disp === 'NQ - Not Qualified'
       ) {
         lead.qualificationStatus = 'not-qualified';
       } else if (
@@ -2115,9 +2116,25 @@ router.put('/:id', protect, updateLeadValidation, handleValidationErrors, async 
         disp === 'DNC - DO NOT CALL' ||
         disp === 'N - No Answer' ||
         disp === 'HU - Hangup' ||
-        disp === 'LB - Language Barrier'
+        disp === 'LB - Language Barrier' ||
+        disp === 'WNU - Wrong Number'
       ) {
         lead.qualificationStatus = 'disqualified';
+      } else if (disp === 'CALLBK - Call Back' || disp === 'HLCB - Hot Lead Callback') {
+        lead.leadProgressStatus = 'Callback Needed';
+        lead.qualificationStatus = 'pending';
+      }
+    }
+
+    // Automatic Status Resolution based on Lead Progress Status (Agent 2 updates)
+    if (req.body.leadProgressStatus && !req.body.qualificationStatus) {
+      const prog = req.body.leadProgressStatus;
+      if (['SALE', 'Request for Loan', 'Existing Client', 'Sale Long Play', 'AIP Client'].includes(prog)) {
+        lead.qualificationStatus = 'qualified';
+      } else if (['Not Qualified', 'Unacceptable Creditors', 'Not Serviceable State', 'Affordability', 'DO NOT CALL - Litigator', 'DO NOT CALL', 'Hang-up', 'Not Interested', 'No Answer'].includes(prog)) {
+        lead.qualificationStatus = 'not-qualified';
+      } else if (['Callback Needed', 'Pending'].includes(prog)) {
+        lead.qualificationStatus = 'pending';
       }
     }
 
@@ -2206,24 +2223,26 @@ router.put('/:id', protect, updateLeadValidation, handleValidationErrors, async 
       });
     }
 
-    // Populate the updated lead
-    await lead.populate(['createdBy updatedBy', 'name email']);
+    // Safely populate references
+    try {
+      await lead.populate('createdBy updatedBy');
+    } catch (_) {}
+
+    // Invalidate stats cache immediately so dashboard reflects the update
+    cache.clear();
 
     // Emit real-time update
     if (req.io) {
-      req.io.emit('leadUpdated', {
+      const eventData = {
         lead: lead,
-        updatedBy: req.user.name
-      });
-      // Also emit to specific rooms
-      req.io.to('admin').emit('leadUpdated', {
-        lead: lead,
-        updatedBy: req.user.name
-      });
-      req.io.to('agent2').emit('leadUpdated', {
-        lead: lead,
-        updatedBy: req.user.name
-      });
+        updatedBy: req.user.name || req.user.email || 'Agent',
+        organizationId: lead.organization
+      };
+      req.io.emit('leadUpdated', eventData);
+      req.io.to('admin').emit('leadUpdated', eventData);
+      req.io.to('superadmin').emit('leadUpdated', eventData);
+      req.io.to('agent2').emit('leadUpdated', eventData);
+      req.io.to('agent1').emit('leadUpdated', eventData);
     }
 
     res.status(200).json({
@@ -2572,29 +2591,11 @@ router.get('/dashboard/stats', protect, async (req, res) => {
       });
       stats.activeAgents = activeAgents;
     } else if (role === 'admin') {
-      // Check if this admin belongs to REDDINGTON (same logic as the main leads list endpoint).
-      // REDDINGTON admin can see all organizations; other admins see only their own org / sourceId / inboundDid scope.
-      const adminOrganization = await Organization.findById(req.user.organization).select('name sourceIds inboundDids').lean();
+      // Use standard admin scope filter (Reddington sees all, tenant admins see their scoped leads)
+      const adminOrganization = await Organization.findById(req.user.organization).select('name').lean();
       const isReddingtonAdmin = adminOrganization && adminOrganization.name === 'REDDINGTON GLOBAL CONSULTANCY';
-      let orgFilter;
-      if (isReddingtonAdmin) {
-        orgFilter = {};
-      } else {
-        const hasSourceIds = adminOrganization && Array.isArray(adminOrganization.sourceIds) && adminOrganization.sourceIds.length > 0;
-        const hasInboundDids = adminOrganization && Array.isArray(adminOrganization.inboundDids) && adminOrganization.inboundDids.length > 0;
-        if (hasSourceIds && hasInboundDids) {
-          orgFilter = { $or: [
-            { sourceId: { $in: adminOrganization.sourceIds } },
-            { vicidialDid: { $in: adminOrganization.inboundDids } }
-          ]};
-        } else if (hasSourceIds) {
-          orgFilter = { sourceId: { $in: adminOrganization.sourceIds } };
-        } else if (hasInboundDids) {
-          orgFilter = { vicidialDid: { $in: adminOrganization.inboundDids } };
-        } else {
-          orgFilter = { organization: req.user.organization };
-        }
-      }
+      const scopeFilter = await buildAdminLeadScopeFilter(req.user);
+      const orgFilter = scopeFilter === null ? {} : scopeFilter;
 
       // Use single aggregation pipeline for better performance
       const aggregationResults = await Lead.aggregate([
@@ -2617,7 +2618,7 @@ router.get('/dashboard/stats', protect, async (req, res) => {
               { $count: 'count' }
             ],
             sales: [
-              { $match: { leadProgressStatus: { $in: ['SALE', 'Immediate Enrollment'] } } },
+              { $match: { leadProgressStatus: { $in: ['SALE', 'Immediate Enrollment', 'Sale Long Play'] } } },
               { $count: 'count' }
             ]
           }
