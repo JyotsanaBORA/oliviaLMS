@@ -10,7 +10,7 @@ import {
   DollarSign,
   Award,
   CheckCircle2,
-  Clock,
+  Clock
 } from 'lucide-react';
 import axios from '../utils/axios';
 import toast from 'react-hot-toast';

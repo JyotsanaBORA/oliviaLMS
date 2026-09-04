@@ -1,8 +1,8 @@
-﻿import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import toast from 'react-hot-toast';
-import { Eye, EyeOff, Mail, Lock, ArrowRight, Zap, Briefcase, Globe } from 'lucide-react';
+import { Eye, EyeOff, Mail, Lock, ArrowRight, Briefcase, Globe } from 'lucide-react';
 
 const INTL_URL   = process.env.REACT_APP_INTERNATIONAL_URL || 'http://localhost:3000';
 const TYPEWORDS  = ['Fast.', 'Secure.', 'Smart.', 'Reliable.', 'Scalable.'];
@@ -291,14 +291,12 @@ const LoginPage = () => {
         </div>
 
         {/* brand  top-left */}
-        <div style={{ position:'absolute', top:32, left:40, zIndex:6, display:'flex', alignItems:'center', gap:10 }}>
-          <div style={{ width:36, height:36, borderRadius:10, flexShrink:0, background:'linear-gradient(135deg,rgba(22,163,74,0.16),rgba(74,222,128,0.12))', border:'1px solid rgba(22,163,74,0.32)', display:'flex', alignItems:'center', justifyContent:'center', backdropFilter:'blur(10px)', boxShadow:'0 0 18px rgba(22,163,74,0.14)', animation:'dom-float-y 4s ease-in-out infinite' }}>
-            <Zap style={{ width:16, height:16, color:'#22c55e' }} />
-          </div>
-          <div>
-            <p className="dom-shimmer-text" style={{ fontWeight:900, fontSize:16, letterSpacing:'0.18em', margin:0 }}>IMMERGIX</p>
-            <p style={{ color:'rgba(148,163,184,0.55)', fontSize:10, margin:0, marginTop:1 }}>by Reddington Global</p>
-          </div>
+        <div style={{ position:'absolute', top:28, left:40, zIndex:6, display:'flex', alignItems:'center' }}>
+          <img 
+            src="/rglogo2.png" 
+            alt="Reddington Global Consultancy" 
+            style={{ height: 48, width: 'auto', objectFit: 'contain', filter: 'drop-shadow(0 4px 12px rgba(0,0,0,0.4))' }} 
+          />
         </div>
 
         {/* bottom headline */}
@@ -339,8 +337,11 @@ const LoginPage = () => {
 
               {/* mobile brand */}
               <div className="dom-mobile-brand" style={{ textAlign:'center', marginBottom:22, display:'none', transform:'translateZ(5px)' }}>
-                <p className="dom-shimmer-text" style={{ fontWeight:900, fontSize:18, letterSpacing:'0.18em', margin:0 }}>IMMERGIX</p>
-                <p style={{ color:'rgba(148,163,184,0.5)', fontSize:10, margin:'2px 0 0', textAlign:'center' }}>by Reddington Global</p>
+                <img 
+                  src="/rglogo2.png" 
+                  alt="Reddington Global Consultancy" 
+                  style={{ height: 42, width: 'auto', objectFit: 'contain', margin: '0 auto' }} 
+                />
               </div>
 
               {/* badge */}
@@ -415,7 +416,7 @@ const LoginPage = () => {
                   Switch to International LMS
                 </a>
                 <p style={{ color:'rgba(100,116,139,0.35)', fontSize:10, margin:'18px 0 0' }}>
-                   2026 IMMERGIX  Reddington Global
+                  &copy; {new Date().getFullYear()} Reddington Global Consultancy
                 </p>
               </div>
 

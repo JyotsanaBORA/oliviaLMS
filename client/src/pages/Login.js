@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { Eye, EyeOff, Mail, Lock, Globe, Home, ArrowRight, Zap, ShieldCheck } from 'lucide-react';
+import { Eye, EyeOff, Mail, Lock, Globe, Home, ArrowRight, ShieldCheck } from 'lucide-react';
 import LoadingSpinner from '../components/LoadingSpinner';
 import axios from 'axios';
 
@@ -298,14 +298,12 @@ const Login = () => {
         </div>
 
         {/* top-left brand */}
-        <div style={{ position:'absolute', top:32, left:40, zIndex:6, display:'flex', alignItems:'center', gap:10 }}>
-          <div style={{ width:36, height:36, borderRadius:10, flexShrink:0, background:'linear-gradient(135deg,rgba(56,189,248,0.14),rgba(129,140,248,0.14))', border:'1px solid rgba(56,189,248,0.28)', display:'flex', alignItems:'center', justifyContent:'center', backdropFilter:'blur(10px)', boxShadow:'0 0 18px rgba(56,189,248,0.12)', animation:'lms-float-y 4s ease-in-out infinite' }}>
-            <Zap style={{ width:16, height:16, color:'#38bdf8' }} />
-          </div>
-          <div>
-            <p className="lms-shimmer-text" style={{ fontWeight:900, fontSize:16, letterSpacing:'0.18em', margin:0 }}>IMMERGIX</p>
-            <p style={{ color:'rgba(148,163,184,0.55)', fontSize:10, margin:0, marginTop:1 }}>by Reddington Global</p>
-          </div>
+        <div style={{ position:'absolute', top:28, left:40, zIndex:6, display:'flex', alignItems:'center' }}>
+          <img 
+            src="/rglogo2.png" 
+            alt="Reddington Global Consultancy" 
+            style={{ height: 48, width: 'auto', objectFit: 'contain', filter: 'drop-shadow(0 4px 12px rgba(0,0,0,0.4))' }} 
+          />
         </div>
 
         <div style={{ position:'relative', zIndex:5, padding:'44px 48px 52px', animation:'lms-fadeup 1s ease-out both' }}>
@@ -341,8 +339,11 @@ const Login = () => {
             <div style={{ background:'linear-gradient(150deg,rgba(7,16,30,0.98) 0%,rgba(5,12,22,1) 100%)', borderRadius:24, padding:'38px', backdropFilter:'blur(24px)', boxShadow:`0 32px 72px rgba(0,0,0,0.6), 0 0 80px ${isDom ? 'rgba(249,115,22,0.05)' : 'rgba(56,189,248,0.05)'}`, transformStyle:'preserve-3d' }}>
 
               <div className="lms-mobile-brand" style={{ textAlign:'center', marginBottom:22, display:'none', transform:'translateZ(5px)' }}>
-                <p className="lms-shimmer-text" style={{ fontWeight:900, fontSize:18, letterSpacing:'0.18em', margin:0 }}>IMMERGIX</p>
-                <p style={{ color:'rgba(148,163,184,0.5)', fontSize:10, margin:'2px 0 0', textAlign:'center' }}>by Reddington Global</p>
+                <img 
+                  src="/rglogo2.png" 
+                  alt="Reddington Global Consultancy" 
+                  style={{ height: 42, width: 'auto', objectFit: 'contain', margin: '0 auto' }} 
+                />
               </div>
 
               {/* badge — z:20 */}
@@ -434,7 +435,7 @@ const Login = () => {
 
               {/* footer — z:4 */}
               <div style={{ transform:'translateZ(4px)', marginTop:26, paddingTop:18, borderTop:'1px solid rgba(255,255,255,0.04)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-                <p style={{ color:'#0f172a', fontSize:11, margin:0 }}>&copy; {new Date().getFullYear()} IMMERGIX &mdash; Reddington Global</p>
+                <p style={{ color:'#0f172a', fontSize:11, margin:0 }}>&copy; {new Date().getFullYear()} Reddington Global Consultancy</p>
                 <div style={{ display:'flex', alignItems:'center', gap:5 }}>
                   <div style={{ width:6, height:6, borderRadius:'50%', background:'#22c55e', boxShadow:'0 0 6px rgba(34,197,94,0.7)', animation:'lms-pulse-dot 2.2s ease-in-out infinite' }} />
                   <span style={{ color:'#22c55e', fontSize:11, fontWeight:600 }}>All systems operational</span>
