@@ -7,6 +7,8 @@ const cache = require('../utils/cache');
 
 const router = express.Router();
 
+const MAIN_ORG = (process.env.MAIN_ORG_NAME || 'REDDINGTON GLOBAL CONSULTANCY').trim().toUpperCase();
+
 // ---------------------------------------------------------------------------
 // Access control helper
 // Returns { allowed: false }
@@ -26,10 +28,11 @@ const getWebsiteLeadsAccess = async (user) => {
     if (!orgId) return { allowed: false };
     const org = await Organization.findById(orgId).lean();
     if (!org) return { allowed: false };
-    const isGlobal = (org.name || '').trim().toUpperCase() === 'REDDINGTON GLOBAL CONSULTANCY';
+    const orgName = (org.name || '').trim().toUpperCase();
+    const isGlobal = orgName === MAIN_ORG || orgName.includes('REDDINGTON') || String(org._id) === '68b9c76d2c29dac1220cb81c';
     return {
       allowed: true,
-      canWrite: true,
+      canWrite: isGlobal,
       orgFilter: isGlobal ? null : org._id,
     };
   } catch { return { allowed: false }; }
@@ -158,6 +161,7 @@ router.get('/', protect, async (req, res) => {
       data: leads,
       pagination: { page, limit, total, pages: Math.ceil(total / limit) },
       summary,
+      canWrite: !!access.canWrite,
     });
   } catch (error) {
     console.error('Get website leads error:', error);
@@ -174,6 +178,9 @@ router.patch('/:id/status', protect, async (req, res) => {
     const access = await getWebsiteLeadsAccess(req.user);
     if (!access.allowed) {
       return res.status(403).json({ success: false, message: 'Access denied.' });
+    }
+    if (!access.canWrite) {
+      return res.status(403).json({ success: false, message: 'Read-only access. Only main organisation admins can update lead status.' });
     }
 
     const { status } = req.body;
@@ -207,6 +214,9 @@ router.post('/:id/import', protect, async (req, res) => {
     const access = await getWebsiteLeadsAccess(req.user);
     if (!access.allowed) {
       return res.status(403).json({ success: false, message: 'Access denied.' });
+    }
+    if (!access.canWrite) {
+      return res.status(403).json({ success: false, message: 'Read-only access. Only main organisation admins can import leads.' });
     }
 
     const leadQuery = { _id: req.params.id };
@@ -326,6 +336,9 @@ router.post('/:id/comments', protect, async (req, res) => {
     const access = await getWebsiteLeadsAccess(req.user);
     if (!access.allowed) {
       return res.status(403).json({ success: false, message: 'Access denied.' });
+    }
+    if (!access.canWrite) {
+      return res.status(403).json({ success: false, message: 'Read-only access. Only main organisation admins can post comments.' });
     }
 
     if (!req.params.id.match(/^[a-f\d]{24}$/i)) {

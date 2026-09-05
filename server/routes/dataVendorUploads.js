@@ -185,8 +185,7 @@ router.get('/vendors', protect, requireAdminOrSuper, async (req, res) => {
     const enabledOrgs = await Organization.find({
       $or: [
         { showVendorData: true },
-        { name: { $regex: /westlake/i } },
-        { name: { $regex: /social/i } }
+        { name: { $regex: /westlake/i } }
       ]
     }).select('_id').lean();
     const enabledOrgIds = enabledOrgs.map(o => o._id);

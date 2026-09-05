@@ -19,8 +19,10 @@ import {
   FileDown,
   Clock,
   Send,
+  Lock,
 } from 'lucide-react';
 import axios from '../utils/axios';
+import { useAuth } from '../contexts/AuthContext';
 import toast from 'react-hot-toast';
 
 const STATUS_COLORS = {
@@ -41,6 +43,13 @@ const fmtDate = (d) => d ? new Date(d).toLocaleString('en-US', { timeZone: 'Amer
 const fmtMoney = (n) => n != null ? `$${Number(n).toLocaleString()}` : '—';
 
 const WebsiteLeadsModal = ({ onClose, title = 'Website Leads', targetOrgName }) => {
+  const { user } = useAuth();
+  const [canWrite, setCanWrite]     = useState(() => {
+    if (!user) return false;
+    if (user.role === 'superadmin' || user.isMainOrgAdmin) return true;
+    const orgName = (user.organization?.name || '').trim().toUpperCase();
+    return orgName.includes('REDDINGTON');
+  });
   const [leads, setLeads]           = useState([]);
   const [summary, setSummary]       = useState({ new: 0, reviewed: 0, imported: 0, rejected: 0, total: 0 });
   const [loading, setLoading]       = useState(true);
@@ -86,6 +95,9 @@ const WebsiteLeadsModal = ({ onClose, title = 'Website Leads', targetOrgName }) 
         setLeads(res.data.data);
         setSummary(res.data.summary || {});
         setPagination(res.data.pagination || { page: 1, limit: 50, total: 0, pages: 0 });
+        if (typeof res.data.canWrite === 'boolean') {
+          setCanWrite(res.data.canWrite);
+        }
       }
     } catch (err) {
       console.error('Fetch website leads:', err);
@@ -382,7 +394,7 @@ const WebsiteLeadsModal = ({ onClose, title = 'Website Leads', targetOrgName }) 
                           >
                             <Eye className="h-3.5 w-3.5" />
                           </button>
-                          {lead.status !== 'imported' && (
+                          {canWrite && lead.status !== 'imported' && (
                             <button
                               disabled={actionLoading === lead._id}
                               onClick={() => handleImport(lead)}
@@ -392,7 +404,7 @@ const WebsiteLeadsModal = ({ onClose, title = 'Website Leads', targetOrgName }) 
                               <Download className="h-3.5 w-3.5" />
                             </button>
                           )}
-                          {lead.status === 'new' && (
+                          {canWrite && lead.status === 'new' && (
                             <button
                               disabled={actionLoading === lead._id}
                               onClick={() => handleStatusChange(lead, 'rejected')}
@@ -545,35 +557,43 @@ const WebsiteLeadsModal = ({ onClose, title = 'Website Leads', targetOrgName }) 
                     ))}
                   </div>
                 )}
-                {/* Add comment form */}
-                <form onSubmit={handleAddComment} className="flex flex-col gap-2 pt-1">
-                  <textarea
-                    value={commentText}
-                    onChange={e => setCommentText(e.target.value)}
-                    placeholder="Add a comment about what happened with this lead…"
-                    maxLength={1000}
-                    rows={2}
-                    className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-400 resize-none"
-                    disabled={commentSubmitting}
-                  />
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-gray-400">{commentText.length}/1000</span>
-                    <button
-                      type="submit"
-                      disabled={commentSubmitting || !commentText.trim()}
-                      className="flex items-center gap-1 px-3 py-1.5 bg-teal-600 text-white text-xs font-semibold rounded-lg hover:bg-teal-700 transition-colors disabled:opacity-50"
-                    >
-                      <Send className="h-3 w-3" />
-                      {commentSubmitting ? 'Saving…' : 'Add Comment'}
-                    </button>
-                  </div>
-                </form>
+                {/* Add comment form — only for main organization admin */}
+                {!canWrite && (
+                  <p className="text-xs text-gray-400 flex items-center gap-1 pt-1">
+                    <Lock className="h-3.5 w-3.5 text-gray-400" />
+                    Read-only access — comments can only be added by main organisation admins.
+                  </p>
+                )}
+                {canWrite && (
+                  <form onSubmit={handleAddComment} className="flex flex-col gap-2 pt-1">
+                    <textarea
+                      value={commentText}
+                      onChange={e => setCommentText(e.target.value)}
+                      placeholder="Add a comment about what happened with this lead…"
+                      maxLength={1000}
+                      rows={2}
+                      className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-400 resize-none"
+                      disabled={commentSubmitting}
+                    />
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-gray-400">{commentText.length}/1000</span>
+                      <button
+                        type="submit"
+                        disabled={commentSubmitting || !commentText.trim()}
+                        className="flex items-center gap-1 px-3 py-1.5 bg-teal-600 text-white text-xs font-semibold rounded-lg hover:bg-teal-700 transition-colors disabled:opacity-50"
+                      >
+                        <Send className="h-3 w-3" />
+                        {commentSubmitting ? 'Saving…' : 'Add Comment'}
+                      </button>
+                    </div>
+                  </form>
+                )}
               </div>
 
             </div>
 
             {/* Actions */}
-            {detail.status !== 'imported' && (
+            {canWrite && detail.status !== 'imported' && (
               <div className="border-t px-5 py-4 flex gap-2 flex-wrap bg-gray-50">
                 {detail.status !== 'reviewed' && (
                   <button
@@ -599,6 +619,20 @@ const WebsiteLeadsModal = ({ onClose, title = 'Website Leads', targetOrgName }) 
                   className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 ml-auto"
                 >
                   <Download className="h-3.5 w-3.5" /> Import to LMS
+                </button>
+              </div>
+            )}
+            {!canWrite && detail.status !== 'imported' && (
+              <div className="border-t px-5 py-3 bg-gray-50 flex items-center justify-between">
+                <span className="text-xs text-gray-500 flex items-center gap-1.5">
+                  <Lock className="h-3.5 w-3.5 text-gray-400" />
+                  Read-only view. Status updates and imports are managed by main organisation admins.
+                </span>
+                <button
+                  onClick={() => { setDetail(null); setCommentText(''); }}
+                  className="px-3 py-1 bg-gray-200 hover:bg-gray-300 text-gray-700 text-xs font-medium rounded-lg transition-colors"
+                >
+                  Close
                 </button>
               </div>
             )}

@@ -174,6 +174,10 @@ const AdminDashboard = () => {
   const [showWestlakeLeads, setShowWestlakeLeads] = useState(false);
   const [westlakeLeadsBadge, setWestlakeLeadsBadge] = useState(0);
 
+  // Social Up Leads modal
+  const [showSocialUpLeads, setShowSocialUpLeads] = useState(false);
+  const [socialUpLeadsBadge, setSocialUpLeadsBadge] = useState(0);
+
   // Loop leads modal (orgs with showLoopLeads === true)
   const [showLoopLeads, setShowLoopLeads] = useState(false);
   const [loopLeadsBadge, setLoopLeadsBadge] = useState(0);
@@ -603,6 +607,13 @@ const AdminDashboard = () => {
     return user?.role === 'admin' && (orgName.includes('westlake') || String(orgId) === '6a99733c2ea3d7d9c3927bf0');
   }, [user]);
 
+  // True when the current user is an admin of Social Up Media LLC
+  const isSocialUpAdmin = useMemo(() => {
+    const orgName = (user?.organization?.name || '').trim().toLowerCase();
+    const orgId = user?.organization?._id || user?.organization;
+    return user?.role === 'admin' && (orgName.includes('social up') || orgName.includes('socialup') || String(orgId) === '6a99ddd7cea428c97ea29bdb');
+  }, [user]);
+
   // True when the current user's organisation has showLoopLeads enabled
   const isLoopLeadsAdmin = useMemo(() => {
     if (user?.role === 'superadmin') return true;
@@ -805,12 +816,19 @@ const AdminDashboard = () => {
         const leadOrgId = data?.organizationId;
         const orgNameLower = (data?.organizationName || '').toLowerCase();
         const isWestlakeLead = orgNameLower.includes('westlake') || String(leadOrgId) === '6a99733c2ea3d7d9c3927bf0';
+        const isSocialUpLead = orgNameLower.includes('social up') || orgNameLower.includes('socialup') || String(leadOrgId) === '6a99ddd7cea428c97ea29bdb';
 
         if (isWestlakeLead) {
           const isMyOrg = String(leadOrgId) === String(myOrgId);
           if (isMyOrg || isReddingtonAdmin) {
             setWestlakeLeadsBadge(n => n + 1);
             toast.success(`New Westlake lead: ${data?.name || 'Unknown'}`, { duration: 5000, icon: '🌐' });
+          }
+        } else if (isSocialUpLead) {
+          const isMyOrg = String(leadOrgId) === String(myOrgId);
+          if (isMyOrg || isReddingtonAdmin) {
+            setSocialUpLeadsBadge(n => n + 1);
+            toast.success(`New Social Up lead: ${data?.name || 'Unknown'}`, { duration: 5000, icon: '🌐' });
           }
         } else {
           // Main Reddington website lead
@@ -1209,6 +1227,25 @@ const AdminDashboard = () => {
                   {westlakeLeadsBadge > 0 && (
                     <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] flex items-center justify-center bg-red-500 text-white text-[10px] font-bold rounded-full px-1">
                       {westlakeLeadsBadge > 99 ? '99+' : westlakeLeadsBadge}
+                    </span>
+                  )}
+                </button>
+              )}
+              {/* Social Up Leads button — Reddington admin or Social Up Media admin */}
+              {user?.role === 'admin' && (isReddingtonAdmin || isSocialUpAdmin) && (
+                <button
+                  onClick={() => { setShowSocialUpLeads(true); setSocialUpLeadsBadge(0); }}
+                  className="relative flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold text-white transition-all duration-200 active:scale-95 shadow-md"
+                  style={{ background: 'linear-gradient(135deg,#6366f1,#4f46e5)', boxShadow: '0 4px 12px rgba(99,102,241,0.4)' }}
+                  title="View Social Up Media leads"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9" />
+                  </svg>
+                  Social Up Leads
+                  {socialUpLeadsBadge > 0 && (
+                    <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] flex items-center justify-center bg-red-500 text-white text-[10px] font-bold rounded-full px-1">
+                      {socialUpLeadsBadge > 99 ? '99+' : socialUpLeadsBadge}
                     </span>
                   )}
                 </button>
@@ -2986,6 +3023,15 @@ const AdminDashboard = () => {
           targetOrgName={isReddingtonAdmin ? 'Westlake' : undefined}
           title="Westlake Leads"
           onClose={() => setShowWestlakeLeads(false)}
+        />
+      )}
+
+      {/* Social Up Media Leads Modal */}
+      {showSocialUpLeads && (
+        <WebsiteLeadsModal
+          targetOrgName={isReddingtonAdmin ? 'Social Up' : undefined}
+          title="Social Up Leads"
+          onClose={() => setShowSocialUpLeads(false)}
         />
       )}
 
