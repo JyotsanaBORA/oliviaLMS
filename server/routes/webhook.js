@@ -35,11 +35,13 @@ const webhookLimiter = rateLimit({
   message: { success: false, message: 'Too many requests, please try again later.' }
 });
 
-// ---------------------------------------------------------------------------
-// Helper — sanitise a plain string field
-// ---------------------------------------------------------------------------
-const str = (val, max = 200) =>
-  val && typeof val === 'string' ? val.trim().substring(0, max) : null;
+// Helper — sanitise string or number field
+const str = (val, max = 200) => {
+  if (val === null || val === undefined) return null;
+  if (typeof val === 'number') return String(val).substring(0, max);
+  if (typeof val === 'string') return val.trim().substring(0, max) || null;
+  return null;
+};
 
 // ---------------------------------------------------------------------------
 // POST /api/webhook/leads
@@ -68,33 +70,34 @@ router.post('/leads', webhookLimiter, async (req, res) => {
       });
     }
 
-    // 3. Extract fields — handles both website forms
-    const {
-      firstName,
-      lastName,
-      email,
-      phone,
-      message,         // Form 1: "How can we help you?"
-      totalDebtAmount, // Form 2: debt slider ($5,000–$100,000)
-      streetAddress,   // Form 2 field name
-      city,
-      state,
-      zipCode,         // Form 2 field name
-      smsOptIn,        // both forms: SMS consent checkbox
-      preferredContactDate,       // both forms: preferred contact date
-      preferredContactSlot,       // both forms: time slot (Morning/Afternoon/Evening/Custom)
-      preferredContactCustomTime, // both forms: custom time if slot === 'custom'
-    } = req.body;
+    // 3. Extract fields — handles both website forms & various field naming conventions
+    const rawFirstName = req.body.firstName || req.body.first_name || req.body.fname;
+    const rawLastName  = req.body.lastName  || req.body.last_name  || req.body.lname;
+    const rawPhone     = req.body.phone     || req.body.phoneNumber || req.body.phone_number || req.body.telephone || req.body.mobile || req.body.cellPhone;
+    const rawEmail     = req.body.email     || req.body.emailAddress || req.body.email_address;
+    const rawStreet    = req.body.streetAddress || req.body.address1 || req.body.address || req.body.street || req.body.street_address;
+    const rawCity      = req.body.city;
+    const rawState     = req.body.state;
+    const rawZip       = req.body.zipCode   || req.body.zip || req.body.zipcode || req.body.postalCode || req.body.postal_code;
+    const rawDebt      = req.body.totalDebtAmount !== undefined ? req.body.totalDebtAmount : (req.body.debtAmount || req.body.estimatedDebt || req.body.debt);
+    const message      = req.body.message;
+    const smsOptIn     = req.body.smsOptIn;
+    const preferredContactDate       = req.body.preferredContactDate;
+    const preferredContactSlot       = req.body.preferredContactSlot;
+    const preferredContactCustomTime = req.body.preferredContactCustomTime;
 
     // 4. Build full name
-    const first = str(firstName, 50) || '';
-    const last  = str(lastName,  50) || '';
-    const fullName = [first, last].filter(Boolean).join(' ');
+    const first = str(rawFirstName, 50) || '';
+    const last  = str(rawLastName,  50) || '';
+    let fullName = [first, last].filter(Boolean).join(' ');
+    if (!fullName && req.body.name) {
+      fullName = str(req.body.name, 100) || '';
+    }
 
     if (fullName.length < 2) {
       return res.status(400).json({
         success: false,
-        message: 'First Name is required.'
+        message: 'First Name or Full Name is required.'
       });
     }
 
@@ -104,32 +107,38 @@ router.post('/leads', webhookLimiter, async (req, res) => {
     // 5. Build WebsiteLead document
     const doc = {
       organization: org._id,
-      firstName:    str(firstName, 50) || undefined,
-      lastName:     str(lastName,  50) || undefined,
+      firstName:    str(rawFirstName, 50) || undefined,
+      lastName:     str(rawLastName,  50) || undefined,
       name:         fullName.substring(0, 100),
       smsOptIn:     optedIn,
       formType,
       rawPayload:   req.body,
     };
 
-    const cleanEmail = str(email, 100);
+    const cleanEmail = str(rawEmail, 100);
     if (cleanEmail) doc.email = cleanEmail.toLowerCase();
 
-    const cleanPhone = str(phone, 20);
-    if (cleanPhone) doc.phone = cleanPhone.replace(/[\s\-\(\)]/g, '');
+    const cleanPhone = str(rawPhone, 30);
+    if (cleanPhone) {
+      let digits = cleanPhone.replace(/\D/g, '');
+      if (digits.length === 11 && digits.startsWith('1')) {
+        digits = digits.substring(1);
+      }
+      doc.phone = digits || cleanPhone.replace(/[\s\-\(\)]/g, '');
+    }
 
     if (message)       doc.message       = str(message, 2000);
-    if (streetAddress) doc.streetAddress = str(streetAddress, 200);
-    if (city)          doc.city          = str(city, 100);
-    if (state)         doc.state         = str(state, 50);
-    if (zipCode)       doc.zipCode       = str(zipCode, 20);
+    if (rawStreet)     doc.streetAddress = str(rawStreet, 200);
+    if (rawCity)       doc.city          = str(rawCity, 100);
+    if (rawState)      doc.state         = str(rawState, 50);
+    if (rawZip)        doc.zipCode       = str(rawZip, 20);
 
     if (preferredContactDate)       doc.preferredContactDate       = str(preferredContactDate, 40);
     if (preferredContactSlot)       doc.preferredContactSlot       = str(preferredContactSlot, 100);
     if (preferredContactCustomTime) doc.preferredContactCustomTime = str(preferredContactCustomTime, 20);
 
-    if (totalDebtAmount !== undefined && totalDebtAmount !== null) {
-      const amount = Number(totalDebtAmount);
+    if (rawDebt !== undefined && rawDebt !== null && String(rawDebt).trim() !== '') {
+      const amount = Number(String(rawDebt).replace(/[^0-9.]/g, ''));
       if (!isNaN(amount) && amount >= 0) doc.totalDebtAmount = amount;
     }
 
