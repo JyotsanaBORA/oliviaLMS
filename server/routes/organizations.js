@@ -789,6 +789,8 @@ const generateWebhookKeyHandler = async (req, res) => {
       webhookPath = '/api/webhook/truclick-leads';
     } else if (lowerName.includes('ben')) {
       webhookPath = '/api/webhook/ben-leads';
+    } else if (lowerName.includes('jake2') || lowerName.includes('socialupmedia 2') || lowerName.includes('social up media 2') || lowerName.includes('socialupmedia2')) {
+      webhookPath = '/api/webhook/jake2-leads';
     }
 
     return res.status(200).json({

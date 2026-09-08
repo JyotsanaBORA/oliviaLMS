@@ -294,6 +294,8 @@ const handleLeadWebhook = async (req, res) => {
 router.post('/leads', webhookLimiter, handleLeadWebhook);
 router.post('/inbound-leads', webhookLimiter, handleLeadWebhook);
 router.post('/live-transfers', webhookLimiter, handleLeadWebhook);
+router.post('/jake2-leads', webhookLimiter, handleLeadWebhook);
+router.post('/jake2', webhookLimiter, handleLeadWebhook);
 
 module.exports = router;
 

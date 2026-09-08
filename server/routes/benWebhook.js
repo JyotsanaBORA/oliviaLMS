@@ -239,12 +239,12 @@ const handleWebhookSubmission = async (req, res) => {
     // Save new lead to database
     lead = await BenWebsiteLead.create(doc);
 
-    // 12. Real-time notification /
+    // 12. Real-time notification
     if (req.io) {
       req.io.emit('newBenWebsiteLead', {
         _id: lead._id,
         name: lead.name,
-        formType,
+        formType: lead.formType || 'contact-form',
         organizationId: String(lead.organization),
         organizationName: org.name,
         createdAt: lead.createdAt,
@@ -267,5 +267,7 @@ router.post('/leads', webhookLimiter, handleWebhookSubmission);
 router.post('/inbound-leads', webhookLimiter, handleWebhookSubmission);
 router.post('/ben-leads', webhookLimiter, handleWebhookSubmission);
 router.post('/truclick-leads', webhookLimiter, handleWebhookSubmission);
+router.post('/jake2-leads', webhookLimiter, handleWebhookSubmission);
+router.post('/jake2', webhookLimiter, handleWebhookSubmission);
 
 module.exports = router;
