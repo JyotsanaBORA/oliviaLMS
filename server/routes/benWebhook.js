@@ -57,14 +57,32 @@ const handleWebhookSubmission = async (req, res) => {
       });
     }
 
-    // 2. Find organisation by webhook key
+    // 2. Find organisation by webhook key (supports both benWebhookApiKey and standard webhookApiKey)
     const org = await Organization
-      .findOne({ benWebhookApiKey: apiKey.trim(), isActive: true })
-      .select('+benWebhookApiKey')
+      .findOne({
+        $or: [
+          { benWebhookApiKey: apiKey.trim() },
+          { webhookApiKey: apiKey.trim() }
+        ],
+        isActive: true
+      })
+      .select('+benWebhookApiKey +webhookApiKey')
       .lean();
 
     if (!org) {
       return res.status(401).json({ success: false, message: 'Invalid or inactive API key.' });
+    }
+
+    // Determine target DID for segregation
+    const explicitDid = str(body.did || body.DID || body.vicidialDid || body.vicidial_did, 30);
+    const trafficType = str(body.traffic_type || body.trafficType || body.lead_type || body.type, 50);
+    let assignedDid = explicitDid;
+    if (!assignedDid) {
+      if (trafficType && (trafficType.toLowerCase().includes('inbound') || trafficType.toLowerCase().includes('call'))) {
+        assignedDid = org.inboundCallsDid || (org.inboundDids && org.inboundDids[1]) || (org.inboundDids && org.inboundDids[0]);
+      } else {
+        assignedDid = org.liveTransferDid || (org.inboundDids && org.inboundDids[0]);
+      }
     }
 
     // 3. Extract names flexibly
@@ -99,73 +117,69 @@ const handleWebhookSubmission = async (req, res) => {
     const streetAddress = str(body.streetAddress || body.street_address || body.address || body.address1 || body.street, 200);
     const city = str(body.city || body.town || body.municipality, 100);
     const state = str(body.state || body.province || body.region || body.state_code, 50);
-    const zipCode = str(body.zipCode || body.zip_code || body.zip || body.postalCode || body.postal_code || body.postcode, 20);
+    const zipCode = str(body.zipCode || body.zip_code || body.zip || body.zipcode || body.postalCode || body.postal_code || body.postcode, 20);
 
-    // 8. SMS & scheduling
-    const rawSms = body.smsOptIn ?? body.sms_opt_in ?? body.smsConsent ?? body.sms_consent ?? body.optIn;
-    const smsOptIn = rawSms === true || rawSms === 'true' || rawSms === 1 || rawSms === '1';
+    // 8. SMS opt-in
+    const rawOptIn = body.smsOptIn ?? body.sms_opt_in ?? body.optIn ?? body.opt_in ?? body.consent;
+    const smsOptIn = rawOptIn === true || rawOptIn === 'true' || rawOptIn === '1' || rawOptIn === 1;
 
-    const preferredContactDate = str(body.preferredContactDate || body.preferred_contact_date || body.contact_date || body.date, 40);
-    const preferredContactSlot = str(body.preferredContactSlot || body.preferred_contact_slot || body.time_slot || body.timeSlot || body.slot, 100);
-    const preferredContactCustomTime = str(body.preferredContactCustomTime || body.preferred_contact_custom_time || body.custom_time || body.time, 30);
-
-    // 9. Determine form type
-    let formType = body.formType || body.form_type || body.form;
-    if (!['contact-form', 'qualify-form'].includes(formType)) {
-      formType = rawMessage ? 'contact-form' : (debtAmount ? 'qualify-form' : 'unknown');
-    }
-
-    // 10. Build document
+    // 9. Build BenWebsiteLead document
     const doc = {
       organization: org._id,
       firstName: first || undefined,
       lastName: last || undefined,
-      name: fullName.substring(0, 100),
+      name: fullName ? fullName.substring(0, 100) : 'Inbound Lead',
       smsOptIn,
-      formType,
+      formType: rawMessage ? 'contact-form' : 'qualify-form',
       rawPayload: body,
+      source: 'website',
     };
 
     if (rawEmail) doc.email = rawEmail.toLowerCase();
-    if (rawPhone) doc.phone = rawPhone.replace(/[\s\-\(\)]/g, '');
+    if (rawPhone) {
+      let digits = rawPhone.replace(/\D/g, '');
+      if (digits.length === 11 && digits.startsWith('1')) digits = digits.substring(1);
+      doc.phone = digits || rawPhone.replace(/[\s\-\(\)]/g, '');
+    }
     if (debtAmount !== undefined) doc.totalDebtAmount = debtAmount;
     if (rawMessage) doc.message = rawMessage;
     if (streetAddress) doc.streetAddress = streetAddress;
     if (city) doc.city = city;
     if (state) doc.state = state;
     if (zipCode) doc.zipCode = zipCode;
-    if (preferredContactDate) doc.preferredContactDate = preferredContactDate;
-    if (preferredContactSlot) doc.preferredContactSlot = preferredContactSlot;
-    if (preferredContactCustomTime) doc.preferredContactCustomTime = preferredContactCustomTime;
 
-    // 11. Check for duplicate lead by phone number for this organization
+    // 10. Check for existing lead by phone within the same organisation
     let lead;
     let primaryLead;
-
     if (doc.phone) {
       const existing = await BenWebsiteLead.findOne({
         organization: org._id,
         phone: doc.phone,
       }).sort({ createdAt: -1 });
 
-      const existingPrimaryLead = await Lead.findOne({
-        organization: org._id,
-        phone: doc.phone,
-      }).sort({ createdAt: -1 });
-
       if (existing) {
         Object.assign(existing, doc);
+        
+        let existingPrimaryLead = null;
+        if (existing.importedLeadId) {
+          existingPrimaryLead = await Lead.findById(existing.importedLeadId);
+        }
+        if (!existingPrimaryLead) {
+          existingPrimaryLead = await Lead.findOne({
+            organization: org._id,
+            phone: doc.phone
+          }).sort({ createdAt: -1 });
+        }
 
         if (existingPrimaryLead) {
-          // Update primary lead notes with new submission message
           existingPrimaryLead.notes = existingPrimaryLead.notes
             ? existingPrimaryLead.notes + '\n\n' + (doc.message || '')
             : doc.message;
           if (doc.totalDebtAmount) existingPrimaryLead.totalDebtAmount = doc.totalDebtAmount;
+          if (assignedDid && !existingPrimaryLead.vicidialDid) existingPrimaryLead.vicidialDid = assignedDid;
           primaryLead = await existingPrimaryLead.save();
           existing.importedLeadId = primaryLead._id;
         } else {
-          // Create standard Lead even if BenWebsiteLead exists but Lead doesn't
           const standardLeadData = {
             name: doc.name || 'Unknown',
             email: doc.email,
@@ -178,7 +192,8 @@ const handleWebhookSubmission = async (req, res) => {
             zipcode: doc.zipCode,
             organization: doc.organization,
             createdBy: doc.organization,
-            sourceId: 'TruClickWebhook',
+            sourceId: (body.source_id || body.sourceId || 'WebhookLead').toString().trim(),
+            vicidialDid: assignedDid || undefined,
             category: 'warm',
             qualificationStatus: 'pending',
           };
@@ -191,6 +206,7 @@ const handleWebhookSubmission = async (req, res) => {
           success: true,
           message: 'Submission received and updated.',
           leadId: lead._id,
+          primaryLeadId: primaryLead?._id,
         });
       }
     }
@@ -208,7 +224,8 @@ const handleWebhookSubmission = async (req, res) => {
       zipcode: doc.zipCode,
       organization: doc.organization,
       createdBy: doc.organization,
-      sourceId: 'TruClickWebhook',
+      sourceId: (body.source_id || body.sourceId || 'WebhookLead').toString().trim(),
+      vicidialDid: assignedDid || undefined,
       category: 'warm',
       qualificationStatus: 'pending',
     };

@@ -51,9 +51,15 @@ const websiteLeadSchema = new mongoose.Schema(
     // Which form submitted this
     formType: {
       type: String,
-      enum: ['contact-form', 'qualify-form', 'meta-lead-form', 'unknown'],
+      enum: ['contact-form', 'qualify-form', 'meta-lead-form', 'live-transfer', 'inbound-call', 'unknown'],
       default: 'unknown',
     },
+
+    // Associated DID (e.g. 19162330004 for Live Transfers or 19162330139 for Inbound Calls)
+    did: { type: String, trim: true, maxlength: 30, index: true },
+    vicidialDid: { type: String, trim: true, maxlength: 30, index: true },
+    trafficType: { type: String, trim: true, maxlength: 50 },
+    sourceId: { type: String, trim: true, maxlength: 100 },
 
     // Processing state — admin can mark as reviewed / imported
     status: {

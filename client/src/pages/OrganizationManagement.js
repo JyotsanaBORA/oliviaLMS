@@ -38,6 +38,8 @@ const OrganizationManagement = () => {
     phone: '',
     email: '',
     website: '',
+    liveTransferDid: '',
+    inboundCallsDid: '',
     sourceIds: [],
     inboundDids: [],
     showLoopLeads: false,
@@ -186,6 +188,8 @@ const OrganizationManagement = () => {
       phone: org.phone || '',
       email: org.email || '',
       website: org.website || '',
+      liveTransferDid: org.liveTransferDid || '',
+      inboundCallsDid: org.inboundCallsDid || '',
       sourceIds: Array.isArray(org.sourceIds) ? [...org.sourceIds] : [],
       inboundDids: Array.isArray(org.inboundDids) ? [...org.inboundDids] : [],
       showLoopLeads: org.showLoopLeads === true,
@@ -422,6 +426,20 @@ const OrganizationManagement = () => {
                       {org.description && (
                         <div className="text-sm text-gray-500 truncate max-w-xs">
                           {org.description}
+                        </div>
+                      )}
+                      {(org.liveTransferDid || org.inboundCallsDid) && (
+                        <div className="flex flex-wrap gap-1.5 mt-1.5">
+                          {org.liveTransferDid && (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-800">
+                              ⚡ Live Transfer DID: {org.liveTransferDid}
+                            </span>
+                          )}
+                          {org.inboundCallsDid && (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-100 text-indigo-800">
+                              📞 Inbound DID: {org.inboundCallsDid}
+                            </span>
+                          )}
                         </div>
                       )}
                     </div>
@@ -759,9 +777,39 @@ const OrganizationManagement = () => {
                       </div>
                     </div>
 
+                    {/* Dedicated DIDs for Segregated Dashboards (Live Transfers & Inbound Calls) */}
+                    <div className="p-3 bg-gradient-to-r from-amber-50 to-indigo-50 border border-indigo-100 rounded-lg space-y-3">
+                      <div>
+                        <span className="text-xs font-bold uppercase tracking-wider text-indigo-900">Dashboard Segregation DIDs (Jake / Team 1)</span>
+                        <p className="text-xs text-gray-500 mt-0.5">Assign dedicated DIDs for Live Transfers and direct Inbound Calls to enable sliding segregated dashboards.</p>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-semibold text-amber-900 mb-1">⚡ Live Transfer DID</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. 3239999272"
+                            className="w-full border border-amber-300 rounded-md px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-amber-500 focus:border-amber-500 bg-white"
+                            value={organizationForm.liveTransferDid || ''}
+                            onChange={(e) => setOrganizationForm(prev => ({ ...prev, liveTransferDid: e.target.value.replace(/[^0-9+\-\s()]/g, '') }))}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-indigo-900 mb-1">📞 Inbound Calls DID</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. 8001234567"
+                            className="w-full border border-indigo-300 rounded-md px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 bg-white"
+                            value={organizationForm.inboundCallsDid || ''}
+                            onChange={(e) => setOrganizationForm(prev => ({ ...prev, inboundCallsDid: e.target.value.replace(/[^0-9+\-\s()]/g, '') }))}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
                     {/* Inbound DID Management */}
                     <div>
-                      <label className="block text-sm font-medium text-gray-700">Inbound ViciDial DIDs</label>
+                      <label className="block text-sm font-medium text-gray-700">All Assigned ViciDial DIDs</label>
                       <p className="text-xs text-gray-400 mb-2">
                         Inbound call leads whose DID matches one of these numbers will appear on this organisation's admin dashboard (e.g. <span className="font-mono">3239999272</span>).
                       </p>

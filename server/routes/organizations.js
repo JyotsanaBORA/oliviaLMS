@@ -80,6 +80,16 @@ const organizationValidation = [
       }
       return true;
     }),
+  body('liveTransferDid')
+    .optional({ nullable: true, checkFalsy: true })
+    .trim()
+    .isLength({ max: 50 })
+    .withMessage('liveTransferDid cannot exceed 50 characters'),
+  body('inboundCallsDid')
+    .optional({ nullable: true, checkFalsy: true })
+    .trim()
+    .isLength({ max: 50 })
+    .withMessage('inboundCallsDid cannot exceed 50 characters'),
   body('showLoopLeads')
     .optional()
     .isBoolean()
@@ -340,7 +350,7 @@ router.put('/:id', protect, organizationValidation, handleValidationErrors, asyn
       });
     }
 
-    const { name, description, address, phone, email, website, isActive, sourceIds, inboundDids, showLoopLeads, showVendorData } = req.body;
+    const { name, description, address, phone, email, website, isActive, sourceIds, inboundDids, liveTransferDid, inboundCallsDid, showLoopLeads, showVendorData } = req.body;
 
     // Check if organization exists
     const organization = await Organization.findById(req.params.id);
@@ -369,6 +379,14 @@ router.put('/:id', protect, organizationValidation, handleValidationErrors, asyn
     // Build the update object
     const updateData = { name, description, address, phone, email, website, isActive };
 
+    // Update liveTransferDid and inboundCallsDid
+    if (liveTransferDid !== undefined) {
+      updateData.liveTransferDid = liveTransferDid ? String(liveTransferDid).trim() : null;
+    }
+    if (inboundCallsDid !== undefined) {
+      updateData.inboundCallsDid = inboundCallsDid ? String(inboundCallsDid).trim() : null;
+    }
+
     // Only update sourceIds when explicitly provided; normalise to uppercase trimmed strings
     if (Array.isArray(sourceIds)) {
       updateData.sourceIds = sourceIds
@@ -378,9 +396,25 @@ router.put('/:id', protect, organizationValidation, handleValidationErrors, asyn
 
     // Only update inboundDids when explicitly provided; stored as trimmed strings (not uppercased)
     if (Array.isArray(inboundDids)) {
-      updateData.inboundDids = inboundDids
+      const cleanDids = inboundDids
         .map(d => String(d).trim())
         .filter(d => d.length > 0);
+      
+      const lt = updateData.liveTransferDid !== undefined ? updateData.liveTransferDid : organization.liveTransferDid;
+      const ic = updateData.inboundCallsDid !== undefined ? updateData.inboundCallsDid : organization.inboundCallsDid;
+      if (lt && !cleanDids.includes(lt)) cleanDids.push(lt);
+      if (ic && !cleanDids.includes(ic)) cleanDids.push(ic);
+
+      updateData.inboundDids = cleanDids;
+    } else if (updateData.liveTransferDid || updateData.inboundCallsDid) {
+      const currentDids = Array.isArray(organization.inboundDids) ? [...organization.inboundDids] : [];
+      if (updateData.liveTransferDid && !currentDids.includes(updateData.liveTransferDid)) {
+        currentDids.push(updateData.liveTransferDid);
+      }
+      if (updateData.inboundCallsDid && !currentDids.includes(updateData.inboundCallsDid)) {
+        currentDids.push(updateData.inboundCallsDid);
+      }
+      updateData.inboundDids = currentDids;
     }
 
     // Only update showLoopLeads when explicitly provided

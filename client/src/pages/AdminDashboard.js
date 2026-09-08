@@ -17,7 +17,11 @@ import {
   Download,
   UserCheck,
   TrendingUp,
-  Database
+  Database,
+  Zap,
+  PhoneCall,
+  Globe,
+  Activity
 } from 'lucide-react';
 import axios from '../utils/axios';
 import toast from 'react-hot-toast';
@@ -108,7 +112,11 @@ const AdminDashboard = () => {
   // Add duplicate status filter
   const [duplicateFilter, setDuplicateFilter] = useState('all'); // 'all', 'duplicates', 'non-duplicates'
   const [progressFilter, setProgressFilter] = useState('all'); // 'all', 'sale', 'callback'
-  
+
+  // DID / Channel Segregation state for Jake / Team 1 and multi-DID orgs
+  const [selectedDidTab, setSelectedDidTab] = useState('all');
+  const didFilterRef = useRef('all');
+
   // Add organization filter
   const [organizationFilter, setOrganizationFilter] = useState('all'); // 'all' or specific organization ID
   const [organizations, setOrganizations] = useState([]); // List of all organizations
@@ -270,13 +278,18 @@ const AdminDashboard = () => {
 
 
 
-  const fetchStats = useCallback(async (silent = false) => {
+  const fetchStats = useCallback(async (silent = false, specificDid = null) => {
     if (!silent) {
       setRefreshing(true);
     }
     
     try {
-      const response = await axios.get(`/api/leads/dashboard/stats?_t=${Date.now()}`);
+      const activeDid = specificDid !== null ? specificDid : didFilterRef.current;
+      let url = `/api/leads/dashboard/stats?_t=${Date.now()}`;
+      if (activeDid && activeDid !== 'all') {
+        url += `&did=${encodeURIComponent(activeDid)}`;
+      }
+      const response = await axios.get(url);
       // Handle the nested response structure
       const statsData = response.data?.data || response.data;
       setStats(statsData);
@@ -288,8 +301,8 @@ const AdminDashboard = () => {
     } finally {
       if (!silent) {
         setRefreshing(false);
-        setLoading(false);
       }
+      setLoading(false);
     }
   }, []);
 
@@ -298,7 +311,7 @@ const AdminDashboard = () => {
   
   // Use refs to hold current filter values to avoid recreating fetchLeads
   const paginationRef = useRef(pagination);
-  const filtersRef = useRef({ qualificationFilter, duplicateFilter, organizationFilter, dateFilter, progressFilter, searchTerm });
+  const filtersRef = useRef({ qualificationFilter, duplicateFilter, organizationFilter, dateFilter, progressFilter, searchTerm, did: selectedDidTab });
   
   // Update refs when values change
   useEffect(() => {
@@ -306,8 +319,8 @@ const AdminDashboard = () => {
   }, [pagination]);
   
   useEffect(() => {
-    filtersRef.current = { qualificationFilter, duplicateFilter, organizationFilter, dateFilter, progressFilter, searchTerm };
-  }, [qualificationFilter, duplicateFilter, organizationFilter, dateFilter, progressFilter, searchTerm]);
+    filtersRef.current = { qualificationFilter, duplicateFilter, organizationFilter, dateFilter, progressFilter, searchTerm, did: selectedDidTab };
+  }, [qualificationFilter, duplicateFilter, organizationFilter, dateFilter, progressFilter, searchTerm, selectedDidTab]);
 
   const fetchLeads = useCallback(async (silent = false, page = null) => {
     try {
@@ -344,6 +357,11 @@ const AdminDashboard = () => {
         if (filters.dateFilter.filterType === 'custom' && filters.dateFilter.startDate && filters.dateFilter.endDate) {
           url += `&startDate=${filters.dateFilter.startDate}&endDate=${filters.dateFilter.endDate}`;
         }
+      }
+
+      // Add DID filter for channel segregation (Live Transfer vs Inbound Calls)
+      if (filters.did && filters.did !== 'all') {
+        url += `&did=${encodeURIComponent(filters.did)}`;
       }
 
       // Add search query - backend searches across all leads in the database
@@ -408,7 +426,7 @@ const AdminDashboard = () => {
   useEffect(() => {
     const initializeData = async () => {
       // Fetch stats and organizations in parallel for faster startup
-      await Promise.all([fetchStats(), fetchOrganizations()]);
+      await Promise.all([fetchStats(false, selectedDidTab), fetchOrganizations()]);
       
       if (showLeadsSection) {
         fetchLeads();
@@ -417,7 +435,7 @@ const AdminDashboard = () => {
 
     initializeData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showLeadsSection, qualificationFilter, duplicateFilter, organizationFilter, dateFilter, progressFilter]);
+  }, [showLeadsSection, qualificationFilter, duplicateFilter, organizationFilter, dateFilter, progressFilter, selectedDidTab]);
 
   // Handle refresh functionality
   const handleDashboardRefresh = useCallback(() => {
@@ -522,6 +540,11 @@ const AdminDashboard = () => {
         params.append('organization', organizationFilter);
       }
 
+      // Add DID filter for channel-segregated export
+      if (selectedDidTab && selectedDidTab !== 'all') {
+        params.append('did', selectedDidTab);
+      }
+
 
 
       const response = await axios.get(`/api/leads/export?${params.toString()}`, {
@@ -619,6 +642,36 @@ const AdminDashboard = () => {
     if (user?.role === 'superadmin') return true;
     return user?.organization?.showLoopLeads === true;
   }, [user]);
+
+  // DIDs assigned to the current admin's organisation or Jake
+  const orgDids = useMemo(() => {
+    const org = user?.organization;
+    const orgName = (org?.name || user?.organization?.name || '').trim().toLowerCase();
+    const orgIdStr = String(org?._id || user?.organization?._id || user?.organization || '');
+    const isSocialUp = isSocialUpAdmin || orgName.includes('social up') || orgName.includes('socialup') || orgIdStr === '6a99ddd7cea428c97ea29bdb';
+
+    const ltDid = org?.liveTransferDid || (Array.isArray(org?.inboundDids) && org.inboundDids.length > 0 ? org.inboundDids[0] : (isSocialUp ? '19162330004' : null));
+    const inDid = org?.inboundCallsDid || (Array.isArray(org?.inboundDids) && org.inboundDids.length > 1 ? org.inboundDids[1] : (isSocialUp ? '19162330139' : null));
+    const allDids = Array.isArray(org?.inboundDids) && org.inboundDids.length > 0 ? org.inboundDids : (isSocialUp ? ['19162330004', '19162330139'] : []);
+
+    return {
+      liveTransferDid: ltDid || (isSocialUp ? '19162330004' : null),
+      inboundCallsDid: inDid || (isSocialUp ? '19162330139' : null),
+      allDids,
+      hasMultiple: Boolean(ltDid || inDid || allDids.length > 1 || isSocialUp)
+    };
+  }, [user, isSocialUpAdmin]);
+
+  const handleDidTabChange = (tabValue) => {
+    setSelectedDidTab(tabValue);
+    didFilterRef.current = tabValue;
+    setPagination(prev => ({ ...prev, page: 1 }));
+    fetchStats(false, tabValue);
+    if (showLeadsSection) {
+      // Trigger fetchLeads with updated tab
+      setTimeout(() => fetchLeads(false, 1), 50);
+    }
+  };
 
   // MyDebt Review access: orgs with showLoopLeads OR main-organization admin.
   const canAccessLoopLeads = isLoopLeadsAdmin || isReddingtonAdmin;
@@ -1344,6 +1397,118 @@ const AdminDashboard = () => {
             </div>
           </div>
         </div>
+
+        {/* Feature / DID Segregated Dashboard Switcher for Jake / Team 1 & Orgs with multiple DIDs */}
+        {(orgDids.hasMultiple || isSocialUpAdmin || user?.organization?.inboundDids?.length > 0) && (
+          <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 p-4 rounded-2xl shadow-xl border border-indigo-500/30 text-white mb-1 transition-all duration-300">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 shadow-lg shadow-indigo-500/30 ring-2 ring-white/20">
+                  <Activity className="h-5 w-5 text-white animate-pulse" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-bold tracking-wide uppercase bg-gradient-to-r from-white via-indigo-200 to-indigo-400 bg-clip-text text-transparent">
+                      {isSocialUpAdmin ? 'Jake / Team 1 Segregated Dashboards' : 'Channel & DID Dashboards'}
+                    </h3>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-indigo-500/30 text-indigo-300 border border-indigo-400/40">
+                      LIVE DUAL-DID
+                    </span>
+                  </div>
+                  <p className="text-xs text-indigo-200/80 mt-0.5">
+                    Click to slide between <span className="text-amber-300 font-semibold">Live Transfers</span> and <span className="text-cyan-300 font-semibold">Inbound Calls</span> to view segregated metrics, call counts, and leads.
+                  </p>
+                </div>
+              </div>
+
+              {/* Sliding Segregated Pills */}
+              <div className="flex items-center bg-black/40 p-1.5 rounded-xl border border-white/10 backdrop-blur-md shadow-inner gap-1">
+                {/* All Data Pill */}
+                <button
+                  type="button"
+                  onClick={() => handleDidTabChange('all')}
+                  className={`relative flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all duration-300 ${
+                    selectedDidTab === 'all'
+                      ? 'bg-gradient-to-r from-slate-700 to-slate-600 text-white shadow-lg ring-1 ring-white/30 scale-100'
+                      : 'text-gray-300 hover:text-white hover:bg-white/10'
+                  }`}
+                >
+                  <Globe className={`h-3.5 w-3.5 ${selectedDidTab === 'all' ? 'text-cyan-300' : 'text-gray-400'}`} />
+                  <span>All Calls</span>
+                </button>
+
+                {/* Live Transfers Pill */}
+                <button
+                  type="button"
+                  onClick={() => handleDidTabChange(orgDids.liveTransferDid || '19162330004')}
+                  className={`relative flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all duration-300 ${
+                    selectedDidTab === (orgDids.liveTransferDid || '19162330004') || selectedDidTab === 'live_transfer' || selectedDidTab === '19162330004'
+                      ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-white shadow-lg shadow-orange-500/40 ring-2 ring-amber-300/50 scale-105 z-10'
+                      : 'text-gray-300 hover:text-white hover:bg-white/10'
+                  }`}
+                >
+                  <Zap className={`h-4 w-4 ${(selectedDidTab === (orgDids.liveTransferDid || '19162330004') || selectedDidTab === 'live_transfer' || selectedDidTab === '19162330004') ? 'text-amber-200 animate-bounce' : 'text-amber-400'}`} />
+                  <span>Live Transfers</span>
+                  {(orgDids.liveTransferDid || '19162330004') && (
+                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono tracking-tight ${
+                      (selectedDidTab === (orgDids.liveTransferDid || '19162330004') || selectedDidTab === 'live_transfer' || selectedDidTab === '19162330004')
+                        ? 'bg-black/30 text-amber-100 border border-amber-300/30'
+                        : 'bg-amber-400/20 text-amber-300'
+                    }`}>
+                      DID: {orgDids.liveTransferDid || '19162330004'}
+                    </span>
+                  )}
+                </button>
+
+                {/* Inbound Calls Pill */}
+                <button
+                  type="button"
+                  onClick={() => handleDidTabChange(orgDids.inboundCallsDid || '19162330139')}
+                  className={`relative flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all duration-300 ${
+                    selectedDidTab === (orgDids.inboundCallsDid || '19162330139') || selectedDidTab === 'inbound' || selectedDidTab === '19162330139'
+                      ? 'bg-gradient-to-r from-indigo-500 to-blue-600 text-white shadow-lg shadow-indigo-500/40 ring-2 ring-indigo-300/50 scale-105 z-10'
+                      : 'text-gray-300 hover:text-white hover:bg-white/10'
+                  }`}
+                >
+                  <PhoneCall className={`h-4 w-4 ${(selectedDidTab === (orgDids.inboundCallsDid || '19162330139') || selectedDidTab === 'inbound' || selectedDidTab === '19162330139') ? 'text-blue-200' : 'text-blue-400'}`} />
+                  <span>Inbound Calls</span>
+                  {(orgDids.inboundCallsDid || '19162330139') && (
+                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono tracking-tight ${
+                      (selectedDidTab === (orgDids.inboundCallsDid || '19162330139') || selectedDidTab === 'inbound' || selectedDidTab === '19162330139')
+                        ? 'bg-black/30 text-blue-100 border border-blue-300/30'
+                        : 'bg-blue-400/20 text-blue-300'
+                    }`}>
+                      DID: {orgDids.inboundCallsDid || '19162330139'}
+                    </span>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* Sub-banner showing active filter status */}
+            <div className="mt-3 pt-2.5 border-t border-white/10 flex flex-wrap items-center justify-between gap-2 text-xs">
+              <div className="flex items-center gap-2">
+                <span className="text-gray-400">Active View:</span>
+                {selectedDidTab === 'all' ? (
+                  <span className="inline-flex items-center gap-1 font-semibold text-gray-200">
+                    🌐 Combined Overview (All DIDs)
+                  </span>
+                ) : selectedDidTab === (orgDids.liveTransferDid || 'live_transfer') ? (
+                  <span className="inline-flex items-center gap-1 font-semibold text-amber-300">
+                    ⚡ Live Transfers Mode {orgDids.liveTransferDid ? `(DID: ${orgDids.liveTransferDid})` : ''}
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 font-semibold text-cyan-300">
+                    📞 Inbound Calls Mode {orgDids.inboundCallsDid ? `(DID: ${orgDids.inboundCallsDid})` : ''}
+                  </span>
+                )}
+              </div>
+              <div className="text-[11px] text-gray-400">
+                Data, stats counters, tables, and exports are dynamically scoped to this channel.
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Stats Cards */}
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">

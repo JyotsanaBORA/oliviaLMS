@@ -239,11 +239,28 @@ router.post('/:id/import', protect, async (req, res) => {
     if (websiteLead.message) notesParts.push(`Message: ${websiteLead.message}`);
     notesParts.push(`SMS Opt-In: ${websiteLead.smsOptIn ? 'YES' : 'NO'}`);
 
+    // Lookup organization to check configured DIDs if not explicit on websiteLead
+    const org = await Organization.findById(websiteLead.organization).lean();
+
+    let assignedDid = websiteLead.did || websiteLead.vicidialDid;
+    if (!assignedDid && org) {
+      if (websiteLead.trafficType === 'inbound' || websiteLead.trafficType === 'inbound-call' || websiteLead.formType === 'inbound-call') {
+        assignedDid = org.inboundCallsDid || (org.inboundDids && org.inboundDids[1]);
+      } else {
+        assignedDid = org.liveTransferDid || (org.inboundDids && org.inboundDids[0]);
+      }
+    }
+
     const leadData = {
       name: websiteLead.name || 'Website Lead',
       organization: websiteLead.organization,
       notes: notesParts.join('\n'),
       createdBy: req.user._id,
+      sourceId: websiteLead.sourceId || (assignedDid ? `Webhook-${assignedDid}` : 'WebsiteLead'),
+      vicidialDid: assignedDid || undefined,
+      trafficType: websiteLead.trafficType || (assignedDid === org?.inboundCallsDid ? 'inbound' : 'live-transfer'),
+      category: 'warm',
+      qualificationStatus: 'pending',
     };
 
     if (websiteLead.email) {

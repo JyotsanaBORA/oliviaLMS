@@ -83,6 +83,18 @@ const organizationSchema = new mongoose.Schema({
       message: 'Each inbound DID must be a non-empty string'
     }
   },
+  // Dedicated DID for Live Transfers (e.g. Team 1 / Partner Live Transfers)
+  liveTransferDid: {
+    type: String,
+    trim: true,
+    default: null
+  },
+  // Dedicated DID for direct Inbound Calls
+  inboundCallsDid: {
+    type: String,
+    trim: true,
+    default: null
+  },
   // When true, the Loop Leads panel is shown on this organisation's admin dashboard.
   // Set via SuperAdmin → Organisation Management.
   showLoopLeads: {
@@ -113,9 +125,22 @@ const organizationSchema = new mongoose.Schema({
   }
 });
 
-// Update the updatedAt field before saving
+// Update the updatedAt field before saving and keep inboundDids synced
 organizationSchema.pre('save', function(next) {
   this.updatedAt = Date.now();
+  
+  // Ensure liveTransferDid and inboundCallsDid are automatically present in inboundDids
+  const dids = Array.isArray(this.inboundDids) ? [...this.inboundDids] : [];
+  if (this.liveTransferDid && this.liveTransferDid.trim()) {
+    const cleanLt = this.liveTransferDid.trim();
+    if (!dids.includes(cleanLt)) dids.push(cleanLt);
+  }
+  if (this.inboundCallsDid && this.inboundCallsDid.trim()) {
+    const cleanIn = this.inboundCallsDid.trim();
+    if (!dids.includes(cleanIn)) dids.push(cleanIn);
+  }
+  this.inboundDids = dids;
+
   next();
 });
 

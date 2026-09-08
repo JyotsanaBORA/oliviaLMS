@@ -116,6 +116,25 @@ const buildAdminLeadScopeFilter = async (user) => {
   return { $or: orgConditions };
 };
 
+/**
+ * Helper to resolve symbolic DID filters ('live_transfer', 'inbound') to exact DID strings
+ */
+const resolveDidFilter = async (didParam, user) => {
+  if (!didParam || !String(didParam).trim() || didParam === 'all') return null;
+  const raw = String(didParam).trim();
+  if (raw === 'inbound' || raw === 'inbound-call' || raw === 'inbound_call') {
+    const orgId = user?.organization?._id || user?.organization;
+    const org = orgId ? await Organization.findById(orgId).select('inboundCallsDid inboundDids').lean() : null;
+    return org?.inboundCallsDid || (org?.inboundDids && org.inboundDids[1]) || '19162330139';
+  }
+  if (raw === 'live_transfer' || raw === 'live-transfer' || raw === 'live') {
+    const orgId = user?.organization?._id || user?.organization;
+    const org = orgId ? await Organization.findById(orgId).select('liveTransferDid inboundDids').lean() : null;
+    return org?.liveTransferDid || (org?.inboundDids && org.inboundDids[0]) || '19162330004';
+  }
+  return raw;
+};
+
 // Validation rules
 const createLeadValidation = [
   body('name')
@@ -563,6 +582,12 @@ router.get('/export', [
     .optional()
     .isMongoId()
     .withMessage('Invalid organization ID'),
+  query('did')
+    .optional()
+    .trim(),
+  query('vicidialDid')
+    .optional()
+    .trim(),
   query('dateFilterType')
     .optional()
     .isIn(['all', 'today', 'week', 'month', 'custom'])
@@ -746,6 +771,12 @@ router.get('/export', [
         console.log(`Export Individual endDate filter: ${endDate.toISOString()}`);
       }
       filter.createdAt = dateFilter;
+    }
+
+    // DID filter (e.g. Live Transfer vs Inbound segregated views)
+    const resolvedExportDid = await resolveDidFilter(req.query.did || req.query.vicidialDid, req.user);
+    if (resolvedExportDid) {
+      filter.vicidialDid = resolvedExportDid;
     }
 
     // Organization filter is now applied at the top of the filter building process
@@ -1117,7 +1148,13 @@ router.get('/', protect, [
   query('dateFilterType')
     .optional()
     .isIn(['all', 'today', 'week', 'month', 'custom'])
-    .withMessage('Invalid date filter type')
+    .withMessage('Invalid date filter type'),
+  query('did')
+    .optional()
+    .trim(),
+  query('vicidialDid')
+    .optional()
+    .trim()
 ], handleValidationErrors, async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
@@ -1259,6 +1296,12 @@ router.get('/', protect, [
         dateFilter.$lte = endDate;
       }
       filter.createdAt = dateFilter;
+    }
+
+    // DID filter (e.g. Live Transfer vs Inbound segregated views)
+    const listDidFilter = await resolveDidFilter(req.query.did || req.query.vicidialDid, req.user);
+    if (listDidFilter) {
+      filter.vicidialDid = listDidFilter;
     }
 
     // Organization filter is now applied at the top of the filter building process
@@ -1419,8 +1462,9 @@ router.get('/available-agents', protect, async (req, res) => {
 // @access  Private (Admin, SuperAdmin)
 router.get('/today-stats', protect, authorize('admin', 'superadmin'), async (req, res) => {
   try {
-    const { role } = req.user;
-    const statsCacheKey = `today_stats:${role}:${req.user.organization || 'all'}`;
+    const resolvedDid = await resolveDidFilter(req.query.did || req.query.vicidialDid, req.user);
+    const didSuffix = resolvedDid ? `:did_${resolvedDid}` : '';
+    const statsCacheKey = `today_stats:${role}:${req.user.organization || 'all'}${didSuffix}`;
     const cachedStats = cache.get(statsCacheKey);
     if (cachedStats) {
       return res.json({ success: true, data: cachedStats });
@@ -1436,6 +1480,14 @@ router.get('/today-stats', protect, authorize('admin', 'superadmin'), async (req
       const scopeFilter = await buildAdminLeadScopeFilter(req.user);
       // null → Reddington admin → see all (orgFilter stays {})
       if (scopeFilter !== null) orgFilter = scopeFilter;
+    }
+
+    if (resolvedDid) {
+      if (orgFilter.$or) {
+        orgFilter = { $and: [orgFilter, { vicidialDid: resolvedDid }] };
+      } else {
+        orgFilter = { ...orgFilter, vicidialDid: resolvedDid };
+      }
     }
 
     const baseFilter = { ...orgFilter, ...dateFilter };
@@ -2556,18 +2608,22 @@ router.get('/dashboard/stats', protect, async (req, res) => {
   try {
     const { role, _id: userId } = req.user;
 
+    const resolvedDid = await resolveDidFilter(req.query.did || req.query.vicidialDid, req.user);
+    const didSuffix = resolvedDid ? `:did_${resolvedDid}` : '';
+
     // Short-lived cache to absorb the 30s polling from all users
     const statsCacheKey = role === 'superadmin'
-      ? 'dash_stats:superadmin'
+      ? `dash_stats:superadmin${didSuffix}`
       : role === 'admin'
-        ? `dash_stats:admin:${req.user.organization || 'all'}`
-        : `dash_stats:${role}:${userId}`;
+        ? `dash_stats:admin:${req.user.organization || 'all'}${didSuffix}`
+        : `dash_stats:${role}:${userId}${didSuffix}`;
     const cachedDashStats = cache.get(statsCacheKey);
     if (cachedDashStats) {
       return res.status(200).json({ success: true, data: cachedDashStats });
     }
 
     let filter = {};
+    let effectiveBaseFilter = {};
 
     // Apply filters based on user role
     if (role === 'agent1') {
@@ -2575,11 +2631,15 @@ router.get('/dashboard/stats', protect, async (req, res) => {
     } else if (role === 'agent2') {
       filter = { assignedAgent: userId, status: { $in: ['follow-up', 'converted', 'closed'] } };
     }
+    if (resolvedDid) {
+      filter.vicidialDid = resolvedDid;
+    }
     // Admin sees all data (no filter applied)
 
     // Get basic statistics
     let stats;
     if (role === 'superadmin') {
+      effectiveBaseFilter = resolvedDid ? { vicidialDid: resolvedDid } : {};
       // SuperAdmin sees all data from all organizations
       stats = await Lead.getStatistics();
       
@@ -2595,7 +2655,17 @@ router.get('/dashboard/stats', protect, async (req, res) => {
       const adminOrganization = await Organization.findById(req.user.organization).select('name').lean();
       const isReddingtonAdmin = adminOrganization && adminOrganization.name === 'REDDINGTON GLOBAL CONSULTANCY';
       const scopeFilter = await buildAdminLeadScopeFilter(req.user);
-      const orgFilter = scopeFilter === null ? {} : scopeFilter;
+      let orgFilter = scopeFilter === null ? {} : scopeFilter;
+
+      if (resolvedDid) {
+        if (orgFilter.$or) {
+          orgFilter = { $and: [orgFilter, { vicidialDid: resolvedDid }] };
+        } else {
+          orgFilter = { ...orgFilter, vicidialDid: resolvedDid };
+        }
+      }
+
+      effectiveBaseFilter = orgFilter;
 
       // Use single aggregation pipeline for better performance
       const aggregationResults = await Lead.aggregate([
@@ -2673,6 +2743,7 @@ router.get('/dashboard/stats', protect, async (req, res) => {
         activeAgents
       };
     } else {
+      effectiveBaseFilter = filter;
       // Get filtered stats for agents
       const [total, newLeads, qualified, notQualified, pending, disposedLeads, followUp, converted, closed, immediateEnrollment] = await Promise.all([
         Lead.countDocuments(filter),
@@ -2710,9 +2781,9 @@ router.get('/dashboard/stats', protect, async (req, res) => {
     const { today, thisWeek, thisMonth } = getEasternTimeRanges();
 
     const timeFilters = [
-      { createdAt: { $gte: today }, ...filter },
-      { createdAt: { $gte: thisWeek }, ...filter },
-      { createdAt: { $gte: thisMonth }, ...filter }
+      { createdAt: { $gte: today }, ...effectiveBaseFilter },
+      { createdAt: { $gte: thisWeek }, ...effectiveBaseFilter },
+      { createdAt: { $gte: thisMonth }, ...effectiveBaseFilter }
     ];
 
     const [todayStats, weekStats, monthStats] = await Promise.all([
@@ -2729,7 +2800,7 @@ router.get('/dashboard/stats', protect, async (req, res) => {
         $gte: today,
         $lt: todayEnd
       },
-      ...filter
+      ...effectiveBaseFilter
     });
 
     const response = {
