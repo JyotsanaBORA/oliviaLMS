@@ -232,45 +232,51 @@ const Layout = ({ onDashboardRefresh }) => {
 
   // Navigation items based on user role
   const getNavItems = () => {
-    const baseItems = [];
-
-    // Add Profile for admin, superadmin, agent1 and agent2 (both agents manage their Vicidial ID)
-    if (['admin', 'superadmin', 'agent1', 'agent2'].includes(user.role)) {
-      baseItems.push({ name: 'Profile', href: '/profile', icon: User });
-    }
+    const isMainAdmin = Boolean(
+      user?.role === 'superadmin' ||
+      user?.isMainOrgAdmin === true ||
+      (user?.organization?.name && (user.organization.name.trim().toUpperCase() === 'REDDINGTON GLOBAL CONSULTANCY' || user.organization.name.trim().toUpperCase().includes('REDDINGTON'))) ||
+      String(user?.organization?._id || user?.organization || '') === '68b9c76d2c29dac1220cb81c'
+    );
 
     if (user.role === 'superadmin') {
       return [
         { name: 'SuperAdmin', href: '/superadmin', icon: Shield },
         { name: 'Today Leads', href: '/leads', icon: Users },
         { name: 'Chat', href: '/chat', icon: MessageSquare },
-        ...baseItems
+        { name: 'Profile', href: '/profile', icon: User }
       ];
     } else if (user.role === 'admin') {
-      const isVendorDataEnabled = user.isMainOrgAdmin ||
-        user.organization?.showVendorData === true ||
-        user.organization?.name?.toLowerCase().includes('westlake');
+      if (isMainAdmin) {
+        const isVendorDataEnabled = user.isMainOrgAdmin ||
+          user.organization?.showVendorData === true ||
+          user.organization?.name?.toLowerCase().includes('westlake');
 
-      const adminItems = [
-        { name: 'Dashboard', href: '/admin', icon: BarChart3 },
-        { name: 'Today Leads', href: '/leads', icon: Users },
-      ];
+        const adminItems = [
+          { name: 'Dashboard', href: '/admin', icon: BarChart3 },
+          { name: 'Today Leads', href: '/leads', icon: Users },
+        ];
 
-      if (isVendorDataEnabled) {
-        adminItems.push({ name: 'Vendor Data', href: '/vendor-dashboard', icon: Database });
-      }
+        if (isVendorDataEnabled) {
+          adminItems.push({ name: 'Vendor Data', href: '/vendor-dashboard', icon: Database });
+        }
 
-      adminItems.push({ name: 'Chat', href: '/chat', icon: MessageSquare });
-
-      if (user.isMainOrgAdmin) {
+        adminItems.push({ name: 'Chat', href: '/chat', icon: MessageSquare });
         adminItems.push({ name: 'Payment Status', href: '/payment-status', icon: CreditCard });
+        adminItems.push({ name: 'Profile', href: '/profile', icon: User });
+
+        return adminItems;
       }
-      return [...adminItems, ...baseItems];
+
+      // Other organisation admins (e.g. Jake 2, Ben, partner orgs): ONLY show Dashboard!
+      return [
+        { name: 'Dashboard', href: '/admin', icon: BarChart3 }
+      ];
     } else if (user.role === 'agent2') {
       return [
         { name: 'Leads', href: '/leads', icon: Users },
         { name: 'Chat', href: '/chat', icon: MessageSquare },
-        ...baseItems,
+        { name: 'Profile', href: '/profile', icon: User }
       ];
     } else if (user.role === 'restricted_admin') {
       return [
@@ -289,7 +295,7 @@ const Layout = ({ onDashboardRefresh }) => {
       return [
         { name: 'Dashboard', href: '/dashboard', icon: Home },
         { name: 'Chat', href: '/chat', icon: MessageSquare },
-        ...baseItems
+        { name: 'Profile', href: '/profile', icon: User }
       ];
     }
   };
