@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Save, User, Briefcase, CreditCard, FileText, MessageSquare, ChevronDown, ChevronUp, Eye, Phone, MapPin, BarChart2, Users, ShieldCheck, CheckCircle, AlertCircle } from 'lucide-react';
 import api from '../utils/axios';
 import toast from 'react-hot-toast';
@@ -39,7 +39,7 @@ const EMPTY_FORM = {
   ref1Name: '', ref1Contact: '', ref1Address: '',
   ref2Name: '', ref2Contact: '', ref2Address: '',
   // Disposition
-  callOutcome: '', callbackDate: '', notes: '', customCallOutcome: '',
+  callOutcome: '', callbackDate: '', notes: '', customCallOutcome: '', notEligibleReason: '',
 };
 
 const Field = ({ label, children, required }) => (
@@ -144,6 +144,7 @@ const LeadFormModal = ({ websiteLead, importedLead, existingDomLead, onClose, on
         callbackDate:       existingDomLead.callbackDate      || '',
         notes:              existingDomLead.notes             || importedLead?.remarks || '',
         customCallOutcome:  existingDomLead.customCallOutcome || '',
+        notEligibleReason:  existingDomLead.notEligibleReason  || '',
       });
     } else if (importedLead) {
       setForm((prev) => ({
@@ -1043,6 +1044,26 @@ const LeadFormModal = ({ websiteLead, importedLead, existingDomLead, onClose, on
                     <option value="other"> Other (specify)</option>
                   </Select>
                 </Field>
+                {form.callOutcome === 'not_eligible' && (
+                  <>
+                    <Field label="Not Eligible Reason" required>
+                      <Select value={form.notEligibleReason} onChange={set('notEligibleReason')}>
+                        <option value="">Select Reason</option>
+                        <option value="Cash Salary">Cash Salary</option>
+                        <option value="LOW CIBIL">LOW CIBIL</option>
+                        <option value="No Business Proof">No Business Proof</option>
+                        <option value="Multiple Loans">Multiple Loans</option>
+                        <option value="Age Factor">Age Factor</option>
+                        <option value="Other">Other</option>
+                      </Select>
+                    </Field>
+                    {form.notEligibleReason === 'Other' && (
+                      <Field label="Specify Reason">
+                        <Input value={form.customCallOutcome} onChange={set('customCallOutcome')} placeholder="Specify not eligible reason" />
+                      </Field>
+                    )}
+                  </>
+                )}
                 {form.callOutcome === 'other' && (
                   <Field label="Specify Disposition">
                     <Input value={form.customCallOutcome} onChange={set('customCallOutcome')} placeholder="e.g. Busy, Switched off, Language barrier" />

@@ -1,5 +1,5 @@
-﻿import React, { useState } from 'react';
-import { X, Phone, Mail, MapPin, Briefcase, CreditCard, BarChart2, User, ChevronRight, Edit3 } from 'lucide-react';
+import React, { useState } from 'react';
+import { X, Phone, MapPin, CreditCard, BarChart2, User, ChevronRight, Edit3 } from 'lucide-react';
 
 const WORK_STATUS_META = {
   new:            { label: 'Not Called Yet', cls: 'bg-orange-100 text-orange-700 border border-orange-200' },
@@ -19,13 +19,6 @@ const Field = ({ label, value, highlight }) => {
     </div>
   );
 };
-
-const SectionHeader = ({ icon: Icon, title, color }) => (
-  <div className={`flex items-center gap-2 px-4 py-2.5 ${color} border-b`}>
-    <Icon className="h-4 w-4 flex-shrink-0" />
-    <span className="text-sm font-bold">{title}</span>
-  </div>
-);
 
 /**
  * ImportedLeadDetailModal
@@ -195,7 +188,12 @@ const ImportedLeadDetailModal = ({ lead, onClose, onWorkLead }) => {
                 </div>
                 <div>
                   <p className="font-bold text-base">{ws.label}</p>
-                  {lead.callOutcome && <p className="text-sm mt-0.5 capitalize">{lead.callOutcome.replace(/_/g,' ')}</p>}
+                  {lead.callOutcome && (
+                    <p className="text-sm mt-0.5 capitalize">
+                      {lead.callOutcome.replace(/_/g,' ')}
+                      {lead.notEligibleReason ? ` — ${lead.notEligibleReason}` : ''}
+                    </p>
+                  )}
                   {lead.workedAt && <p className="text-xs mt-0.5 opacity-70">Last worked: {new Date(lead.workedAt).toLocaleString('en-IN')}</p>}
                 </div>
               </div>

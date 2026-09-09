@@ -193,6 +193,7 @@ const domLeadSchema = new mongoose.Schema(
     callbackDate:        { type: String, trim: true, maxlength: 30 },
     notes:               { type: String, trim: true, maxlength: 3000 },
     customCallOutcome:   { type: String, trim: true, maxlength: 100 },
+    notEligibleReason:   { type: String, trim: true, maxlength: 100 },
 
     //  Documents 
     documents: [documentSchema],

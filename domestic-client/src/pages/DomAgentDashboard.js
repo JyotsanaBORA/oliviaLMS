@@ -4,7 +4,7 @@ import {
   LogOut, RefreshCw, FileText, CheckCircle,
   Clock, PlusCircle, ChevronRight, Database,
   CheckCircle2, Phone, AlertCircle, Calendar,
-  Search, Menu, ChevronLeft, X, ShieldCheck,
+  Search, ChevronLeft, X, ShieldCheck,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import LeadFormModal           from '../components/LeadFormModal';
@@ -66,7 +66,6 @@ const DomAgentDashboard = () => {
   const [connected, setConnected] = useState(false);
   const [myLeads,   setMyLeads]   = useState([]);
   const [loading,   setLoading]   = useState(true);
-  const [refreshing,setRefreshing]= useState(false);
   const [tab, setTab] = useState('assigned');
   const [modalOpen,       setModalOpen]       = useState(false);
   const [selectedWLead,   setSelectedWLead]   = useState(null);
@@ -137,12 +136,12 @@ const DomAgentDashboard = () => {
   }, [user.role, user._id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchMyLeads = useCallback(async (silent = false) => {
-    if (!silent) setLoading(true); else setRefreshing(true);
+    if (!silent) setLoading(true);
     try {
       const res = await api.get('/domestic-api/website-leads/my');
       setMyLeads(res.data?.data || []);
     } catch { toast.error('Failed to load your leads.'); }
-    finally { setLoading(false); setRefreshing(false); }
+    finally { setLoading(false); }
   }, []);
 
   const fetchAssignedLeads = useCallback(async () => {
@@ -215,7 +214,7 @@ const DomAgentDashboard = () => {
 
   useEffect(() => {
     if (tab === 'followups') fetchFollowups();
-  }, [tab, fetchAssignedLeads]);
+  }, [tab, fetchFollowups]);
 
   const handleOpenLead = useCallback(async (lead) => {
     const domLeadId = lead.domLead?._id || lead.domLead;
@@ -235,12 +234,6 @@ const DomAgentDashboard = () => {
     } else { setSelectedDomLead(null); }
     setModalOpen(true);
   }, []);
-
-  const { pendingCount, workedCount, manualCount } = useMemo(() => ({
-    pendingCount: myLeads.filter((l) => !l.isWorked).length,
-    workedCount:  myLeads.filter((l) =>  l.isWorked).length,
-    manualCount:  myLeads.filter((l) =>  l.isManual).length,
-  }), [myLeads]);
 
   // Combined views
   const toWorkLeads  = useMemo(() => [
@@ -768,10 +761,13 @@ const DomAgentDashboard = () => {
                           <td className="px-3 py-3.5 font-mono text-xs text-gray-600">{lead.mobile || ''}</td>
                           <td className="px-3 py-3.5">
                             {outcome
-                              ? <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${outcome.cls}`}>{outcome.label}</span>
+                              ? <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${outcome.cls}`}>
+                                  {outcome.label}
+                                  {outcomeKey === 'not_eligible' && (lead.notEligibleReason || lead.domLead?.notEligibleReason || lead.domLeadId?.notEligibleReason) ? ` (${lead.notEligibleReason || lead.domLead?.notEligibleReason || lead.domLeadId?.notEligibleReason})` : ''}
+                                </span>
                               : wsInfo
                                 ? <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${wsInfo}`}>{lead.workStatus?.replace(/_/g,' ')}</span>
-                                : <span className="text-gray-300 text-xs"></span>}
+                                : <span className="text-gray-300 text-xs">—</span>}
                           </td>
                           <td className="px-3 py-3.5">
                             {(() => {
@@ -1054,38 +1050,4 @@ const DomAgentDashboard = () => {
   );
 };
 
-const StatChip = ({ icon, label, value, color }) => {
-  const styles = {
-    red:    'bg-red-50 text-red-700 border-red-200',
-    blue:   'bg-[#E8FFF5] text-[#065F36] border-[#D1FAE5]',
-    purple: 'bg-[#E8FFF5] text-[#065F36] border-[#D1FAE5]',
-    gray:   'bg-gray-100 text-gray-700 border-gray-200',
-  };
-  return (
-    <div className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-sm font-medium min-w-max ${styles[color]}`}>
-      {icon}
-      <span className="font-bold text-base leading-none">{value}</span>
-      <span className="text-xs">{label}</span>
-    </div>
-  );
-};
-
-const TabBtn = ({ active, onClick, badge, children }) => (
-  <button onClick={onClick}
-    className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
-      active ? 'bg-gradient-to-r from-[#065F36] to-[#00874A] text-white shadow-sm' : 'text-gray-600 hover:text-[#065F36] hover:bg-white'
-    }`}>
-    {children}
-    {badge > 0 && (
-      <span className="ml-0.5 bg-red-500 text-white text-xs font-bold rounded-full w-4.5 h-4.5 min-w-[18px] min-h-[18px] flex items-center justify-center px-1">
-        {badge > 9 ? '9+' : badge}
-      </span>
-    )}
-  </button>
-);
-
 export default DomAgentDashboard;
-
-
-
-

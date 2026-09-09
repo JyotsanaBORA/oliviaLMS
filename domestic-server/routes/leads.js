@@ -134,10 +134,11 @@ router.post('/', protect, authorize('domagent', 'dom_admin', 'dom_superadmin'), 
       // Update the imported lead to record the worked state
       const workStatus = OUTCOME_TO_WORK_STATUS[sanitized.callOutcome] || 'in_progress';
       await DomImportedLead.findByIdAndUpdate(sourceImportedLead, {
-        domLeadId:   domLead._id,
+        domLeadId:         domLead._id,
         workStatus,
-        callOutcome: sanitized.callOutcome || '',
-        workedAt:    new Date(),
+        callOutcome:       sanitized.callOutcome || '',
+        notEligibleReason: sanitized.notEligibleReason || '',
+        workedAt:          new Date(),
       });
 
       return res.status(201).json({ success: true, data: domLead });
@@ -226,6 +227,7 @@ router.patch('/:id', protect, authorize('domagent', 'dom_admin', 'dom_superadmin
       await DomImportedLead.findByIdAndUpdate(updated.sourceImportedLead, {
         workStatus,
         callOutcome: updates.callOutcome,
+        ...(updates.notEligibleReason !== undefined ? { notEligibleReason: updates.notEligibleReason } : {}),
         workedAt:    new Date(),
       });
     }
@@ -484,7 +486,7 @@ router.get('/export', protect, authorize('dom_admin', 'dom_superadmin'), async (
       'Product', 'Loan Amount ()', 'Existing Bank', 'Salary Bank', 'CIBIL Range', 'Existing EMI ()',
       'Ref1 Name', 'Ref1 Contact', 'Ref1 Address',
       'Ref2 Name', 'Ref2 Contact', 'Ref2 Address',
-      'Disposition', 'Custom Disposition', 'Callback Date', 'Notes',
+      'Disposition', 'Custom Disposition', 'Not Eligible Reason', 'Callback Date', 'Notes',
       'Status', 'Agent', 'Agent Email',
       'Times Called', 'Times Updated',
       'Docs Count', 'Doc Types', 'Created On',
@@ -511,7 +513,7 @@ router.get('/export', protect, authorize('dom_admin', 'dom_superadmin'), async (
       l.existingEMI ? Number(l.existingEMI) : '',
       l.ref1Name || '', l.ref1Contact || '', l.ref1Address || '',
       l.ref2Name || '', l.ref2Contact || '', l.ref2Address || '',
-      (l.callOutcome || '').replace(/_/g, ' '), l.customCallOutcome || '',
+      (l.callOutcome || '').replace(/_/g, ' '), l.customCallOutcome || '', l.notEligibleReason || '',
       l.callbackDate || '', l.notes || '',
       l.status || '', l.assignedTo?.name || '', l.assignedTo?.email || '',
       l.callCount || 0, l.updateCount || 0,
@@ -628,7 +630,7 @@ router.get('/export-zip', protect, authorize('dom_superadmin'), async (req, res)
       'Product', 'Loan Amount ()', 'Existing Bank', 'Salary Bank', 'CIBIL Range', 'Existing EMI ()',
       'Ref1 Name', 'Ref1 Contact', 'Ref1 Address',
       'Ref2 Name', 'Ref2 Contact', 'Ref2 Address',
-      'Disposition', 'Custom Disposition', 'Callback Date', 'Notes',
+      'Disposition', 'Custom Disposition', 'Not Eligible Reason', 'Callback Date', 'Notes',
       'Status', 'Agent', 'Agent Email',
       'Times Called', 'Times Updated',
       'Docs Count', 'Doc Types', 'Created On',
@@ -654,7 +656,7 @@ router.get('/export-zip', protect, authorize('dom_superadmin'), async (req, res)
       l.existingEMI ? Number(l.existingEMI) : '',
       l.ref1Name || '', l.ref1Contact || '', l.ref1Address || '',
       l.ref2Name || '', l.ref2Contact || '', l.ref2Address || '',
-      (l.callOutcome || '').replace(/_/g, ' '), l.customCallOutcome || '',
+      (l.callOutcome || '').replace(/_/g, ' '), l.customCallOutcome || '', l.notEligibleReason || '',
       l.callbackDate || '', l.notes || '',
       l.status || '', l.assignedTo?.name || '', l.assignedTo?.email || '',
       l.callCount || 0, l.updateCount || 0,
@@ -957,7 +959,7 @@ function sanitizeLeadFields(body) {
     'ref1Name', 'ref1Contact', 'ref1Address',
     'ref2Name', 'ref2Contact', 'ref2Address',
     // Disposition
-    'callOutcome', 'callbackDate', 'notes', 'customCallOutcome',
+    'callOutcome', 'callbackDate', 'notes', 'customCallOutcome', 'notEligibleReason',
     'status',
   ];
   const clean = {};

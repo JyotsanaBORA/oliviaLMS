@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 const mongoose = require('mongoose');
 
 /**
@@ -92,8 +92,9 @@ const domImportedLeadSchema = new mongoose.Schema(
       default: 'new',
       index: true,
     },
-    callOutcome:  { type: String, trim: true, maxlength: 50 },
-    callbackDate: { type: String, trim: true, maxlength: 20 },
+    callOutcome:       { type: String, trim: true, maxlength: 50 },
+    notEligibleReason: { type: String, trim: true, maxlength: 100 },
+    callbackDate:      { type: String, trim: true, maxlength: 20 },
     agentNotes:   { type: String, trim: true, maxlength: 1000 },
     workedAt:     { type: Date, default: null },
 
