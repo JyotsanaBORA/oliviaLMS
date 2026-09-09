@@ -560,7 +560,7 @@ router.put('/queue/:callId/activate', protect, authorize('agent1', 'agent2', 'ad
       {
         _id: req.params.callId,
         agent: req.user._id,
-        queueStatus: { $in: ['pending', 'active'] },
+        queueStatus: 'pending',
       },
       {
         queueStatus: 'active',
