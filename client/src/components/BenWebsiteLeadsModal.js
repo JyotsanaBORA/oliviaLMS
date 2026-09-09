@@ -3,7 +3,7 @@ import {
   Globe, X, RefreshCw, Search, CheckCircle, XCircle,
   Download, Eye, MessageSquare, PhoneCall, Mail, MapPin,
   DollarSign, Smartphone, ChevronLeft, ChevronRight,
-  FileDown, Clock, Send, Lock, Building, UserPlus
+  FileDown, Clock, Send, Lock, Building, UserPlus, Trash2
 } from 'lucide-react';
 import axios from '../utils/axios';
 import { useAuth } from '../contexts/AuthContext';
@@ -174,6 +174,18 @@ const BenWebsiteLeadsModal = ({ onClose, targetOrgName, title }) => {
       setSummary(prev => { const n = { ...prev }; n[lead.status] = Math.max(0, (n[lead.status] || 0) - 1); n[newStatus] = (n[newStatus] || 0) + 1; return n; });
       if (detail?._id === lead._id) setDetail(d => ({ ...d, status: newStatus }));
     } catch { toast.error('Failed to update status'); } finally { setActionLoading(null); }
+  };
+
+  const handleDelete = async (lead) => {
+    if (!canWrite) return;
+    if (!window.confirm(`Are you sure you want to delete "${lead.name}"? This action cannot be undone.`)) return;
+    setActionLoading(lead._id);
+    try {
+      await axios.delete(`/api/ben-website-leads/${lead._id}`);
+      toast.success('Lead deleted');
+      setLeads(prev => prev.filter(l => l._id !== lead._id));
+      if (detail?._id === lead._id) setDetail(null);
+    } catch { toast.error('Failed to delete lead'); } finally { setActionLoading(null); }
   };
 
   const handleImport = async (lead) => {
@@ -531,6 +543,10 @@ const BenWebsiteLeadsModal = ({ onClose, targetOrgName, title }) => {
                                 <XCircle className="h-3.5 w-3.5" />
                               </button>
                             )}
+                            <button disabled={actionLoading === lead._id} onClick={() => handleDelete(lead)}
+                              className="p-1.5 rounded-lg hover:bg-gray-200 text-gray-500 hover:text-red-600 transition-colors disabled:opacity-50" title="Delete Lead">
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
                           </div>
                         </td>
                       )}

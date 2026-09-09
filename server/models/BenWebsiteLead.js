@@ -44,6 +44,7 @@ const benWebsiteLeadSchema = new mongoose.Schema(
       ref: 'Lead',
       default: null,
     },
+    isDeleted: { type: Boolean, default: false },
     rawPayload: { type: mongoose.Schema.Types.Mixed },
     // Reddington staff comments
     comments: [

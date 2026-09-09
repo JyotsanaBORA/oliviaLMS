@@ -46,7 +46,7 @@ router.get('/', protect, async (req, res) => {
     const status = req.query.status;
     const search = (req.query.search || '').trim();
 
-    const filter = {};
+    const filter = { isDeleted: { $ne: true } };
     if (access.orgFilter) {
       filter.organization = mongoose.isValidObjectId(access.orgFilter) ? new mongoose.Types.ObjectId(access.orgFilter) : access.orgFilter;
     } else if (req.query.organizationId) {
@@ -366,6 +366,27 @@ router.post('/:id/comments', protect, async (req, res) => {
   } catch (err) {
     console.error('Add ben-website-lead comment error:', err);
     return res.status(500).json({ success: false, message: 'Error adding comment.' });
+  }
+});
+
+// DELETE /api/ben-website-leads/:id  (soft delete — Reddington only)
+router.delete('/:id', protect, async (req, res) => {
+  try {
+    const access = await getAccess(req.user);
+    if (!access.allowed) return res.status(403).json({ success: false, message: 'Access denied.' });
+    if (!access.canWrite) return res.status(403).json({ success: false, message: 'Only full access admins can delete leads.' });
+    if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ success: false, message: 'Invalid ID.' });
+
+    const lead = await BenWebsiteLead.findById(req.params.id);
+    if (!lead) return res.status(404).json({ success: false, message: 'Lead not found.' });
+
+    lead.isDeleted = true;
+    await lead.save();
+
+    return res.json({ success: true, message: 'Lead deleted successfully.' });
+  } catch (err) {
+    console.error('Delete ben-website-lead error:', err);
+    return res.status(500).json({ success: false, message: 'Error deleting lead.' });
   }
 });
 
