@@ -364,6 +364,201 @@ router.post('/:id/comments', protect, async (req, res) => {
     const saved = lead.comments[lead.comments.length - 1];
     return res.status(201).json({ success: true, data: saved });
   } catch (err) {
+    if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ success: false, message: 'Invalid ID.' });
+
+    const { status } = req.body;
+    if (!['reviewed', 'rejected', 'new'].includes(status))
+      return res.status(400).json({ success: false, message: 'Invalid status value.' });
+
+    const lead = await BenWebsiteLead.findByIdAndUpdate(req.params.id, { status }, { new: true, runValidators: true }).lean();
+    if (!lead) return res.status(404).json({ success: false, message: 'Lead not found.' });
+    return res.status(200).json({ success: true, data: lead });
+  } catch (err) {
+    console.error('Update ben-website-lead status error:', err);
+    return res.status(500).json({ success: false, message: 'Error updating status.' });
+  }
+});
+
+// POST /api/ben-website-leads/:id/import  (write — Reddington only)
+router.post('/:id/import', protect, async (req, res) => {
+  try {
+    const access = await getAccess(req.user);
+    if (!access.allowed) return res.status(403).json({ success: false, message: 'Access denied.' });
+    if (!access.canWrite) return res.status(403).json({ success: false, message: 'Read-only access.' });
+    if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ success: false, message: 'Invalid ID.' });
+
+    const webLead = await BenWebsiteLead.findById(req.params.id);
+    if (!webLead) return res.status(404).json({ success: false, message: 'Lead not found.' });
+    if (webLead.status === 'imported') return res.status(400).json({ success: false, message: 'Already imported.' });
+
+    const notesParts = [];
+    const formLabel = webLead.formType === 'contact-form' ? '[Ben Website – Contact Form]' : '[Ben Website – Qualify Form]';
+    notesParts.push(formLabel);
+    if (webLead.message) notesParts.push(`Message: ${webLead.message}`);
+    notesParts.push(`SMS Opt-In: ${webLead.smsOptIn ? 'YES' : 'NO'}`);
+
+    const leadData = {
+      name: webLead.name || 'Ben Website Lead',
+      organization: webLead.organization,
+      notes: notesParts.join('\n'),
+      createdBy: req.user._id,
+    };
+
+    if (webLead.email) {
+      const sanitized = webLead.email.replace(/(\.\w{2,3})\w+$/, '$1');
+      if (/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/.test(sanitized)) leadData.email = sanitized;
+    }
+    if (webLead.phone)           leadData.phone           = webLead.phone;
+    if (webLead.streetAddress)   leadData.address         = webLead.streetAddress;
+    if (webLead.city)            leadData.city            = webLead.city;
+    if (webLead.state)           leadData.state           = webLead.state;
+    if (webLead.zipCode)         leadData.zipcode         = webLead.zipCode;
+    if (webLead.totalDebtAmount) leadData.totalDebtAmount = webLead.totalDebtAmount;
+
+    const imported = await Lead.create(leadData);
+    webLead.status = 'imported';
+    webLead.importedLeadId = imported._id;
+    await webLead.save();
+
+    // Clear stats cache so dashboard cards update in real time
+    cache.clear();
+
+    // Emit real-time leadCreated event
+    if (req.io) {
+      const eventData = {
+        lead: imported,
+        createdBy: req.user.name || 'Admin',
+        organizationId: imported.organization
+      };
+      req.io.emit('leadCreated', eventData);
+      req.io.to('admin').emit('leadCreated', eventData);
+      req.io.to('superadmin').emit('leadCreated', eventData);
+      req.io.to('agent2').emit('leadCreated', eventData);
+      req.io.to('agent1').emit('leadCreated', eventData);
+    }
+
+    return res.status(201).json({ success: true, message: 'Lead imported.', data: { importedLeadId: imported._id, leadId: imported.leadId } });
+  } catch (err) {
+    console.error('Import ben-website-lead error:', err);
+    return res.status(500).json({ success: false, message: 'Error importing lead.' });
+  }
+});
+
+// POST /api/ben-website-leads/bulk-import (write — Reddington only)
+router.post('/bulk-import', protect, async (req, res) => {
+  try {
+    const access = await getAccess(req.user);
+    if (!access.allowed) return res.status(403).json({ success: false, message: 'Access denied.' });
+    if (!access.canWrite) return res.status(403).json({ success: false, message: 'Read-only access.' });
+
+    const { leadIds } = req.body;
+    if (!Array.isArray(leadIds) || leadIds.length === 0) {
+      return res.status(400).json({ success: false, message: 'No leads selected.' });
+    }
+
+    let successCount = 0;
+    for (const id of leadIds) {
+      if (!mongoose.isValidObjectId(id)) continue;
+      const webLead = await BenWebsiteLead.findById(id);
+      if (!webLead || webLead.status === 'imported') continue;
+
+      const notesParts = [];
+      const formLabel = webLead.formType === 'contact-form' ? '[Ben Website – Contact Form]' : '[Ben Website – Qualify Form]';
+      notesParts.push(formLabel);
+      if (webLead.message) notesParts.push(`Message: ${webLead.message}`);
+      notesParts.push(`SMS Opt-In: ${webLead.smsOptIn ? 'YES' : 'NO'}`);
+
+      const leadData = {
+        name: webLead.name || 'Ben Website Lead',
+        organization: webLead.organization,
+        notes: notesParts.join('\n'),
+        createdBy: req.user._id,
+      };
+
+      if (webLead.email) {
+        const sanitized = webLead.email.replace(/(\.\w{2,3})\w+$/, '$1');
+        if (/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/.test(sanitized)) leadData.email = sanitized;
+      }
+      if (webLead.phone)           leadData.phone           = webLead.phone;
+      if (webLead.streetAddress)   leadData.address         = webLead.streetAddress;
+      if (webLead.city)            leadData.city            = webLead.city;
+      if (webLead.state)           leadData.state           = webLead.state;
+      if (webLead.zipCode)         leadData.zipcode         = webLead.zipCode;
+      if (webLead.totalDebtAmount) leadData.totalDebtAmount = webLead.totalDebtAmount;
+
+      const imported = await Lead.create(leadData);
+      webLead.status = 'imported';
+      webLead.importedLeadId = imported._id;
+      await webLead.save();
+      successCount++;
+
+      if (req.io) {
+        const eventData = {
+          lead: imported,
+          createdBy: req.user.name || 'Admin',
+          organizationId: imported.organization
+        };
+        req.io.emit('leadCreated', eventData);
+        req.io.to('admin').emit('leadCreated', eventData);
+        req.io.to('superadmin').emit('leadCreated', eventData);
+        req.io.to('agent2').emit('leadCreated', eventData);
+        req.io.to('agent1').emit('leadCreated', eventData);
+      }
+    }
+
+    if (successCount > 0) {
+      cache.clear();
+    }
+
+    return res.status(200).json({ success: true, count: successCount, message: `Imported ${successCount} leads.` });
+  } catch (err) {
+    console.error('Bulk import ben-website-leads error:', err);
+    return res.status(500).json({ success: false, message: 'Error during bulk import.' });
+  }
+});
+
+// GET /api/ben-website-leads/:id
+router.get('/:id', protect, async (req, res) => {
+  try {
+    const access = await getAccess(req.user);
+    if (!access.allowed) return res.status(403).json({ success: false, message: 'Access denied.' });
+    if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ success: false, message: 'Invalid ID.' });
+
+    const lead = await BenWebsiteLead.findById(req.params.id).populate('organization', 'name').lean();
+    if (!lead) return res.status(404).json({ success: false, message: 'Lead not found.' });
+    if (access.orgFilter && String(lead.organization?._id || lead.organization) !== String(access.orgFilter))
+      return res.status(403).json({ success: false, message: 'Access denied to this lead.' });
+
+    return res.status(200).json({ success: true, data: lead });
+  } catch (err) {
+    console.error('Get ben-website-lead detail error:', err);
+    return res.status(500).json({ success: false, message: 'Error fetching lead.' });
+  }
+});
+
+// POST /api/ben-website-leads/:id/comments  (write — Reddington only)
+router.post('/:id/comments', protect, async (req, res) => {
+  try {
+    const access = await getAccess(req.user);
+    if (!access.allowed) return res.status(403).json({ success: false, message: 'Access denied.' });
+    if (!access.canWrite) return res.status(403).json({ success: false, message: 'Read-only access.' });
+    if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ success: false, message: 'Invalid ID.' });
+
+    const text = (req.body.text || '').trim();
+    if (!text) return res.status(400).json({ success: false, message: 'Comment text is required.' });
+    if (text.length > 1000) return res.status(400).json({ success: false, message: 'Comment must be 1000 characters or fewer.' });
+
+    const newComment = { text, authorId: req.user._id, authorName: req.user.name || req.user.email || 'Staff', createdAt: new Date() };
+    const lead = await BenWebsiteLead.findByIdAndUpdate(
+      req.params.id,
+      { $push: { comments: newComment } },
+      { new: true, runValidators: true }
+    ).lean();
+
+    if (!lead) return res.status(404).json({ success: false, message: 'Lead not found.' });
+    const saved = lead.comments[lead.comments.length - 1];
+    return res.status(201).json({ success: true, data: saved });
+  } catch (err) {
     console.error('Add ben-website-lead comment error:', err);
     return res.status(500).json({ success: false, message: 'Error adding comment.' });
   }
@@ -382,6 +577,10 @@ router.delete('/:id', protect, async (req, res) => {
 
     lead.isDeleted = true;
     await lead.save();
+
+    if (lead.importedLeadId) {
+      await Lead.findByIdAndDelete(lead.importedLeadId);
+    }
 
     return res.json({ success: true, message: 'Lead deleted successfully.' });
   } catch (err) {
