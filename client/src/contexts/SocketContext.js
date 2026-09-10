@@ -66,10 +66,17 @@ export const SocketProvider = ({ children }) => {
         setIsConnected(false);
       });
 
+      // Helper to check if user is a tenant/read-only org admin
+      const isReadOnlyOrgAdmin = () => {
+        if (!user || user.role !== 'admin') return false;
+        const orgName = (user.organization?.name || user.organizationName || '').trim().toUpperCase();
+        return orgName !== 'REDDINGTON GLOBAL CONSULTANCY' && !orgName.includes('REDDINGTON') && String(user.organization?._id || user.organization) !== '68b9c76d2c29dac1220cb81c';
+      };
+
       // Lead events
       socket.current.on('leadCreated', (data) => {
         try {
-          if (user.role === 'agent2' || user.role === 'admin') {
+          if (!isReadOnlyOrgAdmin() && (user.role === 'agent2' || user.role === 'superadmin')) {
             toast.success(`New lead added by ${data.createdBy}`);
           }
           // Trigger refresh of leads list
@@ -81,7 +88,7 @@ export const SocketProvider = ({ children }) => {
 
       socket.current.on('leadUpdated', (data) => {
         try {
-          if (user.role === 'agent1' || user.role === 'admin') {
+          if (!isReadOnlyOrgAdmin() && (user.role === 'agent1' || user.role === 'superadmin')) {
             toast.success(`Lead updated by ${data.updatedBy}`);
           }
           // Trigger refresh of leads list
@@ -93,8 +100,8 @@ export const SocketProvider = ({ children }) => {
 
       socket.current.on('leadReassigned', (data) => {
         try {
-          // Show notification to relevant users
-          if (user.role === 'admin' || user.role === 'agent2') {
+          // Show notification to relevant users (suppressed for read-only org admins)
+          if (!isReadOnlyOrgAdmin() && (user.role === 'agent2' || user.role === 'superadmin')) {
             toast.success(`Lead reassigned from ${data.previousAgent} to ${data.newAgent} by ${data.reassignedBy}`);
           }
           // Trigger refresh of leads list
@@ -106,8 +113,7 @@ export const SocketProvider = ({ children }) => {
 
       socket.current.on('leadDeleted', (data) => {
         try {
-          // Only show toast for non-admin/non-superadmin users to avoid conflicts
-          if (user.role === 'agent1' || user.role === 'agent2') {
+          if (!isReadOnlyOrgAdmin() && (user.role === 'agent1' || user.role === 'agent2')) {
             toast.info(`A lead was removed by ${data.deletedBy}`);
           }
           // Trigger refresh of leads list

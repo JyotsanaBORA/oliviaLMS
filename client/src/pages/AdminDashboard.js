@@ -907,13 +907,17 @@ const AdminDashboard = () => {
           const isMyOrg = String(leadOrgId) === String(myOrgId);
           if (isMyOrg || isReddingtonAdmin) {
             setWestlakeLeadsBadge(n => n + 1);
-            toast.success(`New Westlake lead: ${data?.name || 'Unknown'}`, { duration: 5000, icon: '🌐' });
+            if (isReddingtonAdmin) {
+              toast.success(`New Westlake lead: ${data?.name || 'Unknown'}`, { duration: 5000, icon: '🌐' });
+            }
           }
         } else if (isSocialUpLead) {
           const isMyOrg = String(leadOrgId) === String(myOrgId);
           if (isMyOrg || isReddingtonAdmin) {
             setSocialUpLeadsBadge(n => n + 1);
-            toast.success(`New Social Up lead: ${data?.name || 'Unknown'}`, { duration: 5000, icon: '🌐' });
+            if (isReddingtonAdmin) {
+              toast.success(`New Social Up lead: ${data?.name || 'Unknown'}`, { duration: 5000, icon: '🌐' });
+            }
           }
         } else {
           // Main Reddington website lead
@@ -941,24 +945,34 @@ const AdminDashboard = () => {
         const orgNameLower = (data?.organizationName || '').toLowerCase();
         if (orgNameLower.includes('socialupmedia 2') || orgNameLower.includes('social up media 2') || orgNameLower.includes('jake2') || String(leadOrgId) === '6aa03313a396c53fdf24e16f') {
           setJake2Badge(n => n + 1);
-          toast.success(`New Jake 2 lead: ${data?.name || 'Unknown'}`, { duration: 5000, icon: '🟣' });
+          if (isReddingtonAdmin) {
+            toast.success(`New Jake 2 lead: ${data?.name || 'Unknown'}`, { duration: 5000, icon: '🟣' });
+          }
         } else if (orgNameLower.includes('truclick') || orgNameLower.includes('tru click')) {
           setTruClickBadge(n => n + 1);
-          toast.success(`New TruClick Media lead: ${data?.name || 'Unknown'}`, { duration: 5000, icon: '🔵' });
+          if (isReddingtonAdmin) {
+            toast.success(`New TruClick Media lead: ${data?.name || 'Unknown'}`, { duration: 5000, icon: '🔵' });
+          }
         } else if (orgNameLower.includes('ben')) {
           setBenLeadsBadge(n => n + 1);
-          toast.success(`New Ben website lead: ${data?.name || 'Unknown'}`, { duration: 5000, icon: '🟠' });
+          if (isReddingtonAdmin) {
+            toast.success(`New Ben website lead: ${data?.name || 'Unknown'}`, { duration: 5000, icon: '🟠' });
+          }
         } else {
           setBenLeadsBadge(n => n + 1);
-          const orgTag = isReddingtonAdmin && data?.organizationName ? `${data.organizationName}: ` : '';
-          toast.success(`New inbound lead: ${orgTag}${data?.name || 'Unknown'}`, { duration: 5000, icon: '🟠' });
+          if (isReddingtonAdmin) {
+            const orgTag = data?.organizationName ? `${data.organizationName}: ` : '';
+            toast.success(`New inbound lead: ${orgTag}${data?.name || 'Unknown'}`, { duration: 5000, icon: '🟠' });
+          }
         }
       };
 
       const handleNewInboundData = (data) => {
         if (user?.role !== 'admin') return;
         setInboundCallsBadge(n => n + 1);
-        toast.success(`New Inbound Call on DID ${data?.did || 'N/A'}: ${data?.phoneNumber || 'Unknown'}`, { duration: 5000, icon: '📞' });
+        if (isReddingtonAdmin) {
+          toast.success(`New Inbound Call on DID ${data?.did || 'N/A'}: ${data?.phoneNumber || 'Unknown'}`, { duration: 5000, icon: '📞' });
+        }
       };
 
       socket.on('leadUpdated', handleLeadUpdated);
