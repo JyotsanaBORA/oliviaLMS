@@ -22,10 +22,10 @@ const inboundDataSchema = new mongoose.Schema({
     index: true,
   },
 
-  // Call Status / Life-cycle state
+  // Call Status / Life-cycle state (defaults to RECEIVED, accepts telephony dispo codes)
   callStatus: {
     type: String,
-    enum: ['RECEIVED', 'DISPOSITIONED', 'CONVERTED', 'MISSED', 'COMPLETED'],
+    trim: true,
     default: 'RECEIVED',
     index: true,
   },

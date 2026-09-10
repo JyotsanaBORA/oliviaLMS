@@ -101,32 +101,104 @@ const getInboundAccess = async (user) => {
   };
 };
 
+const fs = require('fs');
+const path = require('path');
+
+// Temporary debug logger file for live testing with ViciDial
+const DEBUG_LOG_FILE = path.join(__dirname, '../../inbound_api_debug.log');
+
+/**
+ * Temporary file logger helper.
+ * Appends human-readable structured logs to inbound_api_debug.log.
+ */
+function logInboundDebug(type, details) {
+  try {
+    const timestamp = new Date().toISOString();
+    const divider = '='.repeat(80);
+    const subDivider = '-'.repeat(80);
+    let content = '';
+
+    if (type === 'INCOMING_REQUEST') {
+      content = `\n${divider}\n` +
+        `[${timestamp}] 📥 INCOMING INBOUND REQUEST\n` +
+        `Method: ${details.method}\n` +
+        `URL: ${details.url}\n` +
+        `IP: ${details.ip}\n` +
+        `User-Agent: ${details.userAgent}\n` +
+        `Content-Type: ${details.contentType}\n` +
+        `Query Parameters:\n${JSON.stringify(details.query, null, 2)}\n` +
+        `Body (Raw/Parsed):\n${typeof details.body === 'object' ? JSON.stringify(details.body, null, 2) : String(details.body)}\n` +
+        `Merged Payload:\n${JSON.stringify(details.mergedPayload, null, 2)}\n` +
+        `${subDivider}\n`;
+    } else if (type === 'SUCCESS_RESPONSE') {
+      content = `[${timestamp}] ✅ SUCCESS (Status ${details.statusCode})\n` +
+        `Saved Inbound Record ID: ${details.savedId}\n` +
+        `Matched Organization: ${details.matchedOrgName || 'None'} (ID: ${details.matchedOrgId || 'N/A'})\n` +
+        `Matched Agent: ${details.matchedAgentName || 'None'} (ID: ${details.matchedAgentId || 'N/A'})\n` +
+        `Response Sent:\n${JSON.stringify(details.response, null, 2)}\n` +
+        `${divider}\n\n`;
+    } else if (type === 'VALIDATION_ERROR') {
+      content = `[${timestamp}] ⚠️ VALIDATION ERROR (Status ${details.statusCode})\n` +
+        `Reason: ${details.message}\n` +
+        `Response Sent:\n${JSON.stringify(details.response, null, 2)}\n` +
+        `${divider}\n\n`;
+    } else if (type === 'SERVER_ERROR') {
+      content = `[${timestamp}] ❌ SERVER ERROR (Status ${details.statusCode || 500})\n` +
+        `Error Message: ${details.errorMessage}\n` +
+        `Stack: ${details.stack || 'No stack'}\n` +
+        `Response Sent:\n${JSON.stringify(details.response, null, 2)}\n` +
+        `${divider}\n\n`;
+    } else {
+      content = `[${timestamp}] [${type}]\n${JSON.stringify(details, null, 2)}\n`;
+    }
+
+    fs.appendFileSync(DEBUG_LOG_FILE, content, 'utf8');
+  } catch (logErr) {
+    console.error('⚠️ [Inbound Logger] Failed to write to inbound_api_debug.log:', logErr.message);
+  }
+}
+
 // ===========================================================================
 // PUBLIC INGESTION ENDPOINTS (Option A - No Auth required)
 // POST & GET /call-data  (e.g., /api/inbound/call-data or /api/inbound-data/call-data)
 // ===========================================================================
 const handleInboundIngestion = async (req, res) => {
+  const requestStartTime = Date.now();
+  let mergedPayload = {};
+
   try {
     const parsedBody = typeof req.body === 'string' ? parseStringPayload(req.body) : (req.body || {});
     // Merge query parameters and body so query parameters work for both GET and POST seamlessly
-    const payload = {
+    mergedPayload = {
       ...(parsedBody || {}),
       ...(req.query || {})
     };
 
-    console.log(`[Inbound API ${req.method}] Ingestion received:`, JSON.stringify(payload).substring(0, 400));
+    // Log the incoming request immediately to debug log file
+    logInboundDebug('INCOMING_REQUEST', {
+      method: req.method,
+      url: req.originalUrl || req.url,
+      ip: req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'Unknown',
+      userAgent: req.headers['user-agent'] || 'Unknown',
+      contentType: req.headers['content-type'] || 'None',
+      query: req.query || {},
+      body: req.body || {},
+      mergedPayload: mergedPayload
+    });
+
+    console.log(`[Inbound API ${req.method}] Ingestion received:`, JSON.stringify(mergedPayload).substring(0, 400));
 
     // Extract core fields
     const campaignName = (
-      payload.campaign_name || payload.campaignName || payload.campaign || payload.campaign_id || payload.group || payload.ingroup || ''
+      mergedPayload.campaign_name || mergedPayload.campaignName || mergedPayload.campaign || mergedPayload.campaign_id || mergedPayload.group || mergedPayload.ingroup || ''
     ).toString().trim();
 
     const did = (
-      payload.did || payload.DID || payload.inbound_did || payload.inboundDid || payload.vicidial_did || payload.vicidialDid || ''
+      mergedPayload.did || mergedPayload.DID || mergedPayload.inbound_did || mergedPayload.inboundDid || mergedPayload.vicidial_did || mergedPayload.vicidialDid || ''
     ).toString().trim();
 
     let phoneNumber = (
-      payload.phone_number || payload.phoneNumber || payload.phone || payload.caller_id || payload.callerId || payload.called || ''
+      mergedPayload.phone_number || mergedPayload.phoneNumber || mergedPayload.phone || mergedPayload.caller_id || mergedPayload.callerId || mergedPayload.called || ''
     ).toString().trim();
 
     // Sanitize phone number digits
@@ -139,30 +211,36 @@ const handleInboundIngestion = async (req, res) => {
     }
 
     if (!phoneNumber && !did) {
-      return res.status(400).json({
+      const errorResp = {
         success: false,
         message: 'At least phone_number or did is required.',
+      };
+      logInboundDebug('VALIDATION_ERROR', {
+        statusCode: 400,
+        message: 'Missing phone_number and did in request payload/query',
+        response: errorResp
       });
+      return res.status(400).json(errorResp);
     }
 
     // Optional caller details
-    const firstName = (payload.first_name || payload.firstName || '').toString().trim();
-    const lastName = (payload.last_name || payload.lastName || '').toString().trim();
+    const firstName = (mergedPayload.first_name || mergedPayload.firstName || '').toString().trim();
+    const lastName = (mergedPayload.last_name || mergedPayload.lastName || '').toString().trim();
     const callerName = (
-      payload.caller_name || payload.callerName || payload.name || payload.full_name ||
+      mergedPayload.caller_name || mergedPayload.callerName || mergedPayload.name || mergedPayload.full_name ||
       [firstName, lastName].filter(Boolean).join(' ') || ''
     ).trim();
 
-    const email = (payload.email || payload.emailAddress || '').toString().trim().toLowerCase();
-    const address = (payload.address || payload.address1 || payload.streetAddress || '').toString().trim();
-    const city = (payload.city || '').toString().trim();
-    const state = (payload.state || '').toString().trim();
-    const zipcode = (payload.zipcode || payload.zipCode || payload.zip || payload.postal_code || '').toString().trim();
-    const notes = (payload.notes || payload.comments || payload.message || '').toString().trim();
-    const rawDebt = payload.totalDebtAmount !== undefined ? payload.totalDebtAmount : payload.debtAmount;
+    const email = (mergedPayload.email || mergedPayload.emailAddress || '').toString().trim().toLowerCase();
+    const address = (mergedPayload.address || mergedPayload.address1 || mergedPayload.streetAddress || '').toString().trim();
+    const city = (mergedPayload.city || '').toString().trim();
+    const state = (mergedPayload.state || '').toString().trim();
+    const zipcode = (mergedPayload.zipcode || mergedPayload.zipCode || mergedPayload.zip || mergedPayload.postal_code || '').toString().trim();
+    const notes = (mergedPayload.notes || mergedPayload.comments || mergedPayload.message || '').toString().trim();
+    const rawDebt = mergedPayload.totalDebtAmount !== undefined ? mergedPayload.totalDebtAmount : mergedPayload.debtAmount;
     const totalDebtAmount = rawDebt ? Number(String(rawDebt).replace(/[^0-9.]/g, '')) : undefined;
 
-    const callStatus = (payload.status || payload.call_status || payload.callStatus || 'RECEIVED').toString().trim().toUpperCase();
+    const callStatus = (mergedPayload.status || mergedPayload.call_status || mergedPayload.callStatus || 'RECEIVED').toString().trim().toUpperCase();
 
     // Look up matching Organization by DID
     let matchedOrg = null;
@@ -184,7 +262,7 @@ const handleInboundIngestion = async (req, res) => {
     }
 
     // Optional Agent lookup
-    const rawAgentId = (payload.agent_id || payload.agentId || payload.user || payload.agent || '').toString().trim();
+    const rawAgentId = (mergedPayload.agent_id || mergedPayload.agentId || mergedPayload.user || mergedPayload.agent || '').toString().trim();
     let matchedAgent = null;
     if (rawAgentId) {
       const isObjectId = mongoose.isValidObjectId(rawAgentId);
@@ -215,7 +293,7 @@ const handleInboundIngestion = async (req, res) => {
       notes: notes || undefined,
       organization: matchedOrg ? matchedOrg._id : (matchedAgent?.organization || undefined),
       agent: matchedAgent ? matchedAgent._id : undefined,
-      rawPayload: payload,
+      rawPayload: mergedPayload,
       receivedAt: new Date(),
     };
 
@@ -251,19 +329,45 @@ const handleInboundIngestion = async (req, res) => {
       }
     }
 
-    return res.status(200).json({
+    const successResponse = {
       success: true,
       message: 'Inbound call recorded successfully',
       id: savedRecord._id,
       organization: matchedOrg?.name || null,
       did: savedRecord.did,
+    };
+
+    // Log success to debug file
+    logInboundDebug('SUCCESS_RESPONSE', {
+      statusCode: 200,
+      savedId: savedRecord._id,
+      matchedOrgName: matchedOrg?.name,
+      matchedOrgId: matchedOrg?._id,
+      matchedAgentName: matchedAgent?.name,
+      matchedAgentId: matchedAgent?._id,
+      response: successResponse,
+      durationMs: Date.now() - requestStartTime
     });
+
+    return res.status(200).json(successResponse);
   } catch (error) {
     console.error('❌ [Inbound API] Ingestion Error:', error);
-    return res.status(500).json({
+
+    const errorResponse = {
       success: false,
       message: 'Internal server error recording inbound call',
+    };
+
+    // Log internal error to debug file
+    logInboundDebug('SERVER_ERROR', {
+      statusCode: 500,
+      errorMessage: error.message,
+      stack: error.stack,
+      response: errorResponse,
+      durationMs: Date.now() - requestStartTime
     });
+
+    return res.status(500).json(errorResponse);
   }
 };
 
