@@ -69,7 +69,8 @@ const SuperAdminDashboard = () => {
     qualificationStatus: '',
     assignedTo: '',
     duplicateStatus: '',
-    organization: ''
+    organization: '',
+    trafficType: ''
   });
 
   // Admin and Agent filters
@@ -196,6 +197,7 @@ const SuperAdminDashboard = () => {
       if (leadFilters.assignedTo) params.append('assignedTo', leadFilters.assignedTo);
       if (leadFilters.duplicateStatus) params.append('duplicateStatus', leadFilters.duplicateStatus);
       if (leadFilters.organization) params.append('organization', leadFilters.organization);
+      if (leadFilters.trafficType) params.append('trafficType', leadFilters.trafficType);
 
       const response = await axios.get(`/api/leads?${params.toString()}`);
       const responseData = response.data?.data;
@@ -232,7 +234,8 @@ const SuperAdminDashboard = () => {
     leadFilters.qualificationStatus,
     leadFilters.assignedTo,
     leadFilters.duplicateStatus,
-    leadFilters.organization
+    leadFilters.organization,
+    leadFilters.trafficType
   ]);
 
   // Handle refresh functionality
@@ -574,6 +577,7 @@ const SuperAdminDashboard = () => {
       if (leadFilters.assignedTo) params.append('assignedTo', leadFilters.assignedTo);
       if (leadFilters.duplicateStatus) params.append('duplicateStatus', leadFilters.duplicateStatus);
       if (leadFilters.organization) params.append('organization', leadFilters.organization);
+      if (leadFilters.trafficType) params.append('trafficType', leadFilters.trafficType);
 
       const response = await axios.get(`/api/leads/export?${params.toString()}`, {
         responseType: 'blob'
@@ -654,16 +658,6 @@ const SuperAdminDashboard = () => {
             SuperAdmin Dashboard
           </h1>
           <p className="text-gray-600">Manage organizations, administrators and system users</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => setShowInboundDataModal(true)}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-900 to-indigo-950 text-white rounded-lg hover:from-indigo-800 hover:to-indigo-900 transition-colors shadow-md text-sm font-semibold"
-            title="View Real-Time Inbound Calls & DID Traffic"
-          >
-            <PhoneCall className="h-4 w-4 text-indigo-300" />
-            Inbound Calls
-          </button>
         </div>
       </div>
 
@@ -1268,6 +1262,20 @@ const SuperAdminDashboard = () => {
               </select>
             </div>
 
+            {/* Traffic Type Filter (Inbound vs Outbound) */}
+            <div className="relative">
+              <PhoneCall className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+              <select
+                value={leadFilters.trafficType || ''}
+                onChange={(e) => setLeadFilters({...leadFilters, trafficType: e.target.value})}
+                className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 w-full"
+              >
+                <option value="">All Traffic</option>
+                <option value="inbound">📞 Inbound Calls</option>
+                <option value="outbound">📤 Outbound / Direct</option>
+              </select>
+            </div>
+
             {/* Clear Filters and Export */}
             <div className="flex space-x-2">
               <button
@@ -1281,7 +1289,8 @@ const SuperAdminDashboard = () => {
                   qualificationStatus: '',
                   assignedTo: '',
                   duplicateStatus: '',
-                  organization: ''
+                  organization: '',
+                  trafficType: ''
                 })}
                 className="px-4 py-2 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-100 transition-colors"
               >

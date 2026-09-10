@@ -123,7 +123,7 @@ router.get('/', protect, async (req, res) => {
     await WebsiteLead.populate(leads, { path: 'organization', select: 'name' });
 
     // Summary counts based on deduplicated unique leads
-    const summaryFilter = {};
+    const summaryFilter = { isDeleted: { $ne: true } };
     if (filter.organization) summaryFilter.organization = filter.organization;
     if (filter.$or) summaryFilter.$or = filter.$or;
 
@@ -329,7 +329,7 @@ router.get('/:id', protect, async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid lead ID.' });
     }
 
-    const leadQuery = { _id: req.params.id };
+    const leadQuery = { _id: req.params.id, isDeleted: { $ne: true } };
     if (access.orgFilter) leadQuery.organization = access.orgFilter;
 
     const lead = await WebsiteLead.findOne(leadQuery)
@@ -377,7 +377,7 @@ router.post('/:id/comments', protect, async (req, res) => {
       createdAt:  new Date(),
     };
 
-    const leadQuery = { _id: req.params.id };
+    const leadQuery = { _id: req.params.id, isDeleted: { $ne: true } };
     if (access.orgFilter) leadQuery.organization = access.orgFilter;
 
     const lead = await WebsiteLead.findOneAndUpdate(
@@ -393,6 +393,52 @@ router.post('/:id/comments', protect, async (req, res) => {
   } catch (error) {
     console.error('Add website lead comment error:', error);
     return res.status(500).json({ success: false, message: 'Error adding comment.' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// DELETE /api/website-leads/:id  (soft delete — Reddington admin or SuperAdmin)
+// ---------------------------------------------------------------------------
+router.delete('/:id', protect, async (req, res) => {
+  try {
+    const access = await getWebsiteLeadsAccess(req.user);
+    if (!access.allowed) return res.status(403).json({ success: false, message: 'Access denied.' });
+    if (!access.canWrite) return res.status(403).json({ success: false, message: 'Only full access admins can delete leads.' });
+    if (!req.params.id.match(/^[a-f\d]{24}$/i)) return res.status(400).json({ success: false, message: 'Invalid lead ID.' });
+
+    const lead = await WebsiteLead.findById(req.params.id);
+    if (!lead || lead.isDeleted === true) return res.status(404).json({ success: false, message: 'Website lead not found.' });
+
+    lead.isDeleted = true;
+    lead.deletedAt = new Date();
+    lead.deletedBy = req.user._id;
+    await lead.save();
+
+    // If imported to main Lead collection, soft-delete primary Lead as well
+    if (lead.importedLeadId) {
+      try {
+        await Lead.findByIdAndUpdate(lead.importedLeadId, {
+          $set: { isDeleted: true, deletedAt: new Date(), deletedBy: req.user._id }
+        });
+      } catch (err) {
+        console.warn('Soft-deleting linked primary Lead notice:', err.message);
+      }
+    }
+
+    // Also soft-delete any matching Lead by phone number if exists
+    if (lead.phone) {
+      try {
+        await Lead.updateMany(
+          { phone: lead.phone },
+          { $set: { isDeleted: true, deletedAt: new Date(), deletedBy: req.user._id } }
+        );
+      } catch (_) {}
+    }
+
+    return res.json({ success: true, message: 'Lead deleted successfully.' });
+  } catch (err) {
+    console.error('Delete website lead error:', err);
+    return res.status(500).json({ success: false, message: 'Error deleting lead.' });
   }
 });
 

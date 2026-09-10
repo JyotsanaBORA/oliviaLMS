@@ -5,6 +5,7 @@ const InboundData = require('../../models/InboundData');
 const Organization = require('../../models/Organization');
 const User = require('../../models/User');
 const Lead = require('../../models/Lead');
+const { findLeadForEnrichment, enrichLeadWithPayload } = require('../../utils/leadEnrichment');
 const { protect } = require('../../middleware/auth');
 const { getEasternStartOfDay, getEasternEndOfDay } = require('../../utils/timeFilters');
 
@@ -306,27 +307,24 @@ const handleInboundIngestion = async (req, res) => {
       try {
         const leadOrgId = matchedOrg ? matchedOrg._id : (matchedAgent?.organization || undefined);
         
-        let existingLead = null;
-        if (leadOrgId) {
-          existingLead = await Lead.findOne({
-            organization: leadOrgId,
-            phone: phoneNumber
-          }).sort({ createdAt: -1 });
-        } else {
-          existingLead = await Lead.findOne({
-            phone: phoneNumber
-          }).sort({ createdAt: -1 });
-        }
+        let existingLead = await findLeadForEnrichment(phoneNumber, leadOrgId);
 
         if (existingLead) {
-          if (did && !existingLead.vicidialDid) existingLead.vicidialDid = did;
-          if (campaignName && !existingLead.vicidialCampaignName) existingLead.vicidialCampaignName = campaignName;
-          if (notes) {
-            existingLead.notes = existingLead.notes ? `${existingLead.notes}\n\n${notes}` : notes;
-          }
-          if (totalDebtAmount && !existingLead.totalDebtAmount) existingLead.totalDebtAmount = totalDebtAmount;
+          const inboundEnrichPayload = {
+            name: callerName || [firstName, lastName].filter(Boolean).join(' ') || undefined,
+            email: email || undefined,
+            address: address || undefined,
+            city: city || undefined,
+            state: state || undefined,
+            zipcode: zipcode || undefined,
+            totalDebtAmount: !isNaN(totalDebtAmount) ? totalDebtAmount : undefined,
+            notes: notes || (campaignName ? `Inbound call from campaign: ${campaignName}` : undefined),
+            vicidialDid: did || undefined,
+            vicidialCampaignName: campaignName || undefined,
+          };
+          enrichLeadWithPayload(existingLead, inboundEnrichPayload);
           createdLead = await existingLead.save();
-          console.log(`🔄 [Inbound API] Updated existing Lead ID: ${createdLead._id}`);
+          console.log(`🔄 [Inbound API] Updated/Enriched existing Lead ID: ${createdLead._id} (${createdLead.leadId || 'N/A'})`);
         } else {
           const resolvedOrgId = leadOrgId || '68b9c76d2c29dac1220cb81c';
           let creatorId = matchedAgent ? matchedAgent._id : undefined;

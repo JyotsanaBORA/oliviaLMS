@@ -17,6 +17,7 @@ const {
 const { sendGTIPostback, syncLeadWithInboundCall } = require('../utils/gtiPostbackService');
 const cache = require('../utils/cache');
 const { notifyLeadDownload } = require('../utils/notificationHelper');
+const { findLeadForEnrichment, isInboundStubLead, enrichLeadWithPayload } = require('../utils/leadEnrichment');
 
 const EASTERN_TIMEZONE = 'America/New_York';
 
@@ -582,6 +583,10 @@ router.get('/export', [
     .optional()
     .isMongoId()
     .withMessage('Invalid organization ID'),
+  query('trafficType')
+    .optional()
+    .isIn(['all', 'inbound', 'outbound', 'live-transfer', 'live_transfer'])
+    .withMessage('Invalid traffic type filter'),
   query('did')
     .optional()
     .trim(),
@@ -773,10 +778,30 @@ router.get('/export', [
       filter.createdAt = dateFilter;
     }
 
-    // DID filter (e.g. Live Transfer vs Inbound segregated views)
-    const resolvedExportDid = await resolveDidFilter(req.query.did || req.query.vicidialDid, req.user);
-    if (resolvedExportDid) {
-      filter.vicidialDid = resolvedExportDid;
+    // Traffic type filter (inbound vs outbound) and DID filter
+    const exportTrafficType = req.query.trafficType || req.query.callType;
+    if (exportTrafficType === 'inbound') {
+      const explicitDid = await resolveDidFilter(req.query.did || req.query.vicidialDid, req.user);
+      if (explicitDid) {
+        filter.vicidialDid = explicitDid;
+      } else {
+        filter.vicidialDid = { $exists: true, $nin: ['', null] };
+      }
+    } else if (exportTrafficType === 'outbound') {
+      const outboundCond = {
+        $or: [
+          { vicidialDid: { $exists: false } },
+          { vicidialDid: '' },
+          { vicidialDid: null }
+        ]
+      };
+      filter.$and = [...(filter.$and || []), outboundCond];
+    } else {
+      // DID filter (e.g. Live Transfer vs Inbound segregated views)
+      const resolvedExportDid = await resolveDidFilter(req.query.did || req.query.vicidialDid, req.user);
+      if (resolvedExportDid) {
+        filter.vicidialDid = resolvedExportDid;
+      }
     }
 
     // Organization filter is now applied at the top of the filter building process
@@ -1150,6 +1175,10 @@ router.get('/', protect, [
     .optional()
     .isIn(['all', 'today', 'week', 'month', 'custom'])
     .withMessage('Invalid date filter type'),
+  query('trafficType')
+    .optional()
+    .isIn(['all', 'inbound', 'outbound', 'live-transfer', 'live_transfer'])
+    .withMessage('Invalid traffic type filter'),
   query('did')
     .optional()
     .trim(),
@@ -1299,10 +1328,30 @@ router.get('/', protect, [
       filter.createdAt = dateFilter;
     }
 
-    // DID filter (e.g. Live Transfer vs Inbound segregated views)
-    const listDidFilter = await resolveDidFilter(req.query.did || req.query.vicidialDid, req.user);
-    if (listDidFilter) {
-      filter.vicidialDid = listDidFilter;
+    // Traffic type filter (inbound vs outbound) and DID filter
+    const trafficType = req.query.trafficType || req.query.callType;
+    if (trafficType === 'inbound') {
+      const explicitDid = await resolveDidFilter(req.query.did || req.query.vicidialDid, req.user);
+      if (explicitDid) {
+        filter.vicidialDid = explicitDid;
+      } else {
+        filter.vicidialDid = { $exists: true, $nin: ['', null] };
+      }
+    } else if (trafficType === 'outbound') {
+      const outboundCond = {
+        $or: [
+          { vicidialDid: { $exists: false } },
+          { vicidialDid: '' },
+          { vicidialDid: null }
+        ]
+      };
+      filter.$and = [...(filter.$and || []), outboundCond];
+    } else {
+      // DID filter (e.g. Live Transfer vs Inbound segregated views)
+      const listDidFilter = await resolveDidFilter(req.query.did || req.query.vicidialDid, req.user);
+      if (listDidFilter) {
+        filter.vicidialDid = listDidFilter;
+      }
     }
 
     // Organization filter is now applied at the top of the filter building process
@@ -1785,9 +1834,29 @@ router.post('/', protect, createLeadValidation, handleValidationErrors, async (r
 
     console.log('Creating lead with data:', leadData);
 
-    const lead = await Lead.create(leadData);
+    let lead = null;
+    // Check if an inbound stub lead exists with this phone that can be enriched
+    if (leadData.phone) {
+      const existingStub = await findLeadForEnrichment(leadData.phone, req.user.organization);
+      if (existingStub && isInboundStubLead(existingStub)) {
+        console.log(`✨ [POST /leads] Enriching existing inbound stub Lead (${existingStub.leadId || existingStub._id})`);
+        enrichLeadWithPayload(existingStub, leadData);
+        existingStub.updatedBy = req.user._id;
+        if (leadData.assignedTo) existingStub.assignedTo = leadData.assignedTo;
+        if (leadData.assignedBy) existingStub.assignedBy = leadData.assignedBy;
+        if (leadData.assignedAt) existingStub.assignedAt = leadData.assignedAt;
+        if (leadData.status) existingStub.status = leadData.status;
+        if (leadData.qualificationStatus) existingStub.qualificationStatus = leadData.qualificationStatus;
+        if (leadData.leadProgressStatus) existingStub.leadProgressStatus = leadData.leadProgressStatus;
+        lead = await existingStub.save();
+      }
+    }
+
+    if (!lead) {
+      lead = await Lead.create(leadData);
+    }
     
-    console.log('Lead created successfully:', lead._id);
+    console.log('Lead created/enriched successfully:', lead._id);
     console.log('Saved lead data:', JSON.stringify(lead, null, 2));
 
     if (isGtiOrg) {

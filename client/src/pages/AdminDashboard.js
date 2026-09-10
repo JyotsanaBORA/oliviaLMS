@@ -122,6 +122,9 @@ const AdminDashboard = () => {
   const [organizationFilter, setOrganizationFilter] = useState('all'); // 'all' or specific organization ID
   const [organizations, setOrganizations] = useState([]); // List of all organizations
   
+  // Add traffic type filter (inbound / outbound)
+  const [trafficTypeFilter, setTrafficTypeFilter] = useState('all'); // 'all', 'inbound', 'outbound'
+  
   // Lead update modal states - REMOVED (Admin is now read-only)
   const [selectedLead, setSelectedLead] = useState(null);
   const [showViewModal, setShowViewModal] = useState(false);
@@ -320,7 +323,7 @@ const AdminDashboard = () => {
   
   // Use refs to hold current filter values to avoid recreating fetchLeads
   const paginationRef = useRef(pagination);
-  const filtersRef = useRef({ qualificationFilter, duplicateFilter, organizationFilter, dateFilter, progressFilter, searchTerm, did: selectedDidTab });
+  const filtersRef = useRef({ qualificationFilter, duplicateFilter, organizationFilter, dateFilter, progressFilter, searchTerm, did: selectedDidTab, trafficType: trafficTypeFilter });
   
   // Update refs when values change
   useEffect(() => {
@@ -328,8 +331,8 @@ const AdminDashboard = () => {
   }, [pagination]);
   
   useEffect(() => {
-    filtersRef.current = { qualificationFilter, duplicateFilter, organizationFilter, dateFilter, progressFilter, searchTerm, did: selectedDidTab };
-  }, [qualificationFilter, duplicateFilter, organizationFilter, dateFilter, progressFilter, searchTerm, selectedDidTab]);
+    filtersRef.current = { qualificationFilter, duplicateFilter, organizationFilter, dateFilter, progressFilter, searchTerm, did: selectedDidTab, trafficType: trafficTypeFilter };
+  }, [qualificationFilter, duplicateFilter, organizationFilter, dateFilter, progressFilter, searchTerm, selectedDidTab, trafficTypeFilter]);
 
   const fetchLeads = useCallback(async (silent = false, page = null) => {
     try {
@@ -371,6 +374,11 @@ const AdminDashboard = () => {
       // Add DID filter for channel segregation (Live Transfer vs Inbound Calls)
       if (filters.did && filters.did !== 'all') {
         url += `&did=${encodeURIComponent(filters.did)}`;
+      }
+
+      // Add traffic type filter (inbound / outbound)
+      if (filters.trafficType && filters.trafficType !== 'all') {
+        url += `&trafficType=${filters.trafficType}`;
       }
 
       // Add search query - backend searches across all leads in the database
@@ -552,6 +560,11 @@ const AdminDashboard = () => {
       // Add DID filter for channel-segregated export
       if (selectedDidTab && selectedDidTab !== 'all') {
         params.append('did', selectedDidTab);
+      }
+
+      // Add traffic type filter
+      if (trafficTypeFilter !== 'all') {
+        params.append('trafficType', trafficTypeFilter);
       }
 
 
@@ -1388,8 +1401,8 @@ const AdminDashboard = () => {
                   )}
                 </button>
               )}
-              {/* Inbound Calls button — all admins (scoped by their assigned DIDs) */}
-              {user?.role === 'admin' && (
+              {/* Inbound Calls button — tenant admins only (scoped by their assigned DIDs), hidden for Reddington admin full access */}
+              {user?.role === 'admin' && !isReddingtonAdmin && (
                 <button
                   onClick={() => { setShowInboundDataModal(true); setInboundCallsBadge(0); }}
                   className="relative flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold text-white transition-all duration-200 active:scale-95 shadow-md"
@@ -2124,7 +2137,56 @@ const AdminDashboard = () => {
                 </button>
               </div>
             </div>
-            
+
+            {/* Traffic Type Filter (Inbound / Outbound) */}
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 bg-gradient-to-br from-indigo-100 to-indigo-200 rounded-lg">
+                <PhoneCall className="h-3.5 w-3.5 text-indigo-600" />
+              </div>
+              <span className="text-xs font-semibold text-gray-700">Type:</span>
+              <div className="flex gap-1.5">
+                <button
+                  onClick={() => {
+                    setTrafficTypeFilter('all');
+                    resetPaginationAndFetch();
+                  }}
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all duration-200 ${
+                    trafficTypeFilter === 'all' 
+                      ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md scale-105' 
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200 hover:scale-105'
+                  }`}
+                >
+                  All
+                </button>
+                <button
+                  onClick={() => {
+                    setTrafficTypeFilter('inbound');
+                    resetPaginationAndFetch();
+                  }}
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all duration-200 ${
+                    trafficTypeFilter === 'inbound' 
+                      ? 'bg-gradient-to-r from-indigo-700 to-purple-800 text-white shadow-md scale-105' 
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200 hover:scale-105'
+                  }`}
+                >
+                  Inbound
+                </button>
+                <button
+                  onClick={() => {
+                    setTrafficTypeFilter('outbound');
+                    resetPaginationAndFetch();
+                  }}
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all duration-200 ${
+                    trafficTypeFilter === 'outbound' 
+                      ? 'bg-gradient-to-r from-teal-600 to-emerald-600 text-white shadow-md scale-105' 
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200 hover:scale-105'
+                  }`}
+                >
+                  Outbound
+                </button>
+              </div>
+            </div>
+
             {/* Organization Filter */}
             <div className="flex items-center gap-2">
               <div className="p-1.5 bg-gradient-to-br from-purple-100 to-purple-200 rounded-lg">
@@ -2248,6 +2310,11 @@ const AdminDashboard = () => {
               {duplicateFilter !== 'all' && (
                 <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
                   {duplicateFilter === 'duplicates' ? 'Dups Only' : 'Original Only'}
+                </span>
+              )}
+              {trafficTypeFilter !== 'all' && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
+                  {trafficTypeFilter === 'inbound' ? '📞 Inbound' : '📤 Outbound'}
                 </span>
               )}
               {organizationFilter !== 'all' && (

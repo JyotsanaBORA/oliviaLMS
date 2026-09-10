@@ -12,6 +12,7 @@ const rateLimit = require('express-rate-limit');
 const BenWebsiteLead = require('../models/BenWebsiteLead');
 const Organization = require('../models/Organization');
 const Lead = require('../models/Lead');
+const { findLeadForEnrichment, enrichLeadWithPayload } = require('../utils/leadEnrichment');
 
 const router = express.Router();
 
@@ -148,69 +149,6 @@ const handleWebhookSubmission = async (req, res) => {
     if (state) doc.state = state;
     if (zipCode) doc.zipCode = zipCode;
 
-    // 10. Check for existing lead by phone within the same organisation
-    let lead;
-    let primaryLead;
-    if (doc.phone) {
-      const existing = await BenWebsiteLead.findOne({
-        organization: org._id,
-        phone: doc.phone,
-      }).sort({ createdAt: -1 });
-
-      if (existing) {
-        Object.assign(existing, doc);
-        
-        let existingPrimaryLead = null;
-        if (existing.importedLeadId) {
-          existingPrimaryLead = await Lead.findById(existing.importedLeadId);
-        }
-        if (!existingPrimaryLead) {
-          existingPrimaryLead = await Lead.findOne({
-            organization: org._id,
-            phone: doc.phone
-          }).sort({ createdAt: -1 });
-        }
-
-        if (existingPrimaryLead) {
-          existingPrimaryLead.notes = existingPrimaryLead.notes
-            ? existingPrimaryLead.notes + '\n\n' + (doc.message || '')
-            : doc.message;
-          if (doc.totalDebtAmount) existingPrimaryLead.totalDebtAmount = doc.totalDebtAmount;
-          if (assignedDid && !existingPrimaryLead.vicidialDid) existingPrimaryLead.vicidialDid = assignedDid;
-          primaryLead = await existingPrimaryLead.save();
-          existing.importedLeadId = primaryLead._id;
-        } else {
-          const standardLeadData = {
-            name: doc.name || 'Unknown',
-            email: doc.email,
-            phone: doc.phone,
-            totalDebtAmount: doc.totalDebtAmount,
-            notes: doc.message,
-            address: doc.streetAddress,
-            city: doc.city,
-            state: doc.state,
-            zipcode: doc.zipCode,
-            organization: doc.organization,
-            createdBy: doc.organization,
-            sourceId: (body.source_id || body.sourceId || 'WebhookLead').toString().trim(),
-            vicidialDid: assignedDid || undefined,
-            category: 'warm',
-            qualificationStatus: 'pending',
-          };
-          primaryLead = await Lead.create(standardLeadData);
-          existing.importedLeadId = primaryLead._id;
-        }
-
-        lead = await existing.save();
-        return res.status(200).json({
-          success: true,
-          message: 'Submission received and updated.',
-          leadId: lead._id,
-          primaryLeadId: primaryLead?._id,
-        });
-      }
-    }
-
     // Prepare standard Lead payload
     const standardLeadData = {
       name: doc.name || 'Unknown',
@@ -230,11 +168,47 @@ const handleWebhookSubmission = async (req, res) => {
       qualificationStatus: 'pending',
     };
 
-    // Create standard Lead in primary collection
-    primaryLead = await Lead.create(standardLeadData);
+    // 10. Check for existing lead by phone within the same organisation
+    let lead;
+    let primaryLead;
+    
+    // Find or enrich primary LMS Lead
+    if (doc.phone) {
+      const existingPrimary = await findLeadForEnrichment(doc.phone, org._id);
+      if (existingPrimary) {
+        console.log(`✨ [BenWebhook] Enriching existing Lead (${existingPrimary.leadId || existingPrimary._id}) with Live Transfer data`);
+        enrichLeadWithPayload(existingPrimary, standardLeadData);
+        primaryLead = await existingPrimary.save();
+      }
+    }
 
-    // Link BenWebsiteLead to the standard Lead
+    if (!primaryLead) {
+      primaryLead = await Lead.create(standardLeadData);
+    }
+
     doc.importedLeadId = primaryLead._id;
+
+    // Check for existing BenWebsiteLead entry
+    if (doc.phone) {
+      const existing = await BenWebsiteLead.findOne({
+        organization: org._id,
+        phone: doc.phone,
+      }).sort({ createdAt: -1 });
+
+      if (existing) {
+        Object.assign(existing, doc);
+        lead = await existing.save();
+        if (req.io) {
+          req.io.emit('leadUpdated', primaryLead);
+        }
+        return res.status(200).json({
+          success: true,
+          message: 'Submission received and updated.',
+          leadId: lead._id,
+          primaryLeadId: primaryLead._id,
+        });
+      }
+    }
 
     // Save new lead to database
     lead = await BenWebsiteLead.create(doc);

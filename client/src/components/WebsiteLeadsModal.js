@@ -20,6 +20,7 @@ import {
   Clock,
   Send,
   Lock,
+  Trash2,
 } from 'lucide-react';
 import axios from '../utils/axios';
 import { useAuth } from '../contexts/AuthContext';
@@ -200,6 +201,28 @@ const WebsiteLeadsModal = ({ onClose, title = 'Website Leads', targetOrgName }) 
     } catch (err) {
       const msg = err.response?.data?.message || 'Import failed';
       toast.error(msg);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleDelete = async (lead) => {
+    if (!canWrite) return;
+    if (!window.confirm(`Are you sure you want to delete "${lead.name}"? This will soft delete the lead.`)) return;
+    setActionLoading(lead._id);
+    try {
+      await axios.delete(`/api/website-leads/${lead._id}`);
+      toast.success('Lead deleted');
+      setLeads(prev => prev.filter(l => l._id !== lead._id));
+      setSummary(prev => {
+        const next = { ...prev };
+        next[lead.status] = Math.max(0, (next[lead.status] || 0) - 1);
+        next.total = Math.max(0, (next.total || 0) - 1);
+        return next;
+      });
+      if (detail?._id === lead._id) setDetail(null);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to delete lead');
     } finally {
       setActionLoading(null);
     }
@@ -424,6 +447,16 @@ const WebsiteLeadsModal = ({ onClose, title = 'Website Leads', targetOrgName }) 
                               <XCircle className="h-3.5 w-3.5" />
                             </button>
                           )}
+                          {canWrite && (
+                            <button
+                              disabled={actionLoading === lead._id}
+                              onClick={() => handleDelete(lead)}
+                              className="p-1.5 rounded-lg hover:bg-rose-100 text-rose-500 transition-colors disabled:opacity-50"
+                              title="Delete lead"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -628,6 +661,15 @@ const WebsiteLeadsModal = ({ onClose, title = 'Website Leads', targetOrgName }) 
                     <XCircle className="h-3.5 w-3.5" /> Reject
                   </button>
                 )}
+                {canWrite && (
+                  <button
+                    disabled={actionLoading === detail._id}
+                    onClick={() => handleDelete(detail)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-rose-100 text-rose-700 hover:bg-rose-200 rounded-lg transition-colors disabled:opacity-50"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" /> Delete Lead
+                  </button>
+                )}
                 <button
                   disabled={actionLoading === detail._id}
                   onClick={() => handleImport(detail)}
@@ -652,10 +694,19 @@ const WebsiteLeadsModal = ({ onClose, title = 'Website Leads', targetOrgName }) 
               </div>
             )}
             {detail.status === 'imported' && (
-              <div className="border-t px-5 py-3 bg-green-50">
+              <div className="border-t px-5 py-3 bg-green-50 flex items-center justify-between">
                 <span className="text-xs font-semibold text-green-700 flex items-center gap-1">
                   <CheckCircle className="h-3.5 w-3.5" /> Already imported into the main Lead collection
                 </span>
+                {canWrite && (
+                  <button
+                    disabled={actionLoading === detail._id}
+                    onClick={() => handleDelete(detail)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-rose-100 text-rose-700 hover:bg-rose-200 rounded-lg transition-colors disabled:opacity-50"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" /> Delete Lead
+                  </button>
+                )}
               </div>
             )}
           </div>
