@@ -5,11 +5,12 @@ import {
   Download, RefreshCw, Search, ChevronLeft, ChevronRight,
   List, BarChart2, FileSpreadsheet, ArrowLeft, Calendar,
   TrendingUp, ChevronDown, ChevronUp,
-  DollarSign, ShoppingCart, Activity, CreditCard
+  DollarSign, ShoppingCart, Activity, CreditCard, Upload
 } from 'lucide-react';
 import axios from '../utils/axios';
 import toast from 'react-hot-toast';
 import LoadingSpinner from '../components/LoadingSpinner';
+import DataVendorShareModal from '../components/DataVendorShareModal';
 import { useAuth } from '../contexts/AuthContext';
 
 // ── All 45 ViciDial columns for the records view ──────────────────
@@ -116,6 +117,7 @@ const DataVendorDashboard = () => {
   const isMainOrg = user?.role === 'superadmin' || (user?.organization?.name && user.organization.name.trim().toUpperCase() === 'REDDINGTON GLOBAL CONSULTANCY');
   const [vendorsList, setVendorsList] = useState([]);
   const [selectedVendorFilter, setSelectedVendorFilter] = useState('');
+  const [showUploadModal, setShowUploadModal] = useState(false);
 
   useEffect(() => {
     if (isMainOrg) {
@@ -135,13 +137,17 @@ const DataVendorDashboard = () => {
   // Sync view state when URL changes (sidebar navigation reuses the same component instance)
   useEffect(() => {
     if (location.pathname === '/vendor-payment-status') {
+      if (!isMainOrg && user?.role === 'admin') {
+        navigate('/vendor-dashboard', { replace: true });
+        return;
+      }
       setView('payment-status');
     } else if (location.pathname === '/vendor-dashboard') {
       setView('lists');
       setSelectedList(null);
       setSelectedRun(null);
     }
-  }, [location.pathname]);
+  }, [location.pathname, isMainOrg, user?.role, navigate]);
 
   // ── LISTS VIEW ───────────────────────────────────────────────
   const [lists, setLists] = useState([]);
@@ -488,7 +494,7 @@ const DataVendorDashboard = () => {
                 isMainOrg ? (
                   selectedVendorFilter ? `${vendorsList.find(v => v._id === selectedVendorFilter)?.name || 'Vendor'} Data Dashboard` : 'Data Vendor Dashboard'
                 ) : (
-                  user?.organization?.name ? `${user.organization.name} Data Portal` : 'Data Vendor Dashboard'
+                  user?.organization?.name ? `${user.organization.name} Outbound Data` : 'Outbound Data Dashboard'
                 )
               ) :
                view === 'payment-status' ? 'Payment Status' :
@@ -538,6 +544,14 @@ const DataVendorDashboard = () => {
               <RefreshCw size={14} className={listsRefreshing ? 'animate-spin' : ''} /> Refresh
             </button>
           )}
+          {isMainOrg && view === 'lists' && (
+            <button
+              onClick={() => setShowUploadModal(true)}
+              className="px-4 py-2.5 text-sm font-semibold bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-xl hover:from-emerald-400 hover:to-teal-500 shadow-lg shadow-emerald-500/20 flex items-center gap-2 transition-all active:scale-95"
+            >
+              <Upload size={14} /> Upload Run
+            </button>
+          )}
           {view === 'records' && (
             <button onClick={downloadCurrentRecords} disabled={!!downloadingId}
               className="px-5 py-2.5 text-sm font-semibold bg-gradient-to-r from-yellow-400 to-yellow-500 text-slate-900 rounded-xl hover:from-yellow-300 hover:to-yellow-400 shadow-lg shadow-yellow-400/20 flex items-center gap-2 transition-all disabled:opacity-60 disabled:cursor-not-allowed">
@@ -554,6 +568,15 @@ const DataVendorDashboard = () => {
           )}
         </div>
       </div>
+      {showUploadModal && (
+        <DataVendorShareModal
+          isOpen={showUploadModal}
+          onClose={() => {
+            setShowUploadModal(false);
+            fetchLists(true);
+          }}
+        />
+      )}
     </div>
   );
 

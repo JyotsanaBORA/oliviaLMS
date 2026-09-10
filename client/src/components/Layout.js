@@ -250,7 +250,9 @@ const Layout = ({ onDashboardRefresh }) => {
       if (isMainAdmin) {
         const isVendorDataEnabled = user.isMainOrgAdmin ||
           user.organization?.showVendorData === true ||
-          user.organization?.name?.toLowerCase().includes('westlake');
+          user.organization?.name?.toLowerCase().includes('westlake') ||
+          user.organization?.name?.toLowerCase().includes('social up') ||
+          user.organization?.name?.toLowerCase().includes('socialup');
 
         const adminItems = [
           { name: 'Dashboard', href: '/admin', icon: BarChart3 },
@@ -268,10 +270,21 @@ const Layout = ({ onDashboardRefresh }) => {
         return adminItems;
       }
 
-      // Other organisation admins (e.g. Jake 2, Ben, partner orgs): ONLY show Dashboard!
-      return [
+      // Tenant organisation admins (e.g. Jake, Jake 2, partner orgs):
+      const isTenantVendorEnabled = user.organization?.showVendorData === true ||
+        user.organization?.name?.toLowerCase().includes('westlake') ||
+        user.organization?.name?.toLowerCase().includes('social up') ||
+        user.organization?.name?.toLowerCase().includes('socialup');
+
+      const tenantItems = [
         { name: 'Dashboard', href: '/admin', icon: BarChart3 }
       ];
+
+      if (isTenantVendorEnabled) {
+        tenantItems.push({ name: 'Outbound Data', href: '/vendor-dashboard', icon: Database });
+      }
+
+      return tenantItems;
     } else if (user.role === 'agent2') {
       return [
         { name: 'Leads', href: '/leads', icon: Users },

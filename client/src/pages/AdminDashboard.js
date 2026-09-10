@@ -1290,9 +1290,15 @@ const AdminDashboard = () => {
                 </h1>
                 <p className="text-gray-600 text-xs">
                   Real-time lead management 
-                  <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                    Read-only
-                  </span>
+                  {isReddingtonAdmin ? (
+                    <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                      Full Access
+                    </span>
+                  ) : (
+                    <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                      Read-only
+                    </span>
+                  )}
                 </p>
               </div>
             </div>
@@ -1855,9 +1861,15 @@ const AdminDashboard = () => {
                   <h3 className="text-lg font-bold text-white">Lead Management</h3>
                   <p className="text-xs text-blue-100">
                     View all leads and agent actions
-                    <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-white/20 text-white backdrop-blur-sm">
-                      Read-only
-                    </span>
+                    {isReddingtonAdmin ? (
+                      <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/30 text-emerald-100 border border-emerald-400/40">
+                        Full Access
+                      </span>
+                    ) : (
+                      <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-white/20 text-white backdrop-blur-sm">
+                        Read-only
+                      </span>
+                    )}
                   </p>
                 </div>
               </div>
