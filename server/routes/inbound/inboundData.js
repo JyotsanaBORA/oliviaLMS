@@ -789,6 +789,13 @@ router.post('/:id/convert-to-lead', protect, async (req, res) => {
     });
   } catch (error) {
     console.error('❌ [Inbound API] Error converting inbound call to lead:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to create lead from inbound call',
+    });
+  }
+});
+
 /**
  * DELETE /api/inbound/:id
  * Soft deletes an inbound call record (Global Admin / SuperAdmin).
