@@ -11,9 +11,11 @@ const mongoose = require('mongoose');
 const BenWebsiteLead = require('../models/BenWebsiteLead');
 const Lead = require('../models/Lead');
 const InboundData = require('../models/InboundData');
+const WebsiteLead = require('../models/WebsiteLead');
 const Organization = require('../models/Organization');
 const { protect } = require('../middleware/auth');
 const cache = require('../utils/cache');
+const { buildPhoneVariants } = require('../utils/gtiPhoneUtils');
 
 const router = express.Router();
 
@@ -431,7 +433,41 @@ router.delete('/:id', protect, async (req, res) => {
     if (!lead) return res.status(404).json({ success: false, message: 'Lead not found.' });
 
     lead.isDeleted = true;
+    lead.deletedAt = new Date();
+    lead.deletedBy = req.user._id;
     await lead.save();
+
+    const phoneQueries = buildPhoneVariants(lead.phone);
+    const idQueries = [lead._id, lead.importedLeadId].filter(Boolean);
+
+    // Cascade soft-delete to primary Lead
+    await Lead.updateMany(
+      { $or: [{ _id: { $in: idQueries } }, { phone: { $in: phoneQueries } }] },
+      { $set: { isDeleted: true, deletedAt: new Date(), deletedBy: req.user._id } }
+    );
+
+    // Cascade soft-delete to InboundData
+    await InboundData.updateMany(
+      { $or: [{ importedLeadId: { $in: idQueries } }, { phoneNumber: { $in: phoneQueries } }] },
+      { $set: { isDeleted: true, deletedAt: new Date(), deletedBy: req.user._id } }
+    );
+
+    // Cascade soft-delete to WebsiteLead
+    await WebsiteLead.updateMany(
+      { $or: [{ importedLeadId: { $in: idQueries } }, { phone: { $in: phoneQueries } }] },
+      { $set: { isDeleted: true, deletedAt: new Date(), deletedBy: req.user._id } }
+    );
+
+    // Invalidate caches
+    cache.delByPattern('leads:.*');
+    cache.delByPattern('dashboard_stats:.*');
+
+    // Emit real-time updates to sync UI tabs
+    if (req.io) {
+      const identifier = lead.leadId || lead.phone || req.params.id;
+      req.io.emit('leadDeleted', { leadId: identifier, deletedBy: req.user.name });
+      req.io.to('admin').emit('leadDeleted', { leadId: identifier, deletedBy: req.user.name });
+    }
 
     return res.json({ success: true, message: 'Lead deleted successfully.' });
   } catch (err) {

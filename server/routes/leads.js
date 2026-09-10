@@ -18,6 +18,7 @@ const { sendGTIPostback, syncLeadWithInboundCall } = require('../utils/gtiPostba
 const cache = require('../utils/cache');
 const { notifyLeadDownload } = require('../utils/notificationHelper');
 const { findLeadForEnrichment, isInboundStubLead, enrichLeadWithPayload } = require('../utils/leadEnrichment');
+const { buildPhoneVariants } = require('../utils/gtiPhoneUtils');
 
 const EASTERN_TIMEZONE = 'America/New_York';
 
@@ -2439,22 +2440,22 @@ router.delete('/:id', protect, authorize('admin', 'superadmin'), async (req, res
       const WebsiteLead = require('../models/WebsiteLead');
       const BenWebsiteLead = require('../models/BenWebsiteLead');
 
-      const digitsOnly = lead.phone ? lead.phone.replace(/\D/g, '') : null;
-      const phoneQueries = [lead.phone, digitsOnly].filter(Boolean);
+      const phoneQueries = buildPhoneVariants(lead.phone);
+      const idQueries = [lead._id].filter(Boolean);
 
       await InboundData.updateMany(
-        { $or: [{ importedLeadId: lead._id }, { phoneNumber: { $in: phoneQueries } }] },
+        { $or: [{ importedLeadId: { $in: idQueries } }, { phoneNumber: { $in: phoneQueries } }] },
         { $set: { isDeleted: true, deletedAt: new Date(), deletedBy: req.user._id } }
       );
 
       await WebsiteLead.updateMany(
-        { $or: [{ importedLeadId: lead._id }, { phone: { $in: phoneQueries } }] },
-        { $set: { isDeleted: true, deletedAt: new Date() } }
+        { $or: [{ importedLeadId: { $in: idQueries } }, { phone: { $in: phoneQueries } }] },
+        { $set: { isDeleted: true, deletedAt: new Date(), deletedBy: req.user._id } }
       );
 
       await BenWebsiteLead.updateMany(
-        { $or: [{ importedLeadId: lead._id }, { phone: { $in: phoneQueries } }] },
-        { $set: { isDeleted: true, deletedAt: new Date() } }
+        { $or: [{ importedLeadId: { $in: idQueries } }, { phone: { $in: phoneQueries } }] },
+        { $set: { isDeleted: true, deletedAt: new Date(), deletedBy: req.user._id } }
       );
     } catch (inboundErr) {
       console.warn('Soft-deleting linked InboundData/WebsiteLead notice:', inboundErr.message);

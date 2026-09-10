@@ -2,9 +2,11 @@ const express = require('express');
 const WebsiteLead = require('../models/WebsiteLead');
 const Lead = require('../models/Lead');
 const InboundData = require('../models/InboundData');
+const BenWebsiteLead = require('../models/BenWebsiteLead');
 const Organization = require('../models/Organization');
 const { protect } = require('../middleware/auth');
 const cache = require('../utils/cache');
+const { buildPhoneVariants } = require('../utils/gtiPhoneUtils');
 
 const router = express.Router();
 
@@ -464,25 +466,36 @@ router.delete('/:id', protect, async (req, res) => {
     lead.deletedBy = req.user._id;
     await lead.save();
 
-    // If imported to main Lead collection, soft-delete primary Lead as well
-    if (lead.importedLeadId) {
-      try {
-        await Lead.findByIdAndUpdate(lead.importedLeadId, {
-          $set: { isDeleted: true, deletedAt: new Date(), deletedBy: req.user._id }
-        });
-      } catch (err) {
-        console.warn('Soft-deleting linked primary Lead notice:', err.message);
-      }
-    }
+    const phoneQueries = buildPhoneVariants(lead.phone);
+    const idQueries = [lead._id, lead.importedLeadId].filter(Boolean);
 
-    // Also soft-delete any matching Lead by phone number if exists
-    if (lead.phone) {
-      try {
-        await Lead.updateMany(
-          { phone: lead.phone },
-          { $set: { isDeleted: true, deletedAt: new Date(), deletedBy: req.user._id } }
-        );
-      } catch (_) {}
+    // Cascade soft-delete to primary Lead
+    await Lead.updateMany(
+      { $or: [{ _id: { $in: idQueries } }, { phone: { $in: phoneQueries } }] },
+      { $set: { isDeleted: true, deletedAt: new Date(), deletedBy: req.user._id } }
+    );
+
+    // Cascade soft-delete to InboundData
+    await InboundData.updateMany(
+      { $or: [{ importedLeadId: { $in: idQueries } }, { phoneNumber: { $in: phoneQueries } }] },
+      { $set: { isDeleted: true, deletedAt: new Date(), deletedBy: req.user._id } }
+    );
+
+    // Cascade soft-delete to BenWebsiteLead
+    await BenWebsiteLead.updateMany(
+      { $or: [{ importedLeadId: { $in: idQueries } }, { phone: { $in: phoneQueries } }] },
+      { $set: { isDeleted: true, deletedAt: new Date(), deletedBy: req.user._id } }
+    );
+
+    // Invalidate caches
+    cache.delByPattern('leads:.*');
+    cache.delByPattern('dashboard_stats:.*');
+
+    // Emit real-time update
+    if (req.io) {
+      const identifier = lead.leadId || lead.phone || req.params.id;
+      req.io.emit('leadDeleted', { leadId: identifier, deletedBy: req.user.name });
+      req.io.to('admin').emit('leadDeleted', { leadId: identifier, deletedBy: req.user.name });
     }
 
     return res.json({ success: true, message: 'Lead deleted successfully.' });
