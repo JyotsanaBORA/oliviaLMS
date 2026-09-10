@@ -320,6 +320,8 @@ const InboundDataModal = ({ onClose, title = 'Inbound Call Data' }) => {
     try {
       setExporting(true);
       const params = {
+        page: 1,
+        limit: 10000,
         dateFrom,
         dateTo,
         search: search.trim() || undefined,
@@ -328,25 +330,77 @@ const InboundDataModal = ({ onClose, title = 'Inbound Call Data' }) => {
         campaign: campaignFilter.trim() || undefined,
       };
 
-      const response = await axios.get('/api/inbound/export', {
-        params,
-        responseType: 'blob',
-      });
+      const res = await axios.get('/api/inbound', { params });
+      const rows = res.data?.data?.calls || [];
 
-      const blob = new Blob([response.data], { type: 'text/csv;charset=utf-8;' });
+      if (!rows.length) {
+        toast.error('No inbound calls found for the selected date range.');
+        return;
+      }
+
+      const headers = [
+        'Received Time (EST)',
+        'Caller Phone',
+        'Inbound DID',
+        'Campaign Name',
+        'Organization',
+        'Call Status',
+        'Disposition / Action',
+        'Disposed By',
+        'Disposed At',
+        'Caller Name',
+        'Email',
+        'City',
+        'State',
+        'Zipcode',
+        'Total Debt Amount',
+        'Notes'
+      ];
+
+      const escape = (v) => {
+        if (v == null || v === '') return '';
+        const s = String(v);
+        return s.includes(',') || s.includes('"') || s.includes('\n') || s.includes('\r')
+          ? `"${s.replace(/"/g, '""')}"`
+          : s;
+      };
+
+      const csvRows = [
+        headers.join(','),
+        ...rows.map(c => [
+          escape(fmtDate(c.receivedAt)),
+          escape(c.phoneNumber || ''),
+          escape(c.did || ''),
+          escape(c.campaignName || ''),
+          escape(c.organization?.name || 'Unassigned'),
+          escape(c.callStatus || ''),
+          escape(c.leadProgressStatus || ''),
+          escape(c.agentLastAction || c.updatedBy || ''),
+          escape(c.updatedAt ? fmtDate(c.updatedAt) : ''),
+          escape(c.callerName || [c.firstName, c.lastName].filter(Boolean).join(' ') || ''),
+          escape(c.email || ''),
+          escape(c.city || ''),
+          escape(c.state || ''),
+          escape(c.zipcode || ''),
+          escape(c.totalDebtAmount != null ? c.totalDebtAmount : ''),
+          escape((c.notes || '').replace(/[\r\n]+/g, ' '))
+        ].join(','))
+      ];
+
+      const blob = new Blob([csvRows.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
       link.setAttribute('download', `inbound_calls_${dateFrom}_to_${dateTo}.csv`);
       document.body.appendChild(link);
       link.click();
-      link.remove();
+      document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
 
-      toast.success(`Inbound calls CSV exported (${dateFrom} to ${dateTo})!`);
+      toast.success(`Exported ${rows.length} inbound calls successfully!`);
     } catch (err) {
       console.error('Failed to export inbound calls:', err);
-      toast.error(err.response?.data?.message || 'Failed to export inbound calls CSV');
+      toast.error('Failed to export inbound calls CSV');
     } finally {
       setExporting(false);
     }
