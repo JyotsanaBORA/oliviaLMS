@@ -55,7 +55,7 @@ router.get('/', protect, async (req, res) => {
     const status = req.query.status; // 'new' | 'reviewed' | 'imported' | 'rejected'
     const search = (req.query.search || '').trim();
 
-    const filter = {};
+    const filter = { isDeleted: { $ne: true } };
     if (access.orgFilter) {
       filter.organization = access.orgFilter;
     } else if (req.query.organizationId) {

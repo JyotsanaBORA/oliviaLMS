@@ -385,6 +385,20 @@ const leadSchema = new mongoose.Schema({
   duplicateDetectedBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
+  },
+
+  // Soft deletion tracking
+  isDeleted: {
+    type: Boolean,
+    default: false,
+    index: true
+  },
+  deletedAt: {
+    type: Date
+  },
+  deletedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
   }
 }, {
   timestamps: true
@@ -392,6 +406,7 @@ const leadSchema = new mongoose.Schema({
 
 // Indexes for better performance
 leadSchema.index({ leadId: 1 }, { unique: true });
+leadSchema.index({ isDeleted: 1 });
 leadSchema.index({ createdBy: 1 });
 leadSchema.index({ organization: 1 });
 leadSchema.index({ assignedTo: 1 });
@@ -579,12 +594,15 @@ leadSchema.pre('save', async function(next) {
 
 // Static method to find lead by leadId
 leadSchema.statics.findByLeadId = function(leadId) {
-  return this.findOne({ leadId: leadId });
+  return this.findOne({ leadId: leadId, isDeleted: { $ne: true } });
 };
 
 // Static method to get statistics
 leadSchema.statics.getStatistics = async function() {
   const stats = await this.aggregate([
+    {
+      $match: { isDeleted: { $ne: true } }
+    },
     {
       $group: {
         _id: null,

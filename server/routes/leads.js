@@ -637,7 +637,7 @@ router.get('/export', [
     }
 
     // Build filter object using EXACT same logic as main leads route
-    const filter = {};
+    const filter = { isDeleted: { $ne: true } };
     
     // IMPORTANT: Apply organisation scope filter FIRST for admin users.
     // This ensures all subsequent filters work within the correct organisation scope.
@@ -1056,7 +1056,8 @@ router.get('/assigned-to-me', protect, async (req, res) => {
     // Build filter for assigned leads
     let filter = {
       assignedTo: req.user._id,
-      adminProcessed: { $ne: true }
+      adminProcessed: { $ne: true },
+      isDeleted: { $ne: true }
     };
 
     // Add status-specific filters
@@ -1162,7 +1163,7 @@ router.get('/', protect, [
     const skip = (page - 1) * limit;
 
     // Build filter object
-    const filter = {};
+    const filter = { isDeleted: { $ne: true } };
     
     // IMPORTANT: Apply organisation scope filter FIRST for admin users.
     // This ensures all subsequent filters work within the correct organisation scope.
@@ -1472,7 +1473,7 @@ router.get('/today-stats', protect, authorize('admin', 'superadmin'), async (req
 
     const todayStart = getEasternStartOfDay();
     const todayEnd = getEasternEndOfDay();
-    const dateFilter = { createdAt: { $gte: todayStart, $lte: todayEnd } };
+    const dateFilter = { createdAt: { $gte: todayStart, $lte: todayEnd }, isDeleted: { $ne: true } };
 
     // Apply organisation scope for admin; superadmin sees all
     let orgFilter = {};
@@ -1538,7 +1539,7 @@ router.get('/call-report', protect, authorize('admin', 'superadmin'), async (req
     const endOfDay = new Date(targetDate);
     endOfDay.setHours(23, 59, 59, 999);
 
-    const dateFilter = { createdAt: { $gte: startOfDay, $lte: endOfDay } };
+    const dateFilter = { createdAt: { $gte: startOfDay, $lte: endOfDay }, isDeleted: { $ne: true } };
 
     // Inbound leads = leads with a vicidialDid (DID present means call came in on that number)
     // Outbound leads = all others, computed as grandTotal - inbound to avoid $not index issues
@@ -1631,12 +1632,22 @@ router.get('/call-report', protect, authorize('admin', 'superadmin'), async (req
 // @access  Private
 router.get('/:id', protect, async (req, res) => {
   try {
-    const lead = await Lead.findByLeadId(req.params.id)
-      .populate('createdBy', 'name email organization')
-      .populate('updatedBy', 'name email')
-      .populate('assignedTo', 'name email')
-      .populate('assignedBy', 'name email')
-      .populate('disposedBy', 'name email');
+    let lead;
+    if (req.params.id.match(/^[0-9a-fA-F]{24}$/)) {
+      lead = await Lead.findOne({ _id: req.params.id, isDeleted: { $ne: true } })
+        .populate('createdBy', 'name email organization')
+        .populate('updatedBy', 'name email')
+        .populate('assignedTo', 'name email')
+        .populate('assignedBy', 'name email')
+        .populate('disposedBy', 'name email');
+    } else {
+      lead = await Lead.findByLeadId(req.params.id)
+        .populate('createdBy', 'name email organization')
+        .populate('updatedBy', 'name email')
+        .populate('assignedTo', 'name email')
+        .populate('assignedBy', 'name email')
+        .populate('disposedBy', 'name email');
+    }
 
     if (!lead) {
       return res.status(404).json({
@@ -2313,14 +2324,19 @@ router.put('/:id', protect, updateLeadValidation, handleValidationErrors, async 
   }
 });
 
-// @desc    Delete lead
+// @desc    Delete lead (Soft Delete)
 // @route   DELETE /api/leads/:id
 // @access  Private (Admin and SuperAdmin)
 router.delete('/:id', protect, authorize('admin', 'superadmin'), async (req, res) => {
   try {
-    const lead = await Lead.findByLeadId(req.params.id).populate('createdBy');
+    let lead;
+    if (req.params.id.match(/^[0-9a-fA-F]{24}$/)) {
+      lead = await Lead.findById(req.params.id).populate('createdBy');
+    } else {
+      lead = await Lead.findOne({ leadId: req.params.id }).populate('createdBy');
+    }
 
-    if (!lead) {
+    if (!lead || lead.isDeleted === true) {
       return res.status(404).json({
         success: false,
         message: 'Lead not found'
@@ -2329,29 +2345,50 @@ router.delete('/:id', protect, authorize('admin', 'superadmin'), async (req, res
 
     // Check if admin can access this lead (organization-based access control)
     if (req.user.role === 'admin') {
-      if (lead.createdBy.organization.toString() !== req.user.organization.toString()) {
-        return res.status(403).json({
-          success: false,
-          message: 'You can only delete leads from your organization'
-        });
+      const adminOrg = await Organization.findById(req.user.organization).select('name').lean();
+      const isReddington = adminOrg && adminOrg.name === 'REDDINGTON GLOBAL CONSULTANCY';
+      if (!isReddington) {
+        const leadOrgId = lead.createdBy?.organization?.toString() || lead.organization?.toString();
+        if (leadOrgId !== req.user.organization.toString()) {
+          return res.status(403).json({
+            success: false,
+            message: 'You can only delete leads from your organization'
+          });
+        }
       }
     }
     // SuperAdmin can delete any lead (no additional check needed)
 
-    await Lead.findOneAndDelete({ leadId: req.params.id });
+    lead.isDeleted = true;
+    lead.deletedAt = new Date();
+    lead.deletedBy = req.user._id;
+    await lead.save();
+
+    // Soft delete associated InboundData records if any
+    try {
+      const InboundData = require('../models/InboundData');
+      await InboundData.updateMany(
+        { $or: [{ importedLeadId: lead._id }, ...(lead.phone ? [{ phoneNumber: lead.phone }] : [])] },
+        { $set: { isDeleted: true, deletedAt: new Date(), deletedBy: req.user._id } }
+      );
+    } catch (inboundErr) {
+      console.warn('Soft-deleting linked InboundData notice:', inboundErr.message);
+    }
+
+    const leadIdentifier = lead.leadId || req.params.id;
 
     // Emit real-time update
     req.io.emit('leadDeleted', {
-      leadId: req.params.id,
+      leadId: leadIdentifier,
       deletedBy: req.user.name
     });
     // Also emit to specific rooms
     req.io.to('admin').emit('leadDeleted', {
-      leadId: req.params.id,
+      leadId: leadIdentifier,
       deletedBy: req.user.name
     });
     req.io.to('agent2').emit('leadDeleted', {
-      leadId: req.params.id,
+      leadId: leadIdentifier,
       deletedBy: req.user.name
     });
 
@@ -2627,19 +2664,18 @@ router.get('/dashboard/stats', protect, async (req, res) => {
 
     // Apply filters based on user role
     if (role === 'agent1') {
-      filter = { assignedAgent: userId, status: { $in: ['new', 'contacted', 'qualified'] } };
+      filter = { assignedAgent: userId, status: { $in: ['new', 'contacted', 'qualified'] }, isDeleted: { $ne: true } };
     } else if (role === 'agent2') {
-      filter = { assignedAgent: userId, status: { $in: ['follow-up', 'converted', 'closed'] } };
+      filter = { assignedAgent: userId, status: { $in: ['follow-up', 'converted', 'closed'] }, isDeleted: { $ne: true } };
     }
     if (resolvedDid) {
       filter.vicidialDid = resolvedDid;
     }
-    // Admin sees all data (no filter applied)
 
     // Get basic statistics
     let stats;
     if (role === 'superadmin') {
-      effectiveBaseFilter = resolvedDid ? { vicidialDid: resolvedDid } : {};
+      effectiveBaseFilter = { ...(resolvedDid ? { vicidialDid: resolvedDid } : {}), isDeleted: { $ne: true } };
       // SuperAdmin sees all data from all organizations
       stats = await Lead.getStatistics();
       
@@ -2663,6 +2699,12 @@ router.get('/dashboard/stats', protect, async (req, res) => {
         } else {
           orgFilter = { ...orgFilter, vicidialDid: resolvedDid };
         }
+      }
+
+      if (orgFilter.$or) {
+        orgFilter = { $and: [orgFilter, { isDeleted: { $ne: true } }] };
+      } else {
+        orgFilter = { ...orgFilter, isDeleted: { $ne: true } };
       }
 
       effectiveBaseFilter = orgFilter;
@@ -2840,7 +2882,8 @@ router.get('/dashboard/follow-ups', protect, authorize('agent2', 'admin'), async
 
     const followUps = await Lead.find({
       status: 'follow-up',
-      followUpDate: { $gte: today, $lte: nextWeek }
+      followUpDate: { $gte: today, $lte: nextWeek },
+      isDeleted: { $ne: true }
     })
     .populate('createdBy', 'name email')
     .populate('updatedBy', 'name email')

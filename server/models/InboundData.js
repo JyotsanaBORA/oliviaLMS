@@ -117,6 +117,20 @@ const inboundDataSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.Mixed,
   },
 
+  // Soft deletion tracking
+  isDeleted: {
+    type: Boolean,
+    default: false,
+    index: true,
+  },
+  deletedAt: {
+    type: Date,
+  },
+  deletedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+  },
+
   receivedAt: {
     type: Date,
     default: Date.now,
@@ -127,6 +141,7 @@ const inboundDataSchema = new mongoose.Schema({
   versionKey: false,
 });
 
+inboundDataSchema.index({ isDeleted: 1 });
 inboundDataSchema.index({ did: 1, receivedAt: -1 });
 inboundDataSchema.index({ organization: 1, receivedAt: -1 });
 inboundDataSchema.index({ phoneNumber: 1, receivedAt: -1 });

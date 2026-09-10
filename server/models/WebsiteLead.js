@@ -108,10 +108,25 @@ const websiteLeadSchema = new mongoose.Schema(
         createdAt:  { type: Date, default: Date.now },
       },
     ],
+
+    // Soft deletion tracking
+    isDeleted: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    deletedAt: {
+      type: Date,
+    },
+    deletedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+    },
   },
   { timestamps: true }
 );
 
+websiteLeadSchema.index({ isDeleted: 1 });
 websiteLeadSchema.index({ organization: 1, createdAt: -1 });
 websiteLeadSchema.index({ status: 1, createdAt: -1 });
 websiteLeadSchema.index({ email: 1 });

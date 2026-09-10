@@ -89,6 +89,7 @@ router.get(
 
       // ── 1. Leads collection (submitted/disposed leads) ───────────
       const leadFilter = {
+        isDeleted: { $ne: true },
         ...buildCampaignFilter('vicidialCampaignName'),
         ...buildDateFilter(req.query.startDate, req.query.endDate),
       };
@@ -201,6 +202,7 @@ router.get(
   async (req, res) => {
     try {
       const leadFilter = {
+        isDeleted: { $ne: true },
         ...buildCampaignFilter('vicidialCampaignName'),
         ...buildDateFilter(req.query.startDate, req.query.endDate),
       };

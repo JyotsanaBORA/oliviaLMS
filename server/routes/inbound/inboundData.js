@@ -479,7 +479,7 @@ router.get('/', protect, async (req, res) => {
     const limit = Math.min(500, Math.max(1, parseInt(req.query.limit, 10) || 50));
     const skip = (page - 1) * limit;
 
-    const filter = {};
+    const filter = { isDeleted: { $ne: true } };
 
     // DID & Organization segregation
     if (!access.isGlobal) {
@@ -602,7 +602,7 @@ router.get('/stats', protect, async (req, res) => {
       return res.status(403).json({ success: false, message: 'Access denied.' });
     }
 
-    const filter = {};
+    const filter = { isDeleted: { $ne: true } };
     if (!access.isGlobal) {
       const didList = access.allowedDids || [];
       if (didList.length > 0) {
@@ -789,10 +789,34 @@ router.post('/:id/convert-to-lead', protect, async (req, res) => {
     });
   } catch (error) {
     console.error('❌ [Inbound API] Error converting inbound call to lead:', error);
-    return res.status(500).json({
-      success: false,
-      message: error.message || 'Failed to create lead from inbound call',
+/**
+ * DELETE /api/inbound/:id
+ * Soft deletes an inbound call record (Global Admin / SuperAdmin).
+ */
+router.delete('/:id', protect, async (req, res) => {
+  try {
+    const access = await getInboundAccess(req.user);
+    if (!access.allowed || !access.canWrite) {
+      return res.status(403).json({ success: false, message: 'Access denied.' });
+    }
+
+    const inbound = await InboundData.findById(req.params.id);
+    if (!inbound || inbound.isDeleted === true) {
+      return res.status(404).json({ success: false, message: 'Inbound record not found' });
+    }
+
+    inbound.isDeleted = true;
+    inbound.deletedAt = new Date();
+    inbound.deletedBy = req.user._id;
+    await inbound.save();
+
+    return res.status(200).json({
+      success: true,
+      message: 'Inbound record deleted successfully',
     });
+  } catch (error) {
+    console.error('❌ [Inbound API] Error deleting inbound record:', error);
+    return res.status(500).json({ success: false, message: 'Failed to delete inbound record' });
   }
 });
 
