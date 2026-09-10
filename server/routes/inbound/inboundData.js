@@ -5,6 +5,8 @@ const InboundData = require('../../models/InboundData');
 const Organization = require('../../models/Organization');
 const User = require('../../models/User');
 const Lead = require('../../models/Lead');
+const WebsiteLead = require('../../models/WebsiteLead');
+const BenWebsiteLead = require('../../models/BenWebsiteLead');
 const { findLeadForEnrichment, enrichLeadWithPayload } = require('../../utils/leadEnrichment');
 const { protect } = require('../../middleware/auth');
 const { getEasternStartOfDay, getEasternEndOfDay } = require('../../utils/timeFilters');
@@ -366,6 +368,61 @@ const handleInboundIngestion = async (req, res) => {
         if (createdLead) {
           savedRecord.importedLeadId = createdLead._id;
           await savedRecord.save();
+        }
+
+        // Mirror into WebsiteLead / BenWebsiteLead so organization admin vendor modals display all DID calls
+        if (matchedOrg && phoneNumber) {
+          try {
+            const orgNameLower = (matchedOrg.name || '').toLowerCase();
+            const isBenOrJake2 = orgNameLower.includes('jake2') ||
+              orgNameLower.includes('socialupmedia 2') ||
+              orgNameLower.includes('social up media 2') ||
+              orgNameLower.includes('ben');
+
+            const formType = (did && did === matchedOrg.liveTransferDid) ? 'live-transfer' : 'inbound-call';
+
+            let digitsOnly = phoneNumber.replace(/\D/g, '');
+            if (digitsOnly.length === 11 && digitsOnly.startsWith('1')) digitsOnly = digitsOnly.substring(1);
+
+            const webLeadPayload = {
+              organization: matchedOrg._id,
+              name: callerName || [firstName, lastName].filter(Boolean).join(' ') || 'Inbound Caller',
+              firstName: firstName || undefined,
+              lastName: lastName || undefined,
+              phone: digitsOnly || phoneNumber,
+              email: email || undefined,
+              streetAddress: address || undefined,
+              city: city || undefined,
+              state: state || undefined,
+              zipCode: zipcode || undefined,
+              totalDebtAmount: !isNaN(totalDebtAmount) && totalDebtAmount > 0 ? totalDebtAmount : undefined,
+              message: notes || (campaignName ? `Inbound call from campaign: ${campaignName}` : undefined),
+              formType: formType,
+              did: did || undefined,
+              vicidialDid: did || undefined,
+              trafficType: formType === 'live-transfer' ? 'live-transfer' : 'inbound',
+              status: 'new',
+              importedLeadId: createdLead?._id || undefined,
+              rawPayload: raw,
+            };
+
+            if (isBenOrJake2) {
+              await BenWebsiteLead.findOneAndUpdate(
+                { phone: digitsOnly, organization: matchedOrg._id },
+                { $set: webLeadPayload },
+                { upsert: true, new: true }
+              );
+            } else {
+              await WebsiteLead.findOneAndUpdate(
+                { phone: digitsOnly, organization: matchedOrg._id },
+                { $set: webLeadPayload },
+                { upsert: true, new: true }
+              );
+            }
+            console.log(`🌐 [Inbound API] Mirrored inbound call to WebsiteLead for ${matchedOrg.name}`);
+          } catch (wErr) {
+            console.error('⚠️ [Inbound API] Failed to mirror into WebsiteLead:', wErr.message);
+          }
         }
       } catch (leadErr) {
         console.error('⚠️ [Inbound API] Failed to auto-create primary lead:', leadErr.message);
@@ -750,6 +807,30 @@ router.put('/:id/disposition', protect, async (req, res) => {
 
       if (req.io) {
         req.io.emit('leadUpdated', matchedLead);
+      }
+    }
+
+    // Synchronize disposition status to WebsiteLead / BenWebsiteLead if exists
+    if (callRecord.phoneNumber) {
+      try {
+        let digitsOnly = callRecord.phoneNumber.replace(/\D/g, '');
+        if (digitsOnly.length === 11 && digitsOnly.startsWith('1')) digitsOnly = digitsOnly.substring(1);
+        const dispoStatus = (leadProgressStatus === 'Hang-up' || leadProgressStatus === 'Not Qualified') ? 'rejected' : 'reviewed';
+        
+        await WebsiteLead.updateMany(
+          { phone: { $in: [digitsOnly, callRecord.phoneNumber] } },
+          { $set: { status: dispoStatus } }
+        );
+        await BenWebsiteLead.updateMany(
+          { phone: { $in: [digitsOnly, callRecord.phoneNumber] } },
+          { $set: { status: dispoStatus } }
+        );
+
+        if (req.io) {
+          req.io.emit('websiteLeadUpdated', { phone: digitsOnly, status: dispoStatus, leadProgressStatus });
+        }
+      } catch (wSyncErr) {
+        console.error('⚠️ [Inbound API] Failed to sync disposition to WebsiteLead:', wSyncErr.message);
       }
     }
 

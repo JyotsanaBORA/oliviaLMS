@@ -18,9 +18,12 @@ const STATUS_COLORS = {
 };
 
 const FORM_LABELS = {
-  'contact-form': { label: 'Contact Form', color: 'bg-purple-100 text-purple-800' },
-  'qualify-form': { label: 'Qualify Form', color: 'bg-teal-100 text-teal-800' },
-  'unknown':      { label: 'Unknown',      color: 'bg-gray-100 text-gray-700' },
+  'contact-form':   { label: 'Contact Form',    color: 'bg-purple-100 text-purple-800' },
+  'qualify-form':   { label: 'Qualify Form',    color: 'bg-teal-100 text-teal-800' },
+  'live-transfer':  { label: '⚡ Live Transfer', color: 'bg-amber-100 text-amber-900 border border-amber-300' },
+  'inbound-call':   { label: '📞 Inbound Call',  color: 'bg-indigo-100 text-indigo-900 border border-indigo-300' },
+  'meta-lead-form': { label: 'Meta Lead Form',  color: 'bg-blue-100 text-blue-800' },
+  'unknown':        { label: 'Webhook Lead',    color: 'bg-gray-100 text-gray-700' },
 };
 
 const fmt     = (v) => (v === undefined || v === null || v === '') ? '—' : v;
@@ -510,9 +513,16 @@ const BenWebsiteLeadsModal = ({ onClose, targetOrgName, title }) => {
                         {!lead.email && !lead.phone && <span className="text-gray-400 text-xs">—</span>}
                       </td>
                       <td className="px-4 py-3">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${(FORM_LABELS[lead.formType] || FORM_LABELS.unknown).color}`}>
-                          {(FORM_LABELS[lead.formType] || FORM_LABELS.unknown).label}
-                        </span>
+                        <div className="flex flex-col items-start gap-1">
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${(FORM_LABELS[lead.formType] || FORM_LABELS.unknown).color}`}>
+                            {(FORM_LABELS[lead.formType] || FORM_LABELS.unknown).label}
+                          </span>
+                          {(lead.did || lead.vicidialDid) && (
+                            <span className="text-[10px] font-mono font-medium text-slate-700 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded">
+                              DID: {lead.did || lead.vicidialDid}
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-4 py-3 text-xs text-gray-700">{lead.totalDebtAmount != null ? fmtMoney(lead.totalDebtAmount) : '—'}</td>
                       <td className="px-4 py-3">

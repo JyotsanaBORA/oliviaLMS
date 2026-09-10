@@ -30,9 +30,12 @@ const benWebsiteLeadSchema = new mongoose.Schema(
     smsOptIn: { type: Boolean, default: false },
     formType: {
       type: String,
-      enum: ['contact-form', 'qualify-form', 'unknown'],
+      enum: ['contact-form', 'qualify-form', 'live-transfer', 'inbound-call', 'meta-lead-form', 'unknown'],
       default: 'unknown',
     },
+    did: { type: String, trim: true, maxlength: 30, index: true },
+    vicidialDid: { type: String, trim: true, maxlength: 30, index: true },
+    trafficType: { type: String, trim: true, maxlength: 50 },
     status: {
       type: String,
       enum: ['new', 'reviewed', 'imported', 'rejected'],
