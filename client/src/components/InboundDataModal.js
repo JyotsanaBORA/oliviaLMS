@@ -357,20 +357,23 @@ const InboundDataModal = ({ onClose, title = 'Inbound Call Data' }) => {
         'Notes'
       ];
 
-      const escape = (v) => {
+      const escape = (v, isTextFormula = false) => {
         if (v == null || v === '') return '';
         const s = String(v);
+        if (isTextFormula) {
+          return `="${s.replace(/"/g, '""')}"`;
+        }
         return s.includes(',') || s.includes('"') || s.includes('\n') || s.includes('\r')
           ? `"${s.replace(/"/g, '""')}"`
-          : s;
+          : `"${s}"`;
       };
 
       const csvRows = [
         headers.join(','),
         ...rows.map(c => [
           escape(fmtDate(c.receivedAt)),
-          escape(c.phoneNumber || ''),
-          escape(c.did || ''),
+          escape(c.phoneNumber || '', true),
+          escape(c.did || '', true),
           escape(c.campaignName || ''),
           escape(c.organization?.name || 'Unassigned'),
           escape(c.callStatus || ''),
@@ -381,7 +384,7 @@ const InboundDataModal = ({ onClose, title = 'Inbound Call Data' }) => {
           escape(c.email || ''),
           escape(c.city || ''),
           escape(c.state || ''),
-          escape(c.zipcode || ''),
+          escape(c.zipcode || '', true),
           escape(c.totalDebtAmount != null ? c.totalDebtAmount : ''),
           escape((c.notes || '').replace(/[\r\n]+/g, ' '))
         ].join(','))
