@@ -781,8 +781,8 @@ router.get('/export', protect, async (req, res) => {
 
     const rows = calls.map(c => [
       formatEST(c.receivedAt),
-      c.phoneNumber ? `="${c.phoneNumber}"` : '',
-      c.did ? `="${c.did}"` : '',
+      c.phoneNumber || '',
+      c.did || '',
       c.campaignName || '',
       c.organization?.name || 'Unassigned',
       c.callStatus || '',
@@ -793,14 +793,14 @@ router.get('/export', protect, async (req, res) => {
       c.email || '',
       c.city || '',
       c.state || '',
-      c.zipcode ? `="${c.zipcode}"` : '',
+      c.zipcode || '',
       c.totalDebtAmount || '',
       (c.notes || '').replace(/[\r\n]+/g, ' ')
     ]);
 
     const csvContent = [
       headers.join(','),
-      ...rows.map(row => row.map(val => val.startsWith('="') ? val : `"${(val || '').toString().replace(/"/g, '""')}"`).join(','))
+      ...rows.map(row => row.map(val => `"${(val || '').toString().replace(/"/g, '""')}"`).join(','))
     ].join('\r\n');
 
     const dateStr = new Date().toISOString().slice(0, 10);
