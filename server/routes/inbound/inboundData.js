@@ -107,19 +107,22 @@ const getInboundAccess = async (user) => {
 // ===========================================================================
 const handleInboundIngestion = async (req, res) => {
   try {
-    const payload = req.method === 'GET' 
-      ? req.query 
-      : (typeof req.body === 'string' ? parseStringPayload(req.body) : req.body || {});
+    const parsedBody = typeof req.body === 'string' ? parseStringPayload(req.body) : (req.body || {});
+    // Merge query parameters and body so query parameters work for both GET and POST seamlessly
+    const payload = {
+      ...(parsedBody || {}),
+      ...(req.query || {})
+    };
 
     console.log(`[Inbound API ${req.method}] Ingestion received:`, JSON.stringify(payload).substring(0, 400));
 
     // Extract core fields
     const campaignName = (
-      payload.campaign_name || payload.campaignName || payload.campaign || payload.campaign_id || ''
+      payload.campaign_name || payload.campaignName || payload.campaign || payload.campaign_id || payload.group || payload.ingroup || ''
     ).toString().trim();
 
     const did = (
-      payload.did || payload.DID || payload.inbound_did || payload.vicidial_did || payload.inboundDid || ''
+      payload.did || payload.DID || payload.inbound_did || payload.inboundDid || payload.vicidial_did || payload.vicidialDid || ''
     ).toString().trim();
 
     let phoneNumber = (
