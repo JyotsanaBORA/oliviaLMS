@@ -647,6 +647,173 @@ router.get('/', protect, async (req, res) => {
 });
 
 /**
+ * GET /api/inbound/export
+ * Exports inbound calls matching date range and filters as a CSV file.
+ */
+router.get('/export', protect, async (req, res) => {
+  try {
+    const access = await getInboundAccess(req.user);
+    if (!access.allowed) {
+      return res.status(403).json({ success: false, message: 'Access denied.' });
+    }
+
+    const filter = { isDeleted: { $ne: true } };
+
+    if (!access.isGlobal) {
+      const didList = access.allowedDids || [];
+      if (didList.length > 0) {
+        filter.$or = [
+          { organization: access.orgFilter },
+          { did: { $in: didList } }
+        ];
+      } else {
+        filter.organization = access.orgFilter;
+      }
+    } else {
+      if (req.query.organization && req.query.organization.trim()) {
+        const orgQuery = req.query.organization.trim();
+        const matchOrgs = await Organization.find({
+          $or: [
+            { name: { $regex: orgQuery, $options: 'i' } },
+            { _id: mongoose.isValidObjectId(orgQuery) ? orgQuery : null }
+          ]
+        }).select('_id');
+        if (matchOrgs.length > 0) {
+          filter.organization = { $in: matchOrgs.map(o => o._id) };
+        }
+      }
+    }
+
+    // Specific DID filter
+    if (req.query.did && req.query.did.trim()) {
+      const explicitDid = req.query.did.trim();
+      if (access.isGlobal || (access.allowedDids && access.allowedDids.includes(explicitDid))) {
+        filter.did = explicitDid;
+      }
+    }
+
+    // Campaign filter
+    if (req.query.campaign && req.query.campaign.trim()) {
+      filter.campaignName = { $regex: req.query.campaign.trim(), $options: 'i' };
+    }
+
+    // Call status filter
+    if (req.query.status && req.query.status.trim()) {
+      filter.callStatus = req.query.status.trim().toUpperCase();
+    }
+
+    if (req.query.leadProgressStatus && req.query.leadProgressStatus.trim()) {
+      filter.leadProgressStatus = req.query.leadProgressStatus.trim();
+    }
+
+    // Date range filter
+    if (req.query.dateFrom || req.query.dateTo) {
+      filter.receivedAt = {};
+      if (req.query.dateFrom) {
+        filter.receivedAt.$gte = new Date(req.query.dateFrom);
+      }
+      if (req.query.dateTo) {
+        const dTo = new Date(req.query.dateTo);
+        dTo.setHours(23, 59, 59, 999);
+        filter.receivedAt.$lte = dTo;
+      }
+    }
+
+    // Search term
+    if (req.query.search && req.query.search.trim()) {
+      const term = req.query.search.trim();
+      const phoneDigits = term.replace(/\D/g, '');
+      filter.$and = filter.$and || [];
+      filter.$and.push({
+        $or: [
+          { phoneNumber: { $regex: phoneDigits || term, $options: 'i' } },
+          { did: { $regex: term, $options: 'i' } },
+          { campaignName: { $regex: term, $options: 'i' } },
+          { callerName: { $regex: term, $options: 'i' } },
+          { email: { $regex: term, $options: 'i' } },
+          { notes: { $regex: term, $options: 'i' } },
+        ]
+      });
+    }
+
+    const calls = await InboundData.find(filter)
+      .sort({ receivedAt: -1 })
+      .populate('organization', 'name')
+      .populate('agent', 'name role')
+      .lean();
+
+    const headers = [
+      'Received Time (EST)',
+      'Caller Phone',
+      'Inbound DID',
+      'Campaign Name',
+      'Organization',
+      'Call Status',
+      'Disposition / Action',
+      'Disposed By',
+      'Disposed At',
+      'Caller Name',
+      'Email',
+      'City',
+      'State',
+      'Zipcode',
+      'Total Debt Amount',
+      'Notes'
+    ];
+
+    const formatEST = (d) => {
+      if (!d) return '';
+      try {
+        return new Date(d).toLocaleString('en-US', {
+          timeZone: 'America/New_York',
+          month: '2-digit',
+          day: '2-digit',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+          hour12: true
+        });
+      } catch {
+        return '';
+      }
+    };
+
+    const rows = calls.map(c => [
+      formatEST(c.receivedAt),
+      c.phoneNumber || '',
+      c.did || '',
+      c.campaignName || '',
+      c.organization?.name || 'Unassigned',
+      c.callStatus || '',
+      c.leadProgressStatus || '',
+      c.agentLastAction || c.updatedBy || '',
+      formatEST(c.updatedAt),
+      c.callerName || [c.firstName, c.lastName].filter(Boolean).join(' ') || '',
+      c.email || '',
+      c.city || '',
+      c.state || '',
+      c.zipcode || '',
+      c.totalDebtAmount || '',
+      (c.notes || '').replace(/[\r\n]+/g, ' ')
+    ]);
+
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.map(val => `"${(val || '').toString().replace(/"/g, '""')}"`).join(','))
+    ].join('\r\n');
+
+    const dateStr = new Date().toISOString().slice(0, 10);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="inbound_calls_${req.query.dateFrom || 'all'}_to_${req.query.dateTo || dateStr}.csv"`);
+    return res.status(200).send(csvContent);
+  } catch (error) {
+    console.error('❌ [Inbound API] Error exporting inbound calls:', error);
+    return res.status(500).json({ success: false, message: 'Failed to export inbound calls' });
+  }
+});
+
+/**
  * GET /api/inbound/stats
  * Stats for badges and dashboard summaries.
  */

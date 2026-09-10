@@ -13,6 +13,8 @@ import {
   Filter,
   Download,
   Lock,
+  Unlock,
+  Calendar,
   Edit3,
   PlusCircle,
   FileText,
@@ -85,6 +87,7 @@ const InboundDataModal = ({ onClose, title = 'Inbound Call Data' }) => {
   const [didFilter, setDidFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [campaignFilter, setCampaignFilter] = useState('');
+  const [exporting, setExporting] = useState(false);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
 
@@ -274,39 +277,80 @@ const InboundDataModal = ({ onClose, title = 'Inbound Call Data' }) => {
     }
   };
 
-  // Export CSV
-  const handleExportCSV = () => {
-    if (!calls || calls.length === 0) {
-      toast.error('No calls to export');
+  // Quick Date Preset Helper
+  const applyDatePreset = (preset) => {
+    const now = new Date();
+    const formatYMD = (d) => {
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+
+    if (preset === 'today') {
+      const str = formatYMD(now);
+      setDateFrom(str);
+      setDateTo(str);
+    } else if (preset === 'yesterday') {
+      const y = new Date(now);
+      y.setDate(y.getDate() - 1);
+      const str = formatYMD(y);
+      setDateFrom(str);
+      setDateTo(str);
+    } else if (preset === '7days') {
+      const past = new Date(now);
+      past.setDate(past.getDate() - 6);
+      setDateFrom(formatYMD(past));
+      setDateTo(formatYMD(now));
+    } else if (preset === 'month') {
+      const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+      setDateFrom(formatYMD(firstDay));
+      setDateTo(formatYMD(now));
+    }
+  };
+
+  // Export CSV (Unlocked once dateFrom and dateTo are selected)
+  const isDateRangeSelected = Boolean(dateFrom && dateTo);
+
+  const handleExportCSV = async () => {
+    if (!dateFrom || !dateTo) {
+      toast.error("Please select both 'From' and 'To' dates to unlock CSV export.");
       return;
     }
 
-    const headers = ['Received At', 'Phone Number', 'DID', 'Campaign', 'Organization', 'Status', 'Disposition', 'Notes', 'Agent / Action'];
-    const rows = calls.map(c => [
-      fmtDate(c.receivedAt),
-      c.phoneNumber || '',
-      c.did || '',
-      c.campaignName || '',
-      c.organization?.name || 'Unassigned',
-      c.callStatus || '',
-      c.leadProgressStatus || '',
-      (c.notes || '').replace(/[\r\n]+/g, ' '),
-      c.agentLastAction || c.updatedBy || '',
-    ]);
+    try {
+      setExporting(true);
+      const params = {
+        dateFrom,
+        dateTo,
+        search: search.trim() || undefined,
+        did: didFilter.trim() || undefined,
+        status: statusFilter || undefined,
+        campaign: campaignFilter.trim() || undefined,
+      };
 
-    const csvContent = 'data:text/csv;charset=utf-8,' + [
-      headers.join(','),
-      ...rows.map(e => e.map(item => `"${(item || '').toString().replace(/"/g, '""')}"`).join(','))
-    ].join('\n');
+      const response = await axios.get('/api/inbound/export', {
+        params,
+        responseType: 'blob',
+      });
 
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `inbound_calls_${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    toast.success('Inbound calls CSV exported');
+      const blob = new Blob([response.data], { type: 'text/csv;charset=utf-8;' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `inbound_calls_${dateFrom}_to_${dateTo}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+
+      toast.success(`Inbound calls CSV exported (${dateFrom} to ${dateTo})!`);
+    } catch (err) {
+      console.error('Failed to export inbound calls:', err);
+      toast.error(err.response?.data?.message || 'Failed to export inbound calls CSV');
+    } finally {
+      setExporting(false);
+    }
   };
 
   return (
@@ -343,13 +387,29 @@ const InboundDataModal = ({ onClose, title = 'Inbound Call Data' }) => {
             >
               <RefreshCw className={`h-5 w-5 ${refreshing ? 'animate-spin' : ''}`} />
             </button>
-            <button
-              onClick={handleExportCSV}
-              className="p-2 text-indigo-200 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
-              title="Export CSV"
-            >
-              <Download className="h-5 w-5" />
-            </button>
+            
+            {/* Header CSV Button (Locked if no dates, Unlocked if dates selected) */}
+            {isDateRangeSelected ? (
+              <button
+                onClick={handleExportCSV}
+                disabled={exporting}
+                className="px-3 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-md transition-all active:scale-95 animate-in fade-in"
+                title={`Download CSV for ${dateFrom} to ${dateTo}`}
+              >
+                <Download className={`h-4 w-4 ${exporting ? 'animate-bounce' : ''}`} />
+                <span>{exporting ? 'Exporting...' : 'Download CSV'}</span>
+              </button>
+            ) : (
+              <button
+                onClick={() => toast.error("Please select both 'From' and 'To' dates below to unlock CSV download.")}
+                className="px-2.5 py-1.5 bg-white/10 hover:bg-white/15 text-indigo-200/70 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
+                title="Select 'From' and 'To' dates below to unlock CSV download"
+              >
+                <Lock className="h-3.5 w-3.5 text-indigo-300/70" />
+                <span className="hidden sm:inline opacity-80">CSV Locked</span>
+              </button>
+            )}
+
             <button
               onClick={onClose}
               className="p-2 text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors ml-2"
@@ -391,7 +451,7 @@ const InboundDataModal = ({ onClose, title = 'Inbound Call Data' }) => {
           </div>
         </div>
 
-        {/* Filters Bar */}
+        {/* Filters & Export Bar */}
         <div className="px-6 py-3 bg-white border-b border-gray-100 flex flex-wrap items-center gap-3">
           <div className="relative flex-1 min-w-[200px]">
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
@@ -404,7 +464,7 @@ const InboundDataModal = ({ onClose, title = 'Inbound Call Data' }) => {
             />
           </div>
 
-          <div className="w-40">
+          <div className="w-36">
             <input
               type="text"
               placeholder="Filter DID..."
@@ -414,7 +474,7 @@ const InboundDataModal = ({ onClose, title = 'Inbound Call Data' }) => {
             />
           </div>
 
-          <div className="w-40">
+          <div className="w-36">
             <input
               type="text"
               placeholder="Filter Campaign..."
@@ -424,11 +484,11 @@ const InboundDataModal = ({ onClose, title = 'Inbound Call Data' }) => {
             />
           </div>
 
-          <div className="w-36">
+          <div className="w-32">
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+              className="w-full px-2.5 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
             >
               <option value="">All Statuses</option>
               <option value="RECEIVED">Received</option>
@@ -438,22 +498,88 @@ const InboundDataModal = ({ onClose, title = 'Inbound Call Data' }) => {
             </select>
           </div>
 
-          <div className="flex items-center gap-1 text-xs text-gray-500">
+          {/* Date Range & Unlock CSV Section */}
+          <div className="flex items-center gap-2 p-1.5 bg-slate-50 border border-slate-200 rounded-xl shadow-inner">
+            <div className="flex items-center gap-1 text-xs text-gray-600 font-medium px-1">
+              <Calendar className="h-3.5 w-3.5 text-indigo-600" />
+              <span>Date:</span>
+            </div>
+
             <input
               type="date"
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
-              className="px-2 py-1 border border-gray-300 rounded-lg text-xs"
-              title="From Date"
+              className="px-2 py-1 border border-gray-300 rounded-md text-xs bg-white focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+              title="From Date (Required for CSV download)"
             />
-            <span>to</span>
+            <span className="text-xs text-gray-400 font-bold">→</span>
             <input
               type="date"
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
-              className="px-2 py-1 border border-gray-300 rounded-lg text-xs"
-              title="To Date"
+              className="px-2 py-1 border border-gray-300 rounded-md text-xs bg-white focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+              title="To Date (Required for CSV download)"
             />
+
+            {/* Quick Presets */}
+            <div className="hidden lg:flex items-center gap-1 border-l border-slate-200 pl-1.5">
+              <button
+                type="button"
+                onClick={() => applyDatePreset('today')}
+                className="px-1.5 py-0.5 text-[10px] font-semibold bg-white hover:bg-indigo-50 text-gray-600 hover:text-indigo-600 border border-gray-200 rounded transition-colors"
+                title="Select Today"
+              >
+                Today
+              </button>
+              <button
+                type="button"
+                onClick={() => applyDatePreset('yesterday')}
+                className="px-1.5 py-0.5 text-[10px] font-semibold bg-white hover:bg-indigo-50 text-gray-600 hover:text-indigo-600 border border-gray-200 rounded transition-colors"
+                title="Select Yesterday"
+              >
+                Yday
+              </button>
+              <button
+                type="button"
+                onClick={() => applyDatePreset('7days')}
+                className="px-1.5 py-0.5 text-[10px] font-semibold bg-white hover:bg-indigo-50 text-gray-600 hover:text-indigo-600 border border-gray-200 rounded transition-colors"
+                title="Select Last 7 Days"
+              >
+                7D
+              </button>
+              <button
+                type="button"
+                onClick={() => applyDatePreset('month')}
+                className="px-1.5 py-0.5 text-[10px] font-semibold bg-white hover:bg-indigo-50 text-gray-600 hover:text-indigo-600 border border-gray-200 rounded transition-colors"
+                title="Select This Month"
+              >
+                Month
+              </button>
+            </div>
+
+            {/* Download CSV Locked vs Unlocked Button */}
+            {isDateRangeSelected ? (
+              <button
+                type="button"
+                onClick={handleExportCSV}
+                disabled={exporting}
+                className="flex items-center gap-1.5 px-3 py-1 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-lg text-xs font-bold shadow-sm transition-all duration-150 active:scale-95 animate-in fade-in"
+                title={`Download CSV (${dateFrom} to ${dateTo})`}
+              >
+                <Download className={`h-3.5 w-3.5 ${exporting ? 'animate-bounce' : ''}`} />
+                <span>{exporting ? 'Exporting…' : 'Download CSV'}</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => toast.error("Please select both 'From' and 'To' dates to unlock CSV download.")}
+                className="flex items-center gap-1 px-2.5 py-1 bg-gray-200/70 hover:bg-gray-200 text-gray-400 rounded-lg text-xs font-medium cursor-pointer transition-colors"
+                title="Select 'From' and 'To' dates to unlock CSV export"
+              >
+                <Lock className="h-3 w-3 text-gray-400" />
+                <span className="text-[11px]">CSV Locked</span>
+              </button>
+            )}
           </div>
 
           {(search || didFilter || campaignFilter || statusFilter || dateFrom || dateTo) && (
@@ -466,9 +592,9 @@ const InboundDataModal = ({ onClose, title = 'Inbound Call Data' }) => {
                 setDateFrom('');
                 setDateTo('');
               }}
-              className="text-xs font-semibold text-red-600 hover:text-red-700 px-2 py-1 bg-red-50 rounded-md"
+              className="text-xs font-semibold text-red-600 hover:text-red-700 px-2 py-1 bg-red-50 hover:bg-red-100 rounded-md transition-colors"
             >
-              Reset Filters
+              Reset
             </button>
           )}
         </div>
