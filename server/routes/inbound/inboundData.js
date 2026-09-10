@@ -300,8 +300,87 @@ const handleInboundIngestion = async (req, res) => {
     const savedRecord = await InboundData.create(inboundDoc);
     console.log(`💾 [Inbound API] Saved InboundData record ID: ${savedRecord._id}`);
 
+    // Automatically create or update corresponding primary LMS Lead
+    let createdLead = null;
+    if (phoneNumber) {
+      try {
+        const leadOrgId = matchedOrg ? matchedOrg._id : (matchedAgent?.organization || undefined);
+        
+        let existingLead = null;
+        if (leadOrgId) {
+          existingLead = await Lead.findOne({
+            organization: leadOrgId,
+            phone: phoneNumber
+          }).sort({ createdAt: -1 });
+        } else {
+          existingLead = await Lead.findOne({
+            phone: phoneNumber
+          }).sort({ createdAt: -1 });
+        }
+
+        if (existingLead) {
+          if (did && !existingLead.vicidialDid) existingLead.vicidialDid = did;
+          if (campaignName && !existingLead.vicidialCampaignName) existingLead.vicidialCampaignName = campaignName;
+          if (notes) {
+            existingLead.notes = existingLead.notes ? `${existingLead.notes}\n\n${notes}` : notes;
+          }
+          if (totalDebtAmount && !existingLead.totalDebtAmount) existingLead.totalDebtAmount = totalDebtAmount;
+          createdLead = await existingLead.save();
+          console.log(`🔄 [Inbound API] Updated existing Lead ID: ${createdLead._id}`);
+        } else {
+          const resolvedOrgId = leadOrgId || '68b9c76d2c29dac1220cb81c';
+          let creatorId = matchedAgent ? matchedAgent._id : undefined;
+          if (!creatorId) {
+            const orgAdmin = await User.findOne({ organization: resolvedOrgId, role: 'admin' }).select('_id');
+            if (orgAdmin) {
+              creatorId = orgAdmin._id;
+            } else {
+              const superAdmin = await User.findOne({ role: 'superadmin' }).select('_id');
+              creatorId = superAdmin?._id;
+            }
+          }
+
+          const newLeadData = {
+            name: callerName || [firstName, lastName].filter(Boolean).join(' ') || 'Inbound Caller',
+            phone: phoneNumber,
+            email: email || undefined,
+            address: address || undefined,
+            city: city || undefined,
+            state: state || undefined,
+            zipcode: zipcode || undefined,
+            totalDebtAmount: !isNaN(totalDebtAmount) ? totalDebtAmount : undefined,
+            notes: notes || (campaignName ? `Inbound call from campaign: ${campaignName}` : undefined),
+            vicidialDid: did || undefined,
+            vicidialCampaignName: campaignName || undefined,
+            source: 'Inbound Call',
+            sourceId: did ? `Inbound-${did}` : 'InboundCall',
+            organization: resolvedOrgId,
+            createdBy: creatorId,
+            assignedTo: matchedAgent ? matchedAgent._id : undefined,
+            qualificationStatus: 'pending',
+            category: 'warm',
+            status: 'new',
+          };
+          createdLead = await Lead.create(newLeadData);
+          console.log(`✨ [Inbound API] Automatically created LMS Lead ID: ${createdLead._id} (LeadID: ${createdLead.leadId || 'Pending'})`);
+        }
+
+        if (createdLead) {
+          savedRecord.importedLeadId = createdLead._id;
+          await savedRecord.save();
+        }
+      } catch (leadErr) {
+        console.error('⚠️ [Inbound API] Failed to auto-create primary lead:', leadErr.message);
+      }
+    }
+
     // Real-time notification push via Socket.IO
     if (req.io) {
+      if (createdLead) {
+        req.io.emit('newLead', createdLead);
+        req.io.emit('leadUpdated', createdLead);
+      }
+
       const socketPayload = {
         _id: savedRecord._id,
         campaignName: savedRecord.campaignName,
@@ -311,6 +390,7 @@ const handleInboundIngestion = async (req, res) => {
         callStatus: savedRecord.callStatus,
         organization: savedRecord.organization,
         organizationName: matchedOrg?.name || 'Unassigned',
+        importedLeadId: savedRecord.importedLeadId,
         receivedAt: savedRecord.receivedAt,
       };
 
@@ -333,6 +413,7 @@ const handleInboundIngestion = async (req, res) => {
       success: true,
       message: 'Inbound call recorded successfully',
       id: savedRecord._id,
+      leadId: createdLead?._id || null,
       organization: matchedOrg?.name || null,
       did: savedRecord.did,
     };
