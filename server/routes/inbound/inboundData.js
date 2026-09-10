@@ -690,10 +690,78 @@ router.put('/:id/disposition', protect, async (req, res) => {
       { new: true }
     ).populate('organization', 'name').populate('agent', 'name');
 
+    // Synchronize disposition & progress status to corresponding LMS Lead
+    let matchedLead = null;
+    if (callRecord.importedLeadId) {
+      matchedLead = await Lead.findById(callRecord.importedLeadId);
+    }
+    if (!matchedLead && callRecord.phoneNumber) {
+      matchedLead = await findLeadForEnrichment(callRecord.phoneNumber, callRecord.organization);
+    }
+
+    if (matchedLead) {
+      const agentLabel = req.user.name ? `${req.user.name} (${req.user.role})` : 'Agent 2';
+      const updaterName = req.user.name || req.user.email || 'Agent 2';
+
+      if (leadProgressStatus) {
+        matchedLead.leadProgressStatus = leadProgressStatus;
+        matchedLead.isDisposed = true;
+        matchedLead.disposition1 = leadProgressStatus;
+        matchedLead.disposedBy = req.user._id;
+        matchedLead.disposedAt = new Date();
+      }
+
+      matchedLead.agent2LastAction = agentLabel;
+      matchedLead.lastUpdatedBy = updaterName;
+      matchedLead.lastUpdatedAt = new Date();
+
+      if (notes && notes.trim()) {
+        const noteText = notes.trim();
+        if (!matchedLead.notes) {
+          matchedLead.notes = noteText;
+        } else if (!matchedLead.notes.includes(noteText)) {
+          matchedLead.notes = `${matchedLead.notes}\n[Disposition Note]: ${noteText}`;
+        }
+      }
+
+      if (callerName && (!matchedLead.name || matchedLead.name === 'Inbound Caller' || matchedLead.name === 'Unknown')) {
+        matchedLead.name = callerName;
+      }
+      if (email && !matchedLead.email) matchedLead.email = email;
+      if (address && !matchedLead.address) matchedLead.address = address;
+      if (city && !matchedLead.city) matchedLead.city = city;
+      if (state && !matchedLead.state) matchedLead.state = state;
+      if (zipcode && !matchedLead.zipcode) matchedLead.zipcode = zipcode;
+      if (totalDebtAmount !== undefined) {
+        const num = Number(String(totalDebtAmount).replace(/[^0-9.]/g, ''));
+        if (!isNaN(num) && num > 0 && !matchedLead.totalDebtAmount) {
+          matchedLead.totalDebtAmount = num;
+        }
+      }
+
+      await matchedLead.save();
+
+      if (!updated.importedLeadId) {
+        updated.importedLeadId = matchedLead._id;
+        await updated.save();
+      }
+
+      console.log(`✅ [Inbound API] Synced disposition "${leadProgressStatus}" to Lead ID: ${matchedLead._id} (${matchedLead.leadId || 'N/A'})`);
+
+      if (req.io) {
+        req.io.emit('leadUpdated', matchedLead);
+      }
+    }
+
+    if (req.io) {
+      req.io.emit('inboundDataUpdated', updated);
+    }
+
     return res.status(200).json({
       success: true,
-      message: 'Disposition updated successfully',
-      data: updated
+      message: 'Disposition updated successfully and synced to lead',
+      data: updated,
+      lead: matchedLead
     });
   } catch (error) {
     console.error('❌ [Inbound API] Error updating disposition:', error);
