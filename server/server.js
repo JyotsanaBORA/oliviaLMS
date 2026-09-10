@@ -223,6 +223,8 @@ app.use('/api/affiliate', affiliateRoutes);
 app.use('/api/data-vendor-uploads', dataVendorRoutes);
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/webhook', aiWebhookRoutes);
+app.use('/api/inbound', require('./routes/inbound/inboundData'));
+app.use('/api/inbound-data', require('./routes/inbound/inboundData'));
 
 // =========================
 // HEALTH CHECK

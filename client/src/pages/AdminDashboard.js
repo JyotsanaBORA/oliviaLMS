@@ -36,6 +36,7 @@ import ManualSaleModal from '../components/ManualSaleModal';
 import WebsiteLeadsModal from '../components/WebsiteLeadsModal';
 import BenWebsiteLeadsModal from '../components/BenWebsiteLeadsModal';
 import LoopLeadsModal from '../components/LoopLeadsModal';
+import InboundDataModal from '../components/InboundDataModal';
 import Pagination from '../components/Pagination';
 import { useSocket } from '../contexts/SocketContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -193,6 +194,10 @@ const AdminDashboard = () => {
   // Loop leads modal (orgs with showLoopLeads === true)
   const [showLoopLeads, setShowLoopLeads] = useState(false);
   const [loopLeadsBadge, setLoopLeadsBadge] = useState(0);
+
+  // Inbound Calls modal (all admins)
+  const [showInboundDataModal, setShowInboundDataModal] = useState(false);
+  const [inboundCallsBadge, setInboundCallsBadge] = useState(0);
   
   const maskEmail = (email) => {
     if (!email) return '—';
@@ -935,11 +940,18 @@ const AdminDashboard = () => {
         }
       };
 
+      const handleNewInboundData = (data) => {
+        if (user?.role !== 'admin') return;
+        setInboundCallsBadge(n => n + 1);
+        toast.success(`New Inbound Call on DID ${data?.did || 'N/A'}: ${data?.phoneNumber || 'Unknown'}`, { duration: 5000, icon: '📞' });
+      };
+
       socket.on('leadUpdated', handleLeadUpdated);
       socket.on('leadCreated', handleLeadCreated);
       socket.on('leadDeleted', handleLeadDeleted);
       socket.on('newWebsiteLead', handleNewWebsiteLead);
       socket.on('newBenWebsiteLead', handleNewBenWebsiteLead);
+      socket.on('newInboundData', handleNewInboundData);
 
       // Cleanup socket listeners and timeout
       return () => {
@@ -951,6 +963,7 @@ const AdminDashboard = () => {
         socket.off('leadDeleted', handleLeadDeleted);
         socket.off('newWebsiteLead', handleNewWebsiteLead);
         socket.off('newBenWebsiteLead', handleNewBenWebsiteLead);
+        socket.off('newInboundData', handleNewInboundData);
       };
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1371,6 +1384,23 @@ const AdminDashboard = () => {
                   {jake2Badge > 0 && (
                     <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] flex items-center justify-center bg-red-500 text-white text-[10px] font-bold rounded-full px-1">
                       {jake2Badge > 99 ? '99+' : jake2Badge}
+                    </span>
+                  )}
+                </button>
+              )}
+              {/* Inbound Calls button — all admins (scoped by their assigned DIDs) */}
+              {user?.role === 'admin' && (
+                <button
+                  onClick={() => { setShowInboundDataModal(true); setInboundCallsBadge(0); }}
+                  className="relative flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold text-white transition-all duration-200 active:scale-95 shadow-md"
+                  style={{ background: 'linear-gradient(135deg,#1e1b4b,#312e81)', boxShadow: '0 4px 12px rgba(49,46,129,0.4)' }}
+                  title="View Real-Time Inbound Calls & DID Traffic"
+                >
+                  <PhoneCall className="w-4 h-4" />
+                  Inbound Calls
+                  {inboundCallsBadge > 0 && (
+                    <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] flex items-center justify-center bg-red-500 text-white text-[10px] font-bold rounded-full px-1 animate-pulse">
+                      {inboundCallsBadge > 99 ? '99+' : inboundCallsBadge}
                     </span>
                   )}
                 </button>
@@ -3258,6 +3288,14 @@ const AdminDashboard = () => {
           targetOrgName={isReddingtonAdmin ? 'Socialupmedia 2' : undefined}
           title="Jake 2 Leads"
           onClose={() => setShowJake2Leads(false)}
+        />
+      )}
+
+      {/* Inbound Calls Modal */}
+      {showInboundDataModal && (
+        <InboundDataModal
+          title="Inbound Calls"
+          onClose={() => setShowInboundDataModal(false)}
         />
       )}
 

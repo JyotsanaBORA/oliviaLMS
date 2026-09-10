@@ -21,13 +21,15 @@ import {
   Edit,
   Trash,
   Filter,
-  Download
+  Download,
+  PhoneCall
 } from 'lucide-react';
 import axios from '../utils/axios';
 import toast from 'react-hot-toast';
 import LoadingSpinner from '../components/LoadingSpinner';
 import OrganizationManagement from './OrganizationManagement';
 import SuperAdminUserManagement from '../components/SuperAdminUserManagement';
+import InboundDataModal from '../components/InboundDataModal';
 import Pagination from '../components/Pagination';
 import { formatEasternTimeForDisplay, formatEasternTime, getEasternNow } from '../utils/dateUtils';
 
@@ -44,6 +46,7 @@ const SuperAdminDashboard = () => {
   const [leadsLoading, setLeadsLoading] = useState(false);
   const [showLeadModal, setShowLeadModal] = useState(false);
   const [showEditLeadModal, setShowEditLeadModal] = useState(false);
+  const [showInboundDataModal, setShowInboundDataModal] = useState(false);
   const [selectedLead, setSelectedLead] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   
@@ -651,6 +654,16 @@ const SuperAdminDashboard = () => {
             SuperAdmin Dashboard
           </h1>
           <p className="text-gray-600">Manage organizations, administrators and system users</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setShowInboundDataModal(true)}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-900 to-indigo-950 text-white rounded-lg hover:from-indigo-800 hover:to-indigo-900 transition-colors shadow-md text-sm font-semibold"
+            title="View Real-Time Inbound Calls & DID Traffic"
+          >
+            <PhoneCall className="h-4 w-4 text-indigo-300" />
+            Inbound Calls
+          </button>
         </div>
       </div>
 
@@ -1911,6 +1924,13 @@ const SuperAdminDashboard = () => {
             </div>
           </div>
         </div>
+      )}
+      {/* Inbound Calls Modal */}
+      {showInboundDataModal && (
+        <InboundDataModal
+          title="Inbound Calls — SuperAdmin Full Access"
+          onClose={() => setShowInboundDataModal(false)}
+        />
       )}
     </div>
   );

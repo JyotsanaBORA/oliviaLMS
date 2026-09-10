@@ -15,12 +15,14 @@ import {
   BarChart3,
   TrendingUp,
   RefreshCw,
-  StickyNote
+  StickyNote,
+  PhoneCall
 } from 'lucide-react';
 import axios from '../utils/axios';
 import toast from 'react-hot-toast';
 import LoadingSpinner from '../components/LoadingSpinner';
 import AgentNotesPad from '../components/AgentNotesModal';
+import InboundDataModal from '../components/InboundDataModal';
 import Pagination from '../components/Pagination';
 import VicidialCallQueue from '../components/VicidialCallQueue';
 import { isGtiOrganization } from '../config/constants';
@@ -104,6 +106,10 @@ const Agent2Dashboard = () => {
   const [activeVicidialCampaign, setActiveVicidialCampaign] = useState('');
   const [activeVicidialSourceId, setActiveVicidialSourceId] = useState('');
   const [isFormActive, setIsFormActive] = useState(false);
+
+  // Inbound Calls Modal
+  const [showInboundDataModal, setShowInboundDataModal] = useState(false);
+  const [inboundCallsBadge, setInboundCallsBadge] = useState(0);
 
   // ── People Search floating PiP panel ─────────────────────────────
   const [showSearchPanel, setShowSearchPanel] = useState(false);
@@ -499,8 +505,17 @@ const Agent2Dashboard = () => {
         debouncedFetch();
       };
 
+      const handleNewInboundData = (data) => {
+        setInboundCallsBadge(n => n + 1);
+        toast(`📞 Inbound Call received: ${data?.phoneNumber || 'Unknown'} (DID: ${data?.did || 'N/A'})`, {
+          icon: '📥',
+          duration: 4000,
+        });
+      };
+
       socket.on('leadUpdated', handleLeadUpdated);
       socket.on('leadCreated', handleLeadCreated);
+      socket.on('newInboundData', handleNewInboundData);
 
       // Cleanup socket listeners and pending debounce
       return () => {
@@ -509,6 +524,7 @@ const Agent2Dashboard = () => {
         window.removeEventListener('vicidialCallReceived', handleVicidialWindowEvent);
         socket.off('leadUpdated', handleLeadUpdated);
         socket.off('leadCreated', handleLeadCreated);
+        socket.off('newInboundData', handleNewInboundData);
       };
     }
     
@@ -1628,6 +1644,20 @@ const Agent2Dashboard = () => {
           >
             <StickyNote className="h-4 w-4" />
             My Notes
+          </button>
+          {/* Inbound Calls Button */}
+          <button
+            onClick={() => { setShowInboundDataModal(true); setInboundCallsBadge(0); }}
+            className="relative inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white transition-all duration-200 active:scale-95 shadow-md bg-gradient-to-r from-indigo-900 to-indigo-950 hover:from-indigo-800 hover:to-indigo-900"
+            title="Open Inbound Call Data & Telephony Log"
+          >
+            <PhoneCall className="h-4 w-4 text-indigo-300" />
+            Inbound Calls
+            {inboundCallsBadge > 0 && (
+              <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] flex items-center justify-center bg-red-500 text-white text-[10px] font-bold rounded-full px-1 animate-pulse">
+                {inboundCallsBadge > 99 ? '99+' : inboundCallsBadge}
+              </span>
+            )}
           </button>
           {/* Add New Lead button — clears/resets the right-side form panel */}
           {user.role === 'agent2' && (
@@ -3518,6 +3548,14 @@ const Agent2Dashboard = () => {
         onClose={() => setShowNotesModal(false)}
         initialPos={notesPos}
       />
+
+      {/* Inbound Calls Modal */}
+      {showInboundDataModal && (
+        <InboundDataModal
+          title="Inbound Calls"
+          onClose={() => setShowInboundDataModal(false)}
+        />
+      )}
     </div>
   );
 };
