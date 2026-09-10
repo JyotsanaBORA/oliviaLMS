@@ -2433,15 +2433,31 @@ router.delete('/:id', protect, authorize('admin', 'superadmin'), async (req, res
     lead.deletedBy = req.user._id;
     await lead.save();
 
-    // Soft delete associated InboundData records if any
+    // Soft delete associated InboundData, WebsiteLead, BenWebsiteLead records if any
     try {
       const InboundData = require('../models/InboundData');
+      const WebsiteLead = require('../models/WebsiteLead');
+      const BenWebsiteLead = require('../models/BenWebsiteLead');
+
+      const digitsOnly = lead.phone ? lead.phone.replace(/\D/g, '') : null;
+      const phoneQueries = [lead.phone, digitsOnly].filter(Boolean);
+
       await InboundData.updateMany(
-        { $or: [{ importedLeadId: lead._id }, ...(lead.phone ? [{ phoneNumber: lead.phone }] : [])] },
+        { $or: [{ importedLeadId: lead._id }, { phoneNumber: { $in: phoneQueries } }] },
         { $set: { isDeleted: true, deletedAt: new Date(), deletedBy: req.user._id } }
       );
+
+      await WebsiteLead.updateMany(
+        { $or: [{ importedLeadId: lead._id }, { phone: { $in: phoneQueries } }] },
+        { $set: { isDeleted: true, deletedAt: new Date() } }
+      );
+
+      await BenWebsiteLead.updateMany(
+        { $or: [{ importedLeadId: lead._id }, { phone: { $in: phoneQueries } }] },
+        { $set: { isDeleted: true, deletedAt: new Date() } }
+      );
     } catch (inboundErr) {
-      console.warn('Soft-deleting linked InboundData notice:', inboundErr.message);
+      console.warn('Soft-deleting linked InboundData/WebsiteLead notice:', inboundErr.message);
     }
 
     const leadIdentifier = lead.leadId || req.params.id;
