@@ -1376,16 +1376,28 @@ const SuperAdminDashboard = () => {
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                            lead.status === 'new' ? 'bg-blue-100 text-blue-800' :
-                            lead.status === 'contacted' ? 'bg-yellow-100 text-yellow-800' :
-                            lead.status === 'qualified' ? 'bg-purple-100 text-purple-800' :
-                            lead.status === 'converted' ? 'bg-green-100 text-green-800' :
-                            lead.status === 'closed' ? 'bg-gray-100 text-gray-800' :
-                            'bg-gray-100 text-gray-600'
-                          }`}>
-                            {lead.status || 'new'}
-                          </span>
+                          <div className="flex flex-col gap-1">
+                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                              lead.status === 'new' ? 'bg-blue-100 text-blue-800' :
+                              lead.status === 'contacted' ? 'bg-yellow-100 text-yellow-800' :
+                              lead.status === 'qualified' ? 'bg-purple-100 text-purple-800' :
+                              lead.status === 'converted' ? 'bg-green-100 text-green-800' :
+                              lead.status === 'closed' ? 'bg-gray-100 text-gray-800' :
+                              'bg-gray-100 text-gray-600'
+                            }`}>
+                              {lead.status || 'new'}
+                            </span>
+                            {(lead.leadProgressStatus || lead.disposition1) && (
+                              <span className="inline-block text-[11px] font-semibold px-2 py-0.5 bg-purple-50 text-purple-700 rounded border border-purple-200">
+                                {lead.leadProgressStatus || lead.disposition1}
+                              </span>
+                            )}
+                            {(lead.disposedBy || lead.agent2LastAction || lead.agentLastAction || lead.lastUpdatedBy) && (
+                              <div className="text-[11px] text-purple-700 font-medium truncate max-w-[160px]" title={typeof lead.disposedBy === 'object' && lead.disposedBy?.name ? lead.disposedBy.name : (lead.disposedBy || lead.agent2LastAction || lead.agentLastAction || lead.lastUpdatedBy)}>
+                                by {typeof lead.disposedBy === 'object' && lead.disposedBy?.name ? (lead.disposedBy.role ? `${lead.disposedBy.name} (${lead.disposedBy.role})` : lead.disposedBy.name) : (lead.disposedBy || lead.agent2LastAction || lead.agentLastAction || lead.lastUpdatedBy)}
+                              </div>
+                            )}
+                          </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           {lead.isDuplicate ? (

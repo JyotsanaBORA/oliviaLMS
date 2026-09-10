@@ -290,6 +290,19 @@ const leadSchema = new mongoose.Schema({
   lastUpdatedAt: {
     type: Date
   },
+  agent2LastAction: {
+    type: String,
+    trim: true,
+    maxlength: 150
+  },
+  agentLastAction: {
+    type: String,
+    trim: true,
+    maxlength: 150
+  },
+  disposedAt: {
+    type: Date
+  },
   
   // Follow-up Information
   followUpDate: {

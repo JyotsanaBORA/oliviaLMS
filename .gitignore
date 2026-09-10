@@ -160,6 +160,11 @@ temp/
 .agents/
 
 # ========================
-# Local Scripts
+# Local Scripts & Tests
 # ========================
 testMetaWebhook.js
+test_scripts/
+server/test_scripts/
+*.test.js
+test_*.js
+

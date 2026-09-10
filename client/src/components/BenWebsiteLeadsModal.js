@@ -3,7 +3,7 @@ import {
   Globe, X, RefreshCw, Search, CheckCircle, XCircle,
   Download, Eye, MessageSquare, PhoneCall, Mail, MapPin,
   DollarSign, Smartphone, ChevronLeft, ChevronRight,
-  FileDown, Clock, Send, Lock, Building, UserPlus, Trash2
+  FileDown, Clock, Send, Lock, Building, UserPlus, Trash2, User
 } from 'lucide-react';
 import axios from '../utils/axios';
 import { useAuth } from '../contexts/AuthContext';
@@ -472,9 +472,9 @@ const BenWebsiteLeadsModal = ({ onClose, targetOrgName, title }) => {
                     <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Contact</th>
                     <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Form</th>
                     <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Debt</th>
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">DISPOSITION / ACTION</th>
                     <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Received</th>
-                    {canWrite && <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>}
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -525,41 +525,52 @@ const BenWebsiteLeadsModal = ({ onClose, targetOrgName, title }) => {
                         </div>
                       </td>
                       <td className="px-4 py-3 text-xs text-gray-700">{lead.totalDebtAmount != null ? fmtMoney(lead.totalDebtAmount) : '—'}</td>
-                      <td className="px-4 py-3">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold capitalize ${STATUS_COLORS[lead.status] || 'bg-gray-100 text-gray-700'}`}>
-                          {lead.status}
-                        </span>
+                      <td className="py-3 px-4 max-w-[200px]">
+                        {lead.leadProgressStatus || lead.disposition ? (
+                          <span className="inline-block text-xs font-semibold px-2 py-0.5 bg-purple-50 text-purple-700 rounded border border-purple-200 truncate">
+                            {lead.leadProgressStatus || lead.disposition}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-gray-400 italic">No disposition</span>
+                        )}
+                        {(lead.agentLastAction || lead.disposedBy || lead.handledBy) && (
+                          <div className="text-[11px] text-gray-500 truncate" title={lead.agentLastAction || lead.disposedBy || lead.handledBy}>
+                            by {lead.agentLastAction || lead.disposedBy || lead.handledBy}
+                          </div>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">{fmtDate(lead.createdAt)}</td>
-                      {canWrite && (
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-1">
-                            <button onClick={() => openDetail(lead)} className="p-1.5 rounded-lg hover:bg-orange-100 text-orange-600 transition-colors" title="View details">
-                              <Eye className="h-3.5 w-3.5" />
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1">
+                          <button onClick={() => openDetail(lead)} className="p-1.5 rounded-lg hover:bg-orange-100 text-orange-600 transition-colors" title="View details">
+                            <Eye className="h-3.5 w-3.5" />
+                          </button>
+                          {canWrite && lead.status !== 'imported' && (
+                            <button disabled={actionLoading === lead._id} onClick={() => handleImport(lead)}
+                              className="p-1.5 rounded-lg hover:bg-green-100 text-green-600 transition-colors disabled:opacity-50" title="Import to LMS">
+                              <Download className="h-3.5 w-3.5" />
                             </button>
-                            {lead.status !== 'imported' && (
-                              <button disabled={actionLoading === lead._id} onClick={() => handleImport(lead)}
-                                className="p-1.5 rounded-lg hover:bg-green-100 text-green-600 transition-colors disabled:opacity-50" title="Import to LMS">
-                                <Download className="h-3.5 w-3.5" />
-                              </button>
-                            )}
+                          )}
+                          {canWrite && (
                             <button disabled={actionLoading === lead._id} onClick={() => handleAssignClick(lead)}
                               className="p-1.5 rounded-lg hover:bg-blue-100 text-blue-600 transition-colors disabled:opacity-50" title="Assign to Agent">
                               <UserPlus className="h-3.5 w-3.5" />
                             </button>
-                            {lead.status === 'new' && (
-                              <button disabled={actionLoading === lead._id} onClick={() => handleStatusChange(lead, 'rejected')}
-                                className="p-1.5 rounded-lg hover:bg-red-100 text-red-500 transition-colors disabled:opacity-50" title="Reject">
-                                <XCircle className="h-3.5 w-3.5" />
-                              </button>
-                            )}
+                          )}
+                          {canWrite && lead.status === 'new' && (
+                            <button disabled={actionLoading === lead._id} onClick={() => handleStatusChange(lead, 'rejected')}
+                              className="p-1.5 rounded-lg hover:bg-red-100 text-red-500 transition-colors disabled:opacity-50" title="Reject">
+                              <XCircle className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                          {canWrite && (
                             <button disabled={actionLoading === lead._id} onClick={() => handleDelete(lead)}
                               className="p-1.5 rounded-lg hover:bg-gray-200 text-gray-500 hover:text-red-600 transition-colors disabled:opacity-50" title="Delete Lead">
                               <Trash2 className="h-3.5 w-3.5" />
                             </button>
-                          </div>
-                        </td>
-                      )}
+                          )}
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -626,6 +637,37 @@ const BenWebsiteLeadsModal = ({ onClose, targetOrgName, title }) => {
                 <Row icon={<Mail className="h-4 w-4 text-blue-500" />} label="Email" value={fmt(detail.email)} />
                 <Row icon={<PhoneCall className="h-4 w-4 text-green-500" />} label="Phone" value={fmt(detail.phone)} />
               </div>
+
+              {/* Disposition & Call Handling */}
+              {(detail.leadProgressStatus || detail.disposition || detail.agentLastAction || detail.disposedBy || detail.handledBy || detail.disposedAt) && (
+                <div className="bg-gradient-to-br from-purple-50 to-indigo-50 border border-purple-200 rounded-xl p-4 space-y-2">
+                  <h4 className="text-xs font-bold text-purple-800 uppercase tracking-wider flex items-center gap-1.5">
+                    <PhoneCall className="h-3.5 w-3.5 text-purple-600" />
+                    Disposition & Call Handling
+                  </h4>
+                  {(detail.leadProgressStatus || detail.disposition) && (
+                    <Row 
+                      icon={<CheckCircle className="h-4 w-4 text-purple-600" />} 
+                      label="Disposition Status" 
+                      value={detail.leadProgressStatus || detail.disposition} 
+                    />
+                  )}
+                  {(detail.agentLastAction || detail.disposedBy || detail.handledBy) && (
+                    <Row 
+                      icon={<User className="h-4 w-4 text-indigo-600" />} 
+                      label="Disposed / Handled By" 
+                      value={detail.agentLastAction || detail.disposedBy || detail.handledBy} 
+                    />
+                  )}
+                  {detail.disposedAt && (
+                    <Row 
+                      icon={<Clock className="h-4 w-4 text-gray-500" />} 
+                      label="Disposed Date" 
+                      value={fmtDate(detail.disposedAt)} 
+                    />
+                  )}
+                </div>
+              )}
 
               {(detail.streetAddress || detail.city) && (
                 <div className="bg-gray-50 rounded-xl p-4 space-y-2">

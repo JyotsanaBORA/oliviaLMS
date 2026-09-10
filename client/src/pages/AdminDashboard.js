@@ -221,7 +221,9 @@ const AdminDashboard = () => {
   const formatDisposedByLabel = (disposedBy) => {
     if (!disposedBy) return '—';
     if (typeof disposedBy === 'string') return disposedBy;
-    if (disposedBy.name) return disposedBy.name;
+    if (disposedBy.name) {
+      return disposedBy.role ? `${disposedBy.name} (${disposedBy.role})` : disposedBy.name;
+    }
     if (disposedBy.email) return disposedBy.email;
     if (disposedBy._id) return disposedBy._id;
     return '—';
@@ -1401,8 +1403,8 @@ const AdminDashboard = () => {
                   )}
                 </button>
               )}
-              {/* Inbound Calls button — tenant admins only (scoped by their assigned DIDs), hidden for Reddington admin full access */}
-              {user?.role === 'admin' && !isReddingtonAdmin && (
+              {/* Inbound Calls button — all admins (scoped for tenant admins, full access for Reddington admin) */}
+              {user?.role === 'admin' && (
                 <button
                   onClick={() => { setShowInboundDataModal(true); setInboundCallsBadge(0); }}
                   className="relative flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold text-white transition-all duration-200 active:scale-95 shadow-md"
@@ -2445,11 +2447,11 @@ const AdminDashboard = () => {
                               Reason: {lead.disposition1}
                             </div>
                           )}
-                          {(lead.disposedBy || lead.draftDate) && (
+                          {((lead.disposedBy || lead.agent2LastAction || lead.agentLastAction || lead.lastUpdatedBy) || lead.draftDate) && (
                             <div className="text-[11px] text-gray-500 space-y-0.5">
-                              {lead.disposedBy && (
-                                <div title={`Disposed by ${formatDisposedByLabel(lead.disposedBy)}`}>
-                                  By {formatDisposedByLabel(lead.disposedBy)}
+                              {(lead.disposedBy || lead.agent2LastAction || lead.agentLastAction || lead.lastUpdatedBy) && (
+                                <div className="text-[11px] text-purple-700 font-medium truncate" title={`Disposed by ${formatDisposedByLabel(lead.disposedBy || lead.agent2LastAction || lead.agentLastAction || lead.lastUpdatedBy)}`}>
+                                  by {formatDisposedByLabel(lead.disposedBy || lead.agent2LastAction || lead.agentLastAction || lead.lastUpdatedBy)}
                                 </div>
                               )}
                               {lead.draftDate && (
@@ -2462,25 +2464,25 @@ const AdminDashboard = () => {
                         </div>
                       </div>
 
-                      {/* Agent Status - 2 columns */}
+                      {/* Disposition / Action - 2 columns */}
                       <div className="col-span-2">
-                        {lead.leadProgressStatus ? (
-                          <span className="inline-flex items-center px-2 py-1 rounded-lg text-xs font-semibold bg-gradient-to-r from-teal-100 to-teal-200 text-teal-800 truncate" title={lead.leadProgressStatus}>
-                            {lead.leadProgressStatus.length > 12 ? lead.leadProgressStatus.substring(0, 12) + '...' : lead.leadProgressStatus}
+                        {lead.leadProgressStatus || lead.disposition1 ? (
+                          <span className="inline-block text-xs font-semibold px-2 py-0.5 bg-purple-50 text-purple-700 rounded border border-purple-200 truncate max-w-[160px]" title={lead.leadProgressStatus || lead.disposition1}>
+                            {lead.leadProgressStatus || lead.disposition1}
                           </span>
                         ) : (
-                          <span className="text-gray-400 italic text-xs">No status</span>
+                          <span className="text-xs text-gray-400 italic">No disposition</span>
+                        )}
+                        {(lead.agent2LastAction || lead.agentLastAction || lead.disposedBy || lead.lastUpdatedBy) && (
+                          <div className="text-[11px] text-gray-500 truncate mt-0.5" title={typeof lead.disposedBy === 'object' && lead.disposedBy?.name ? formatDisposedByLabel(lead.disposedBy) : (lead.agent2LastAction || lead.agentLastAction || lead.disposedBy || lead.lastUpdatedBy)}>
+                            by {typeof lead.disposedBy === 'object' && lead.disposedBy?.name ? formatDisposedByLabel(lead.disposedBy) : (lead.agent2LastAction || lead.agentLastAction || lead.disposedBy || lead.lastUpdatedBy)}
+                          </div>
                         )}
                         {lead.clientId && (
                           <div className="mt-1">
                             <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-green-50 text-green-700 font-mono text-xs truncate" title={`Client ID: ${lead.clientId}`}>
                               ID: {lead.clientId}
                             </span>
-                          </div>
-                        )}
-                        {isReddingtonAdmin && lead.lastUpdatedBy && (
-                          <div className="text-xs text-gray-500 truncate">
-                            by {lead.lastUpdatedBy}
                           </div>
                         )}
                       </div>
@@ -2879,7 +2881,7 @@ const AdminDashboard = () => {
                     </div>
                     <div>
                       <span className="text-sm font-medium text-gray-600">Disposed By:</span>
-                      <p className="mt-1 text-sm text-gray-900">{formatDisposedByLabel(selectedLead.disposedBy)}</p>
+                      <p className="mt-1 text-sm font-semibold text-purple-800">{formatDisposedByLabel(selectedLead.disposedBy || selectedLead.agent2LastAction || selectedLead.agentLastAction || selectedLead.lastUpdatedBy)}</p>
                     </div>
                     <div>
                       <span className="text-sm font-medium text-gray-600">Draft Date:</span>
@@ -3020,7 +3022,7 @@ const AdminDashboard = () => {
                       )}
                     </div>
                     <div className="space-y-3">
-                      <div className="bg-white p-3 rounded-lg border border-teal-200">
+                      <div className="bg-white p-3 rounded-lg border border-teal-200 space-y-2">
                         <div className="flex justify-between items-start">
                           <span className="text-sm font-medium text-gray-600">Lead Progress Status:</span>
                           {isReddingtonAdmin && isEditing ? (
@@ -3046,6 +3048,14 @@ const AdminDashboard = () => {
                             )
                           )}
                         </div>
+                        {(selectedLead.disposedBy || selectedLead.agent2LastAction || selectedLead.agentLastAction || selectedLead.lastUpdatedBy) && (
+                          <div className="flex justify-between items-start pt-1 border-t border-teal-100">
+                            <span className="text-sm font-medium text-gray-600">Disposed / Handled By:</span>
+                            <span className="text-sm text-purple-700 font-semibold text-right">
+                              {formatDisposedByLabel(selectedLead.disposedBy || selectedLead.agent2LastAction || selectedLead.agentLastAction || selectedLead.lastUpdatedBy)}
+                            </span>
+                          </div>
+                        )}
                       </div>
                       
                       <div className="flex justify-between items-start">

@@ -852,7 +852,7 @@ router.get('/export', [
       .populate('assignedTo', 'name email')
       .populate('assignedBy', 'name email')
       .populate('organization', 'name description')
-      .populate('disposedBy', 'name email')
+      .populate('disposedBy', 'name email role')
       .populate('duplicateOf', 'leadId name email phone')
       .populate('duplicateDetectedBy', 'name email')
       .sort({ createdAt: -1, _id: -1 }); // Added _id for consistent sorting
@@ -1099,7 +1099,7 @@ router.get('/assigned-to-me', protect, async (req, res) => {
       .populate('assignedTo', 'name email')
       .populate('assignedBy', 'name email')
       .populate('organization', 'name')
-      .populate('disposedBy', 'name email')
+      .populate('disposedBy', 'name email role')
       .sort({ assignedAt: -1 });
 
     res.json({
@@ -1406,7 +1406,7 @@ router.get('/', protect, [
       organization: 1, disposedBy: 1, duplicateDetectedBy: 1,
       gtiCallUuid: 1, gtiPrimaryPhone: 1, vicidialDid: 1,
       clientId: 1, conversionValue: 1, convertedAt: 1,
-      lastUpdatedBy: 1, lastUpdatedAt: 1,
+      lastUpdatedBy: 1, lastUpdatedAt: 1, agent2LastAction: 1, agentLastAction: 1, disposedAt: 1,
       createdAt: 1, updatedAt: 1
     };
 
@@ -1418,7 +1418,7 @@ router.get('/', protect, [
         .populate('assignedTo', 'name email')
         .populate('assignedBy', 'name email')
         .populate('organization', 'name description')
-        .populate('disposedBy', 'name email')
+        .populate('disposedBy', 'name email role')
         .populate('duplicateOf', 'leadId name email phone')
         .populate('duplicateDetectedBy', 'name email')
         .sort({ createdAt: -1, _id: -1 })
@@ -1688,14 +1688,14 @@ router.get('/:id', protect, async (req, res) => {
         .populate('updatedBy', 'name email')
         .populate('assignedTo', 'name email')
         .populate('assignedBy', 'name email')
-        .populate('disposedBy', 'name email');
+        .populate('disposedBy', 'name email role');
     } else {
       lead = await Lead.findByLeadId(req.params.id)
         .populate('createdBy', 'name email organization')
         .populate('updatedBy', 'name email')
         .populate('assignedTo', 'name email')
         .populate('assignedBy', 'name email')
-        .populate('disposedBy', 'name email');
+        .populate('disposedBy', 'name email role');
     }
 
     if (!lead) {

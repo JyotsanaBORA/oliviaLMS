@@ -810,24 +810,41 @@ router.put('/:id/disposition', protect, async (req, res) => {
       }
     }
 
-    // Synchronize disposition status to WebsiteLead / BenWebsiteLead if exists
+    // Synchronize disposition status and handler to WebsiteLead / BenWebsiteLead if exists
     if (callRecord.phoneNumber) {
       try {
         let digitsOnly = callRecord.phoneNumber.replace(/\D/g, '');
         if (digitsOnly.length === 11 && digitsOnly.startsWith('1')) digitsOnly = digitsOnly.substring(1);
         const dispoStatus = (leadProgressStatus === 'Hang-up' || leadProgressStatus === 'Not Qualified') ? 'rejected' : 'reviewed';
+        const agentLabel = req.user.name ? `${req.user.name} (${req.user.role})` : 'Agent 2';
         
+        const syncUpdate = {
+          status: dispoStatus,
+          leadProgressStatus: leadProgressStatus || undefined,
+          disposition: leadProgressStatus || undefined,
+          disposedBy: agentLabel,
+          agentLastAction: agentLabel,
+          handledBy: agentLabel,
+          disposedAt: new Date()
+        };
+
         await WebsiteLead.updateMany(
           { phone: { $in: [digitsOnly, callRecord.phoneNumber] } },
-          { $set: { status: dispoStatus } }
+          { $set: syncUpdate }
         );
         await BenWebsiteLead.updateMany(
           { phone: { $in: [digitsOnly, callRecord.phoneNumber] } },
-          { $set: { status: dispoStatus } }
+          { $set: syncUpdate }
         );
 
         if (req.io) {
-          req.io.emit('websiteLeadUpdated', { phone: digitsOnly, status: dispoStatus, leadProgressStatus });
+          req.io.emit('websiteLeadUpdated', { 
+            phone: digitsOnly, 
+            status: dispoStatus, 
+            leadProgressStatus, 
+            disposedBy: agentLabel,
+            agentLastAction: agentLabel 
+          });
         }
       } catch (wSyncErr) {
         console.error('⚠️ [Inbound API] Failed to sync disposition to WebsiteLead:', wSyncErr.message);

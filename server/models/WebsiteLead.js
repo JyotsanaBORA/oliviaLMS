@@ -61,6 +61,14 @@ const websiteLeadSchema = new mongoose.Schema(
     trafficType: { type: String, trim: true, maxlength: 50 },
     sourceId: { type: String, trim: true, maxlength: 100 },
 
+    // Disposition & Handler tracking
+    leadProgressStatus: { type: String, trim: true, maxlength: 100 },
+    disposition: { type: String, trim: true, maxlength: 100 },
+    disposedBy: { type: String, trim: true, maxlength: 100 },
+    agentLastAction: { type: String, trim: true, maxlength: 150 },
+    handledBy: { type: String, trim: true, maxlength: 100 },
+    disposedAt: { type: Date },
+
     // Processing state — admin can mark as reviewed / imported
     status: {
       type: String,

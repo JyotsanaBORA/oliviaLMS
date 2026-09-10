@@ -36,6 +36,15 @@ const benWebsiteLeadSchema = new mongoose.Schema(
     did: { type: String, trim: true, maxlength: 30, index: true },
     vicidialDid: { type: String, trim: true, maxlength: 30, index: true },
     trafficType: { type: String, trim: true, maxlength: 50 },
+
+    // Disposition & Handler tracking
+    leadProgressStatus: { type: String, trim: true, maxlength: 100 },
+    disposition: { type: String, trim: true, maxlength: 100 },
+    disposedBy: { type: String, trim: true, maxlength: 100 },
+    agentLastAction: { type: String, trim: true, maxlength: 150 },
+    handledBy: { type: String, trim: true, maxlength: 100 },
+    disposedAt: { type: Date },
+
     status: {
       type: String,
       enum: ['new', 'reviewed', 'imported', 'rejected'],

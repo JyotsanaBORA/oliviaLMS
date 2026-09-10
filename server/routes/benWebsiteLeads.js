@@ -10,6 +10,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const BenWebsiteLead = require('../models/BenWebsiteLead');
 const Lead = require('../models/Lead');
+const InboundData = require('../models/InboundData');
 const Organization = require('../models/Organization');
 const { protect } = require('../middleware/auth');
 const cache = require('../utils/cache');
@@ -114,6 +115,41 @@ router.get('/', protect, async (req, res) => {
     const total = facetResult[0]?.totalCount[0]?.count || 0;
 
     await BenWebsiteLead.populate(leads, { path: 'organization', select: 'name' });
+
+    // Enrich with latest inbound/lead disposition if missing on the BenWebsiteLead
+    const phoneNumbers = leads.map(l => l.phone).filter(Boolean);
+    if (phoneNumbers.length > 0) {
+      const cleanPhones = phoneNumbers.map(p => p.replace(/\D/g, '')).filter(Boolean);
+      const allPhoneQueries = [...new Set([...phoneNumbers, ...cleanPhones])];
+      const inbounds = await InboundData.find({
+        phoneNumber: { $in: allPhoneQueries },
+        $or: [
+          { leadProgressStatus: { $exists: true, $ne: '' } },
+          { agentLastAction: { $exists: true, $ne: '' } }
+        ]
+      }).select('phoneNumber leadProgressStatus agentLastAction updatedBy').sort({ updatedAt: -1 }).lean();
+
+      const inboundMap = new Map();
+      inbounds.forEach(ib => {
+        if (ib.phoneNumber && !inboundMap.has(ib.phoneNumber)) {
+          inboundMap.set(ib.phoneNumber, ib);
+          const digitsOnly = ib.phoneNumber.replace(/\D/g, '');
+          if (digitsOnly && !inboundMap.has(digitsOnly)) inboundMap.set(digitsOnly, ib);
+        }
+      });
+
+      leads.forEach(lead => {
+        const p = lead.phone;
+        const clean = p ? p.replace(/\D/g, '') : null;
+        const ib = (p && inboundMap.get(p)) || (clean && inboundMap.get(clean));
+        if (ib) {
+          if (!lead.leadProgressStatus && ib.leadProgressStatus) lead.leadProgressStatus = ib.leadProgressStatus;
+          if (!lead.disposition && ib.leadProgressStatus) lead.disposition = ib.leadProgressStatus;
+          if (!lead.agentLastAction && (ib.agentLastAction || ib.updatedBy)) lead.agentLastAction = ib.agentLastAction || ib.updatedBy;
+          if (!lead.disposedBy && (ib.agentLastAction || ib.updatedBy)) lead.disposedBy = ib.agentLastAction || ib.updatedBy;
+        }
+      });
+    }
 
     // Summary counts based on deduplicated unique leads
     const summaryFilter = {};
@@ -333,6 +369,20 @@ router.get('/:id', protect, async (req, res) => {
     if (!lead) return res.status(404).json({ success: false, message: 'Lead not found.' });
     if (access.orgFilter && String(lead.organization?._id || lead.organization) !== String(access.orgFilter))
       return res.status(403).json({ success: false, message: 'Access denied to this lead.' });
+
+    if (lead.phone && (!lead.leadProgressStatus || !lead.agentLastAction)) {
+      const cleanPhone = lead.phone.replace(/\D/g, '');
+      const ib = await InboundData.findOne({
+        phoneNumber: { $in: [lead.phone, cleanPhone] },
+        $or: [{ leadProgressStatus: { $exists: true, $ne: '' } }, { agentLastAction: { $exists: true, $ne: '' } }]
+      }).select('leadProgressStatus agentLastAction updatedBy').sort({ updatedAt: -1 }).lean();
+      if (ib) {
+        if (!lead.leadProgressStatus && ib.leadProgressStatus) lead.leadProgressStatus = ib.leadProgressStatus;
+        if (!lead.disposition && ib.leadProgressStatus) lead.disposition = ib.leadProgressStatus;
+        if (!lead.agentLastAction && (ib.agentLastAction || ib.updatedBy)) lead.agentLastAction = ib.agentLastAction || ib.updatedBy;
+        if (!lead.disposedBy && (ib.agentLastAction || ib.updatedBy)) lead.disposedBy = ib.agentLastAction || ib.updatedBy;
+      }
+    }
 
     return res.status(200).json({ success: true, data: lead });
   } catch (err) {
