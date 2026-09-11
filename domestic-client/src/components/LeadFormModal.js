@@ -147,6 +147,12 @@ const LeadFormModal = ({ websiteLead, importedLead, existingDomLead, onClose, on
         notEligibleReason:  existingDomLead.notEligibleReason  || '',
       });
     } else if (importedLead) {
+      const existingId = importedLead.domLeadId?._id || (typeof importedLead.domLeadId === 'string' ? importedLead.domLeadId : null);
+      if (existingId) {
+        setDomLeadId(existingId);
+        if (importedLead.domLeadId?.leadRef) setLeadRef(importedLead.domLeadId.leadRef);
+        if (importedLead.domLeadId?.documents) setDocuments(importedLead.domLeadId.documents);
+      }
       setForm((prev) => ({
         ...prev,
         name:           importedLead.name          || '',
@@ -156,11 +162,18 @@ const LeadFormModal = ({ websiteLead, importedLead, existingDomLead, onClose, on
         state:          importedLead.state          || '',
         employmentType: importedLead.employment     || '',
         monthlySalary:  importedLead.monthlyIncome  || '',
-        productType:    importedLead.productType    || '',
+        productType:    importedLead.productType    || importedLead.loanType || '',
         loanAmountRequired: importedLead.loanAmount || '',
-        notes:          importedLead.remarks        || '',
+        notes:          importedLead.remarks        || importedLead.agentNotes || '',
+        callOutcome:    importedLead.callOutcome    || '',
+        callbackDate:   importedLead.callbackDate   || '',
+        notEligibleReason: importedLead.notEligibleReason || '',
       }));
     } else if (websiteLead) {
+      const existingId = websiteLead.domLead?._id || websiteLead.domLead || websiteLead.domLeadId?._id || websiteLead.domLeadId;
+      if (existingId) {
+        setDomLeadId(existingId);
+      }
       setForm((prev) => ({
         ...prev,
         name:           websiteLead.name        || '',
@@ -227,17 +240,26 @@ const LeadFormModal = ({ websiteLead, importedLead, existingDomLead, onClose, on
     }
     setSaving(true);
     try {
+      const parseNum = (val) => {
+        if (val == null || val === '') return undefined;
+        if (typeof val === 'number') return isNaN(val) ? undefined : val;
+        const cleaned = String(val).replace(/[^0-9.-]/g, '');
+        if (!cleaned) return undefined;
+        const n = Number(cleaned);
+        return isNaN(n) ? undefined : n;
+      };
+
       const payload = {
         ...form,
         existingLoans: form.existingLoans
           ? form.existingLoans.split(',').map((s) => s.trim()).filter(Boolean)
           : [],
-        monthlySalary:         form.monthlySalary         ? Number(form.monthlySalary)         : undefined,
-        loanAmountRequired:    form.loanAmountRequired    ? Number(form.loanAmountRequired)    : undefined,
-        existingEMI:           form.existingEMI           ? Number(form.existingEMI)           : undefined,
-        yearsAtCurrentAddress: form.yearsAtCurrentAddress ? Number(form.yearsAtCurrentAddress) : undefined,
-        yearsAtCurrentJob:     form.yearsAtCurrentJob     ? Number(form.yearsAtCurrentJob)     : undefined,
-        totalJobExp:           form.totalJobExp           ? Number(form.totalJobExp)           : undefined,
+        monthlySalary:         parseNum(form.monthlySalary),
+        loanAmountRequired:    parseNum(form.loanAmountRequired),
+        existingEMI:           parseNum(form.existingEMI),
+        yearsAtCurrentAddress: parseNum(form.yearsAtCurrentAddress),
+        yearsAtCurrentJob:     parseNum(form.yearsAtCurrentJob),
+        totalJobExp:           parseNum(form.totalJobExp),
       };
 
       if (isEdit) {
@@ -248,10 +270,22 @@ const LeadFormModal = ({ websiteLead, importedLead, existingDomLead, onClose, on
         const body = { ...payload };
         if (websiteLead?._id)  body.sourceWebsiteLead  = websiteLead._id;
         if (importedLead?._id) body.sourceImportedLead = importedLead._id;
-        const res = await api.post('/domestic-api/leads', body);
-        setDomLeadId(res.data.data._id);
-        setLeadRef(res.data.data.leadRef || null);
-        toast.success('Lead submitted successfully!');
+        try {
+          const res = await api.post('/domestic-api/leads', body);
+          setDomLeadId(res.data.data._id);
+          setLeadRef(res.data.data.leadRef || null);
+          toast.success('Lead submitted successfully!');
+        } catch (postErr) {
+          const conflictId = postErr.response?.data?.domLeadId;
+          if (postErr.response?.status === 409 && conflictId) {
+            setDomLeadId(conflictId);
+            const res = await api.patch(`/domestic-api/leads/${conflictId}`, payload);
+            setLeadRef(res.data?.data?.leadRef || leadRef);
+            toast.success('Lead updated successfully!');
+          } else {
+            throw postErr;
+          }
+        }
       }
       onSaved && onSaved();
     } catch (err) {

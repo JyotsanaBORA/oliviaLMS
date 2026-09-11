@@ -99,10 +99,10 @@ const App = () => (
   <BrowserRouter basename={process.env.PUBLIC_URL || ''}>
     <AuthProvider>
       <Toaster
-        position="top-right"
+        position="top-center"
         toastOptions={{
           duration: 4000,
-          style: { fontSize: '14px' },
+          style: { fontSize: '14px', maxWidth: '500px' },
         }}
       />
       <AppRoutes />

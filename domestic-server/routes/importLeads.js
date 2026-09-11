@@ -4,6 +4,7 @@ const multer          = require('multer');
 const crypto          = require('crypto');
 const XLSX            = require('xlsx');
 const DomImportedLead = require('../models/DomImportedLead');
+const DomLead         = require('../models/DomLead');
 const DomUser         = require('../models/DomUser');
 const { protect, authorize } = require('../middleware/auth');
 
@@ -635,12 +636,20 @@ router.patch('/:id/reassign', protect, authorize('dom_admin', 'dom_superadmin'),
 
     const assignedAt = new Date();
     const updated = await DomImportedLead.findByIdAndUpdate(
-      req.params.id,
-      { $set: { assignedTo: agentId, assignedBy: userId, assignedAt, status: 'assigned' }, $push: { assignmentHistory: { agent: agentId, assignedAt } } },
-      { new: true }
-    )
-      .populate('assignedTo', 'name email')
-      .lean();
+       req.params.id,
+       { $set: { assignedTo: agentId, assignedBy: userId, assignedAt, status: 'assigned' }, $push: { assignmentHistory: { agent: agentId, assignedAt } } },
+       { new: true }
+     )
+       .populate('assignedTo', 'name email')
+       .lean();
+
+    // If the imported lead was already worked, also sync the assignedTo on the DomLead
+    if (lead.domLeadId) {
+      await DomLead.findByIdAndUpdate(lead.domLeadId, {
+        $set: { assignedTo: agentId },
+        $push: { assignmentHistory: { agent: agentId, assignedAt } },
+      });
+    }
 
     // Emit socket so new agent's list refreshes
     const io = req.app.get('io');

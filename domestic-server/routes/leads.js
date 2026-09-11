@@ -63,11 +63,29 @@ router.post('/', protect, authorize('domagent', 'dom_admin', 'dom_superadmin'), 
 
       const existing = await DomLead.findOne({ sourceWebsiteLead }).lean();
       if (existing) {
-        return res.status(409).json({
-          success: false,
-          message: 'A worked lead already exists for this website lead. Use PATCH to update it.',
-          domLeadId: existing._id,
+        const sanitized = sanitizeLeadFields(fields);
+        if (['not_interested', 'wrong_number', 'not_eligible'].includes(sanitized.callOutcome)) {
+          sanitized.status = 'rejected';
+        } else if (['interested', 'callback', 'not_reachable', 'not_answering', 'other'].includes(sanitized.callOutcome)) {
+          if (existing.status === 'rejected') sanitized.status = 'pending';
+        }
+        sanitized.lastUpdatedBy = req.user._id;
+        const inc = { updateCount: 1 };
+        if (sanitized.callOutcome) inc.callCount = 1;
+
+        const domLead = await DomLead.findByIdAndUpdate(
+          existing._id,
+          { $set: sanitized, $inc: inc },
+          { new: true, runValidators: true }
+        );
+
+        await DomWebsiteLead.findByIdAndUpdate(sourceWebsiteLead, {
+          status:      'completed',
+          completedAt: new Date(),
+          domLeadId:   domLead._id,
         });
+
+        return res.status(200).json({ success: true, data: domLead });
       }
 
       const sanitized = sanitizeLeadFields(fields);
@@ -108,13 +126,36 @@ router.post('/', protect, authorize('domagent', 'dom_admin', 'dom_superadmin'), 
         return res.status(403).json({ success: false, message: 'This lead is not assigned to you.' });
       }
 
-      // If already worked, return the existing DomLead for editing
-      if (importedLead.domLeadId) {
-        return res.status(409).json({
-          success: false,
-          message: 'This lead is already worked. Use PATCH to update it.',
-          domLeadId: importedLead.domLeadId,
+      // If already worked, update the existing DomLead instead of failing with 409
+      const existingDomLeadId = importedLead.domLeadId || (await DomLead.findOne({ sourceImportedLead }).select('_id').lean())?._id;
+      if (existingDomLeadId) {
+        const sanitized = sanitizeLeadFields(fields);
+        if (['not_interested', 'wrong_number', 'not_eligible'].includes(sanitized.callOutcome)) {
+          sanitized.status = 'rejected';
+        } else if (['interested', 'callback', 'not_reachable', 'not_answering', 'other'].includes(sanitized.callOutcome)) {
+          sanitized.status = 'pending';
+        }
+        sanitized.lastUpdatedBy = req.user._id;
+        sanitized.assignedTo    = importedLead.assignedTo || req.user._id;
+        const inc = { updateCount: 1 };
+        if (sanitized.callOutcome) inc.callCount = 1;
+
+        const domLead = await DomLead.findByIdAndUpdate(
+          existingDomLeadId,
+          { $set: sanitized, $inc: inc },
+          { new: true, runValidators: true }
+        );
+
+        const workStatus = OUTCOME_TO_WORK_STATUS[sanitized.callOutcome] || 'in_progress';
+        await DomImportedLead.findByIdAndUpdate(sourceImportedLead, {
+          domLeadId:         domLead._id,
+          workStatus,
+          callOutcome:       sanitized.callOutcome || '',
+          notEligibleReason: sanitized.notEligibleReason || '',
+          workedAt:          new Date(),
         });
+
+        return res.status(200).json({ success: true, data: domLead });
       }
 
       const sanitized = sanitizeLeadFields(fields);
@@ -161,7 +202,7 @@ router.post('/', protect, authorize('domagent', 'dom_admin', 'dom_superadmin'), 
     return res.status(201).json({ success: true, data: domLead });
   } catch (err) {
     console.error('[Leads] Create error:', err.message);
-    return res.status(500).json({ success: false, message: 'Failed to create lead.' });
+    return res.status(500).json({ success: false, message: err.message || 'Failed to create lead.' });
   }
 });
 
@@ -172,12 +213,23 @@ router.patch('/:id', protect, authorize('domagent', 'dom_admin', 'dom_superadmin
     const lead = await DomLead.findById(req.params.id).lean();
     if (!lead) return res.status(404).json({ success: false, message: 'Lead not found.' });
 
-    // Domagent can only edit their own leads
+    // Domagent can only edit their own leads, or leads reassigned to them
     if (
       req.user.role === 'domagent' &&
       lead.assignedTo?.toString() !== req.user._id.toString()
     ) {
-      return res.status(403).json({ success: false, message: 'Not authorized to edit this lead.' });
+      let isReassigned = false;
+      if (lead.sourceImportedLead) {
+        const imp = await DomImportedLead.findById(lead.sourceImportedLead).select('assignedTo').lean();
+        if (imp && imp.assignedTo?.toString() === req.user._id.toString()) {
+          isReassigned = true;
+          await DomLead.findByIdAndUpdate(lead._id, { assignedTo: req.user._id });
+          lead.assignedTo = req.user._id;
+        }
+      }
+      if (!isReassigned) {
+        return res.status(403).json({ success: false, message: 'Not authorized to edit this lead.' });
+      }
     }
 
     const updates = {
@@ -235,7 +287,7 @@ router.patch('/:id', protect, authorize('domagent', 'dom_admin', 'dom_superadmin
     return res.status(200).json({ success: true, data: updated });
   } catch (err) {
     console.error('[Leads] Update error:', err.message);
-    return res.status(500).json({ success: false, message: 'Failed to update lead.' });
+    return res.status(500).json({ success: false, message: err.message || 'Failed to update lead.' });
   }
 });
 
@@ -796,9 +848,18 @@ router.get('/:id', protect, async (req, res) => {
 
     if (!lead) return res.status(404).json({ success: false, message: 'Lead not found.' });
 
-    // Domagent can only view their own
-    if (req.user.role === 'domagent' && lead.assignedTo?._id?.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ success: false, message: 'Not authorized.' });
+    // Domagent can only view their own leads, or leads reassigned to them
+    if (req.user.role === 'domagent' && lead.assignedTo?._id?.toString() !== req.user._id.toString() && lead.assignedTo?.toString() !== req.user._id.toString()) {
+      let isReassigned = false;
+      if (lead.sourceImportedLead) {
+        const imp = await DomImportedLead.findById(lead.sourceImportedLead).select('assignedTo').lean();
+        if (imp && imp.assignedTo?.toString() === req.user._id.toString()) {
+          isReassigned = true;
+        }
+      }
+      if (!isReassigned) {
+        return res.status(403).json({ success: false, message: 'Not authorized.' });
+      }
     }
 
     return res.status(200).json({ success: true, data: lead });
@@ -969,6 +1030,27 @@ function sanitizeLeadFields(body) {
   // Normalize enum fields to prevent Mongoose validation errors
   if (clean.employmentType !== undefined) clean.employmentType = normalizeEmployment(clean.employmentType);
   if (clean.productType    !== undefined) clean.productType    = normalizeProduct(clean.productType);
+
+  // Clean and parse number fields (strip commas/currency characters, avoid NaN)
+  const numFields = ['monthlySalary', 'loanAmountRequired', 'existingEMI', 'yearsAtCurrentAddress', 'yearsAtCurrentJob', 'totalJobExp'];
+  numFields.forEach((f) => {
+    if (clean[f] !== undefined) {
+      if (clean[f] === '' || clean[f] === null) {
+        clean[f] = null;
+      } else if (typeof clean[f] === 'string') {
+        const parsed = Number(clean[f].replace(/[^0-9.-]/g, ''));
+        clean[f] = isNaN(parsed) ? null : parsed;
+      } else if (typeof clean[f] === 'number' && isNaN(clean[f])) {
+        clean[f] = null;
+      }
+    }
+  });
+
+  // Ensure PAN does not exceed 10 chars to avoid schema validation error
+  if (clean.pan && typeof clean.pan === 'string') {
+    clean.pan = clean.pan.trim().toUpperCase().slice(0, 10);
+  }
+
   return clean;
 }
 
