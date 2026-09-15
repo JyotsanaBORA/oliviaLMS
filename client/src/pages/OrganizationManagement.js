@@ -90,7 +90,13 @@ const OrganizationManagement = () => {
         address: '',
         phone: '',
         email: '',
-        website: ''
+        website: '',
+        liveTransferDid: '',
+        inboundCallsDid: '',
+        sourceIds: [],
+        inboundDids: [],
+        features: {},
+        showLoopLeads: false,
       });
       setShowCreateModal(false);
       fetchOrganizations();
@@ -628,6 +634,81 @@ const OrganizationManagement = () => {
                         value={organizationForm.address}
                         onChange={(e) => setOrganizationForm({...organizationForm, address: e.target.value})}
                       />
+                    </div>
+
+                    {/* Dedicated DIDs for Segregated Dashboards */}
+                    <div className="p-3 bg-gradient-to-r from-amber-50 to-indigo-50 border border-indigo-100 rounded-lg space-y-3">
+                      <div>
+                        <span className="text-xs font-bold uppercase tracking-wider text-indigo-900">Dashboard Segregation DIDs</span>
+                        <p className="text-xs text-gray-500 mt-0.5">Assign dedicated DIDs for Live Transfers and direct Inbound Calls.</p>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-semibold text-amber-900 mb-1">⚡ Live Transfer DID</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. 19548366271"
+                            className="w-full border border-amber-300 rounded-md px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-amber-500 focus:border-amber-500 bg-white"
+                            value={organizationForm.liveTransferDid || ''}
+                            onChange={(e) => setOrganizationForm(prev => ({ ...prev, liveTransferDid: e.target.value.replace(/[^0-9+\-\s()]/g, '') }))}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-indigo-900 mb-1">📞 Inbound Calls DID</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. 19162330139"
+                            className="w-full border border-indigo-300 rounded-md px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 bg-white"
+                            value={organizationForm.inboundCallsDid || ''}
+                            onChange={(e) => setOrganizationForm(prev => ({ ...prev, inboundCallsDid: e.target.value.replace(/[^0-9+\-\s()]/g, '') }))}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Inbound DID Management */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">All Assigned ViciDial DIDs</label>
+                      <p className="text-xs text-gray-400 mb-2">
+                        Inbound call leads matching any of these numbers will appear on this organisation's dashboard.
+                      </p>
+                      <div className="flex gap-2 mb-2">
+                        <input
+                          type="text"
+                          placeholder="Enter DID (e.g. 19548366271)"
+                          className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm font-mono focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                          value={didInput}
+                          onChange={(e) => setDidInput(e.target.value.replace(/[^0-9+\-\s()]/g, ''))}
+                          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddDid(); } }}
+                          maxLength={20}
+                        />
+                        <button
+                          type="button"
+                          onClick={handleAddDid}
+                          className="px-3 py-2 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        >
+                          Add
+                        </button>
+                      </div>
+                      <div className="flex flex-wrap gap-2 min-h-[28px]">
+                        {(organizationForm.inboundDids || []).length === 0 ? (
+                          <span className="text-xs text-gray-400 italic">No inbound DIDs assigned.</span>
+                        ) : (
+                          (organizationForm.inboundDids || []).map((did) => (
+                            <span key={did} className="inline-flex items-center gap-1 px-2 py-1 bg-indigo-100 text-indigo-800 rounded text-xs font-mono">
+                              {did}
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveDid(did)}
+                                className="ml-1 text-indigo-500 hover:text-red-600 font-bold leading-none"
+                                title={`Remove ${did}`}
+                              >
+                                ×
+                              </button>
+                            </span>
+                          ))
+                        )}
+                      </div>
                     </div>
 
                     <OrgFeaturesConfig
