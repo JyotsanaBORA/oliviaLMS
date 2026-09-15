@@ -39,7 +39,7 @@ import BenWebsiteLeadsModal from '../components/BenWebsiteLeadsModal';
 import LoopLeadsModal from '../components/LoopLeadsModal';
 import InboundDataModal from '../components/InboundDataModal';
 import Pagination from '../components/Pagination';
-import VendorPortalButton from '../features/organization/components/VendorPortalButton';
+import ClientPortalsDropdown from '../features/organization/components/ClientPortalsDropdown';
 import DidBreakdownTable from '../features/organization/components/DidBreakdownTable';
 import { hasOrgFeature } from '../features/organization/utils/orgPermissions';
 import { useSocket } from '../contexts/SocketContext';
@@ -1312,113 +1312,50 @@ const AdminDashboard = () => {
                 <BarChart3 className="h-6 w-6 text-white" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent tracking-tight">
-                  Admin Dashboard
-                </h1>
-                <p className="text-gray-600 text-xs">
-                  Real-time lead management 
+                <div className="flex items-center gap-2">
+                  <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent tracking-tight">
+                    Admin Dashboard
+                  </h1>
                   {isReddingtonAdmin ? (
-                    <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-300">
                       Full Access
                     </span>
                   ) : (
-                    <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                       Read-only
                     </span>
                   )}
-                </p>
+                </div>
+                <div className="flex items-center gap-2 mt-0.5 text-xs text-gray-500">
+                  <span>Real-time lead management</span>
+                  <span>•</span>
+                  <span>Last updated: {formatEasternTimeForDisplay(lastUpdated, { includeTimezone: true })}</span>
+                </div>
               </div>
             </div>
-            <div className="flex items-center gap-3">
-              <div className="text-right">
-                <p className="text-xs text-gray-500 uppercase tracking-wide">Last Updated</p>
-                <p className="text-xs font-semibold text-gray-700">
-                  {formatEasternTimeForDisplay(lastUpdated, { includeTimezone: true })}
-                </p>
-              </div>
-              {/* Website Leads button — Reddington org only */}
-              {isReddingtonAdmin && (
-                <button
-                  onClick={openWebsiteLeadsModal}
-                  className="relative flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold text-white transition-all duration-200 active:scale-95 shadow-md"
-                  style={{ background: 'linear-gradient(135deg,#0d9488,#0891b2)', boxShadow: '0 4px 12px rgba(8,145,178,0.4)' }}
-                  title="View website form submissions"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9" />
-                  </svg>
-                  Website Leads
-                  {websiteLeadsBadge > 0 && (
-                    <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] flex items-center justify-center bg-red-500 text-white text-[10px] font-bold rounded-full px-1">
-                      {websiteLeadsBadge > 99 ? '99+' : websiteLeadsBadge}
-                    </span>
-                  )}
-                </button>
-              )}
-              {/* Westlake Leads button — Reddington admin or Westlake admin */}
-              {user?.role === 'admin' && (isReddingtonAdmin || isWestlakeAdmin) && (
-                <button
-                  onClick={() => { setShowWestlakeLeads(true); setWestlakeLeadsBadge(0); }}
-                  className="relative flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold text-white transition-all duration-200 active:scale-95 shadow-md"
-                  style={{ background: 'linear-gradient(135deg,#0d9488,#0891b2)', boxShadow: '0 4px 12px rgba(8,145,178,0.4)' }}
-                  title="View Westlake leads"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9" />
-                  </svg>
-                  Westlake Leads
-                  {westlakeLeadsBadge > 0 && (
-                    <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] flex items-center justify-center bg-red-500 text-white text-[10px] font-bold rounded-full px-1">
-                      {westlakeLeadsBadge > 99 ? '99+' : westlakeLeadsBadge}
-                    </span>
-                  )}
-                </button>
-              )}
-              {/* Social Up Leads button — Reddington admin or Social Up Media admin */}
-              {user?.role === 'admin' && (isReddingtonAdmin || isSocialUpAdmin) && (
-                <button
-                  onClick={() => { setShowSocialUpLeads(true); setSocialUpLeadsBadge(0); }}
-                  className="relative flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold text-white transition-all duration-200 active:scale-95 shadow-md"
-                  style={{ background: 'linear-gradient(135deg,#6366f1,#4f46e5)', boxShadow: '0 4px 12px rgba(99,102,241,0.4)' }}
-                  title="View Social Up Media leads"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9" />
-                  </svg>
-                  Social Up Leads
-                  {socialUpLeadsBadge > 0 && (
-                    <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] flex items-center justify-center bg-red-500 text-white text-[10px] font-bold rounded-full px-1">
-                      {socialUpLeadsBadge > 99 ? '99+' : socialUpLeadsBadge}
-                    </span>
-                  )}
-                </button>
-              )}
-              {/* Ben Website Leads button — Reddington admin or Ben admin */}
-              {user?.role === 'admin' && (isReddingtonAdmin || user?.organization?.name?.toLowerCase().includes('ben')) && (
-                <button
-                  onClick={() => { setShowBenWebsiteLeads(true); setBenLeadsBadge(0); }}
-                  className="relative flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold text-white transition-all duration-200 active:scale-95 shadow-md"
-                  style={{ background: 'linear-gradient(135deg,#f97316,#d97706)', boxShadow: '0 4px 12px rgba(249,115,22,0.4)' }}
-                  title="View Ben website leads"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9" />
-                  </svg>
-                  Ben Website Leads
-                  {benLeadsBadge > 0 && (
-                    <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] flex items-center justify-center bg-red-500 text-white text-[10px] font-bold rounded-full px-1">
-                      {benLeadsBadge > 99 ? '99+' : benLeadsBadge}
-                    </span>
-                  )}
-                </button>
-              )}
-              {/* Dynamic Vendor Leads Portal Buttons (Jake 2, Jake 3, Jake 4, TruClick, etc.) */}
-              <VendorPortalButton
+
+            {/* Action Bar: Consolidated Client Portals & System Tools */}
+            <div className="flex items-center gap-2.5 flex-wrap">
+              {/* Consolidated Client & Vendor Lead Portals */}
+              <ClientPortalsDropdown
                 user={user}
                 isReddingtonAdmin={isReddingtonAdmin}
                 organizations={organizations}
                 portalBadges={portalBadges}
-                onOpenPortal={(org) => {
+                websiteLeadsBadge={websiteLeadsBadge}
+                westlakeLeadsBadge={westlakeLeadsBadge}
+                socialUpLeadsBadge={socialUpLeadsBadge}
+                benLeadsBadge={benLeadsBadge}
+                loopLeadsBadge={loopLeadsBadge}
+                canAccessLoopLeads={canAccessLoopLeads}
+                isWestlakeAdmin={isWestlakeAdmin}
+                isSocialUpAdmin={isSocialUpAdmin}
+                onOpenWebsiteLeads={openWebsiteLeadsModal}
+                onOpenWestlakeLeads={() => { setShowWestlakeLeads(true); setWestlakeLeadsBadge(0); }}
+                onOpenSocialUpLeads={() => { setShowSocialUpLeads(true); setSocialUpLeadsBadge(0); }}
+                onOpenBenLeads={() => { setShowBenWebsiteLeads(true); setBenLeadsBadge(0); }}
+                onOpenLoopLeads={() => { setShowLoopLeads(true); setLoopLeadsBadge(0); }}
+                onOpenVendorPortal={(org) => {
                   setActiveVendorPortalOrg(org);
                   const orgIdStr = String(org._id || org.id);
                   setPortalBadges(prev => ({ ...prev, [orgIdStr]: 0, default: 0 }));
@@ -1426,6 +1363,7 @@ const AdminDashboard = () => {
                   if (org.name?.toLowerCase().includes('2')) setJake2Badge(0);
                 }}
               />
+
               {/* Inbound Calls button — all admins (scoped for tenant admins, full access for Reddington admin) */}
               {user?.role === 'admin' && (
                 <button
@@ -1443,25 +1381,7 @@ const AdminDashboard = () => {
                   )}
                 </button>
               )}
-              {/* MyDebt Review Leads button — orgs with showLoopLeads or main-org admin */}
-              {canAccessLoopLeads && (
-                <button
-                  onClick={() => { setShowLoopLeads(true); setLoopLeadsBadge(0); }}
-                  className="relative flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold text-white transition-all duration-200 active:scale-95 shadow-md"
-                  style={{ background: 'linear-gradient(135deg,#4f46e5,#7c3aed)', boxShadow: '0 4px 12px rgba(79,70,229,0.4)' }}
-                  title="View MyDebt Review inbound leads"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
-                  MyDebt Review Leads
-                  {loopLeadsBadge > 0 && (
-                    <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] flex items-center justify-center bg-red-500 text-white text-[10px] font-bold rounded-full px-1">
-                      {loopLeadsBadge > 99 ? '99+' : loopLeadsBadge}
-                    </span>
-                  )}
-                </button>
-              )}
+
               {/* People Search PiP launcher — Reddington org only */}
               {isReddingtonAdmin && (
                 <button
@@ -1470,12 +1390,11 @@ const AdminDashboard = () => {
                   style={{ background: 'linear-gradient(135deg,#f59e0b,#ef4444)', boxShadow: '0 4px 12px rgba(239,68,68,0.4)' }}
                   title="Open US People Search panel"
                 >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z" />
-                  </svg>
+                  <Search className="w-4 h-4" />
                   People Search
                 </button>
               )}
+
               {/* Data Vendor Portal button */}
               {isReddingtonAdmin && (
                 <button
