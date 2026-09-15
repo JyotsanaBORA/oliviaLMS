@@ -20,6 +20,7 @@ import {
   Database,
   Zap,
   PhoneCall,
+  PhoneIncoming,
   Globe,
   Activity
 } from 'lucide-react';
@@ -39,6 +40,7 @@ import LoopLeadsModal from '../components/LoopLeadsModal';
 import InboundDataModal from '../components/InboundDataModal';
 import Pagination from '../components/Pagination';
 import VendorPortalButton from '../features/organization/components/VendorPortalButton';
+import DidBreakdownTable from '../features/organization/components/DidBreakdownTable';
 import { hasOrgFeature } from '../features/organization/utils/orgPermissions';
 import { useSocket } from '../contexts/SocketContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -694,13 +696,19 @@ const AdminDashboard = () => {
 
     const ltDid = org?.liveTransferDid || (isSocialUp ? '19162330004' : null);
     const inDid = org?.inboundCallsDid || (isSocialUp ? '19162330139' : null);
-    const allDids = isSocialUp ? ['19162330004', '19162330139'] : (Array.isArray(org?.inboundDids) ? org.inboundDids : []);
+    const rawDids = [
+      ...(isSocialUp ? ['19162330004', '19162330139'] : []),
+      ...(ltDid ? [ltDid] : []),
+      ...(inDid ? [inDid] : []),
+      ...(Array.isArray(org?.inboundDids) ? org.inboundDids : [])
+    ];
+    const allDids = Array.from(new Set(rawDids.map(d => String(d).trim()))).filter(Boolean);
 
     return {
       liveTransferDid: ltDid,
       inboundCallsDid: inDid,
       allDids,
-      hasMultiple: Boolean(isSocialUp || (ltDid && inDid) || (allDids.length > 1 && !hasOrgFeature(user?.organization, 'hasVendorLeadPortal')))
+      hasMultiple: Boolean(isSocialUp || allDids.length > 1 || (ltDid && inDid))
     };
   }, [user, isSocialUpAdmin]);
 
@@ -1493,7 +1501,7 @@ const AdminDashboard = () => {
         </div>
 
         {/* Feature / DID Segregated Dashboard Switcher (Dynamic based on hasDualDidSwitcher or multi-DID setup) */}
-        {(hasOrgFeature(user?.organization, 'hasDualDidSwitcher') || (isSocialUpAdmin || (orgDids.hasMultiple && !hasOrgFeature(user?.organization, 'hasVendorLeadPortal')))) && (
+        {(hasOrgFeature(user?.organization, 'hasDualDidSwitcher') || (isSocialUpAdmin || orgDids.hasMultiple)) && (
           <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 p-4 rounded-2xl shadow-xl border border-indigo-500/30 text-white mb-1 transition-all duration-300">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div className="flex items-center gap-3">
@@ -1510,13 +1518,13 @@ const AdminDashboard = () => {
                     </span>
                   </div>
                   <p className="text-xs text-indigo-200/80 mt-0.5">
-                    Click to slide between <span className="text-amber-300 font-semibold">Live Transfers</span> and <span className="text-cyan-300 font-semibold">Inbound Calls</span> to view segregated metrics, call counts, and leads.
+                    Click to toggle between <span className="text-amber-300 font-semibold">Live Transfers</span>, <span className="text-cyan-300 font-semibold">Inbound Calls</span>, and individual DIDs to view segregated metrics, call counts, and leads.
                   </p>
                 </div>
               </div>
 
               {/* Sliding Segregated Pills */}
-              <div className="flex items-center bg-black/40 p-1.5 rounded-xl border border-white/10 backdrop-blur-md shadow-inner gap-1">
+              <div className="flex flex-wrap items-center bg-black/40 p-1.5 rounded-xl border border-white/10 backdrop-blur-md shadow-inner gap-1">
                 {/* All Data Pill */}
                 <button
                   type="button"
@@ -1531,51 +1539,62 @@ const AdminDashboard = () => {
                   <span>All Calls</span>
                 </button>
 
-                {/* Live Transfers Pill */}
-                <button
-                  type="button"
-                  onClick={() => handleDidTabChange(orgDids.liveTransferDid || '19162330004')}
-                  className={`relative flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all duration-300 ${
-                    selectedDidTab === (orgDids.liveTransferDid || '19162330004') || selectedDidTab === 'live_transfer' || selectedDidTab === '19162330004'
-                      ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-white shadow-lg shadow-orange-500/40 ring-2 ring-amber-300/50 scale-105 z-10'
-                      : 'text-gray-300 hover:text-white hover:bg-white/10'
-                  }`}
-                >
-                  <Zap className={`h-4 w-4 ${(selectedDidTab === (orgDids.liveTransferDid || '19162330004') || selectedDidTab === 'live_transfer' || selectedDidTab === '19162330004') ? 'text-amber-200 animate-bounce' : 'text-amber-400'}`} />
-                  <span>Live Transfers</span>
-                  {(orgDids.liveTransferDid || '19162330004') && (
-                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono tracking-tight ${
-                      (selectedDidTab === (orgDids.liveTransferDid || '19162330004') || selectedDidTab === 'live_transfer' || selectedDidTab === '19162330004')
-                        ? 'bg-black/30 text-amber-100 border border-amber-300/30'
-                        : 'bg-amber-400/20 text-amber-300'
-                    }`}>
-                      DID: {orgDids.liveTransferDid || '19162330004'}
-                    </span>
-                  )}
-                </button>
+                {/* Dynamically Render a Pill for Every Assigned DID */}
+                {orgDids.allDids.map((did) => {
+                  const isLt = did === orgDids.liveTransferDid;
+                  const isIn = did === orgDids.inboundCallsDid;
+                  const isSelected = selectedDidTab === did ||
+                    (isLt && (selectedDidTab === 'live_transfer' || selectedDidTab === 'live-transfer')) ||
+                    (isIn && (selectedDidTab === 'inbound' || selectedDidTab === 'inbound-call'));
 
-                {/* Inbound Calls Pill */}
-                <button
-                  type="button"
-                  onClick={() => handleDidTabChange(orgDids.inboundCallsDid || '19162330139')}
-                  className={`relative flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all duration-300 ${
-                    selectedDidTab === (orgDids.inboundCallsDid || '19162330139') || selectedDidTab === 'inbound' || selectedDidTab === '19162330139'
-                      ? 'bg-gradient-to-r from-indigo-500 to-blue-600 text-white shadow-lg shadow-indigo-500/40 ring-2 ring-indigo-300/50 scale-105 z-10'
-                      : 'text-gray-300 hover:text-white hover:bg-white/10'
-                  }`}
-                >
-                  <PhoneCall className={`h-4 w-4 ${(selectedDidTab === (orgDids.inboundCallsDid || '19162330139') || selectedDidTab === 'inbound' || selectedDidTab === '19162330139') ? 'text-blue-200' : 'text-blue-400'}`} />
-                  <span>Inbound Calls</span>
-                  {(orgDids.inboundCallsDid || '19162330139') && (
-                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono tracking-tight ${
-                      (selectedDidTab === (orgDids.inboundCallsDid || '19162330139') || selectedDidTab === 'inbound' || selectedDidTab === '19162330139')
-                        ? 'bg-black/30 text-blue-100 border border-blue-300/30'
-                        : 'bg-blue-400/20 text-blue-300'
-                    }`}>
-                      DID: {orgDids.inboundCallsDid || '19162330139'}
-                    </span>
-                  )}
-                </button>
+                  const didStat = Array.isArray(stats?.byDid) ? stats.byDid.find(b => String(b._id) === String(did)) : null;
+                  const didTotal = didStat?.total;
+
+                  let label = `DID ${did.slice(-4)}`;
+                  let activeStyle = 'bg-gradient-to-r from-emerald-600 to-teal-700 text-white shadow-lg shadow-teal-500/40 ring-2 ring-emerald-300/50 scale-105 z-10';
+                  let IconComp = PhoneIncoming;
+                  let iconClass = isSelected ? 'text-emerald-200' : 'text-emerald-400';
+
+                  if (isLt) {
+                    label = 'Live Transfers';
+                    activeStyle = 'bg-gradient-to-r from-amber-500 to-orange-600 text-white shadow-lg shadow-orange-500/40 ring-2 ring-amber-300/50 scale-105 z-10';
+                    IconComp = Zap;
+                    iconClass = isSelected ? 'text-amber-200 animate-bounce' : 'text-amber-400';
+                  } else if (isIn) {
+                    label = 'Inbound Calls';
+                    activeStyle = 'bg-gradient-to-r from-indigo-500 to-blue-600 text-white shadow-lg shadow-indigo-500/40 ring-2 ring-indigo-300/50 scale-105 z-10';
+                    IconComp = PhoneCall;
+                    iconClass = isSelected ? 'text-blue-200' : 'text-blue-400';
+                  }
+
+                  return (
+                    <button
+                      key={did}
+                      type="button"
+                      onClick={() => handleDidTabChange(did)}
+                      className={`relative flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all duration-300 ${
+                        isSelected ? activeStyle : 'text-gray-300 hover:text-white hover:bg-white/10'
+                      }`}
+                    >
+                      <IconComp className={`h-4 w-4 ${iconClass}`} />
+                      <span>{label}</span>
+                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono tracking-tight ${
+                        isSelected
+                          ? 'bg-black/30 text-white border border-white/20'
+                          : 'bg-white/10 text-gray-300'
+                      }`}>
+                        {did}
+                      </span>
+                      {typeof didTotal === 'number' && didTotal > 0 && (
+                        <span className={`ml-0.5 px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                          isSelected ? 'bg-white text-gray-900' : 'bg-indigo-500/40 text-indigo-200'
+                        }`}>
+                          {didTotal}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
@@ -1591,9 +1610,13 @@ const AdminDashboard = () => {
                   <span className="inline-flex items-center gap-1 font-semibold text-amber-300">
                     ⚡ Live Transfers Mode {orgDids.liveTransferDid ? `(DID: ${orgDids.liveTransferDid})` : ''}
                   </span>
-                ) : (
+                ) : selectedDidTab === (orgDids.inboundCallsDid || 'inbound') ? (
                   <span className="inline-flex items-center gap-1 font-semibold text-cyan-300">
                     📞 Inbound Calls Mode {orgDids.inboundCallsDid ? `(DID: ${orgDids.inboundCallsDid})` : ''}
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 font-semibold text-emerald-300">
+                    📞 Inbound Line Mode (DID: {selectedDidTab})
                   </span>
                 )}
               </div>
@@ -1843,6 +1866,17 @@ const AdminDashboard = () => {
           )}
         </div>
         )} {/* end isReddingtonAdmin call report */}
+
+        {/* Multi-DID Performance Breakdown Table (Shown when All Calls is selected & multiple DIDs exist) */}
+        {selectedDidTab === 'all' && orgDids.hasMultiple && (
+          <DidBreakdownTable
+            dids={orgDids.allDids}
+            liveTransferDid={orgDids.liveTransferDid}
+            inboundCallsDid={orgDids.inboundCallsDid}
+            byDidStats={stats?.byDid || []}
+            onSelectDid={handleDidTabChange}
+          />
+        )}
 
         {/* Lead Management Toggle */}
         <div className="bg-white rounded-xl shadow-md border border-gray-100 overflow-hidden backdrop-blur-sm bg-opacity-95">

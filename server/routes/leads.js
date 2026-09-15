@@ -2818,6 +2818,52 @@ router.get('/dashboard/stats', protect, async (req, res) => {
             sales: [
               { $match: { leadProgressStatus: { $in: ['SALE', 'Immediate Enrollment', 'Sale Long Play'] } } },
               { $count: 'count' }
+            ],
+            byDid: [
+              { $match: { vicidialDid: { $exists: true, $ne: null, $ne: '' } } },
+              {
+                $group: {
+                  _id: '$vicidialDid',
+                  total: { $sum: 1 },
+                  qualified: {
+                    $sum: {
+                      $cond: [{ $eq: ['$qualificationStatus', 'qualified'] }, 1, 0]
+                    }
+                  },
+                  notQualified: {
+                    $sum: {
+                      $cond: [
+                        { $in: ['$qualificationStatus', ['not-qualified', 'disqualified', 'unqualified']] },
+                        1,
+                        0
+                      ]
+                    }
+                  },
+                  pending: {
+                    $sum: {
+                      $cond: [
+                        {
+                          $and: [
+                            { $eq: ['$qualificationStatus', 'pending'] },
+                            { $ne: ['$isDisposed', true] }
+                          ]
+                        },
+                        1,
+                        0
+                      ]
+                    }
+                  },
+                  sales: {
+                    $sum: {
+                      $cond: [
+                        { $in: ['$leadProgressStatus', ['SALE', 'Immediate Enrollment', 'Sale Long Play']] },
+                        1,
+                        0
+                      ]
+                    }
+                  }
+                }
+              }
             ]
           }
         }
@@ -2868,7 +2914,8 @@ router.get('/dashboard/stats', protect, async (req, res) => {
         closed,
         immediateEnrollmentLeads: immediateEnrollment,
         conversionRate: conversionRate,
-        activeAgents
+        activeAgents,
+        byDid: results.byDid || []
       };
     } else {
       effectiveBaseFilter = filter;
