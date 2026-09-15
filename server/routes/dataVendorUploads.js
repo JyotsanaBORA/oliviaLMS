@@ -183,10 +183,21 @@ router.get('/vendors', protect, requireAdminOrSuper, async (req, res) => {
   try {
     const Organization = require('../models/Organization');
     const enabledOrgs = await Organization.find({
-      $or: [
-        { showVendorData: true },
-        { name: { $regex: /westlake/i } },
-        { name: { $regex: /social\s*up/i } }
+      $and: [
+        {
+          $or: [
+            { 'features.hasOutboundData': true },
+            { showVendorData: true },
+            {
+              $or: [
+                { name: { $regex: /westlake/i } },
+                { name: { $regex: /social\s*up/i } }
+              ]
+            }
+          ]
+        },
+        { 'features.hasOutboundData': { $ne: false } },
+        { showVendorData: { $ne: false } }
       ]
     }).select('_id').lean();
     const enabledOrgIds = enabledOrgs.map(o => o._id);

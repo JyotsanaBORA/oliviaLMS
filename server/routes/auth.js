@@ -7,6 +7,9 @@ const handleValidationErrors = require('../middleware/validation');
 const { notifyCheckIn, notifyCheckOut } = require('../services/hrmsAttendance');
 const { syncWithChatService } = require('../utils/chatSync');
 const { notifyPasswordChange } = require('../utils/notificationHelper');
+const { resolveOrgFeatures } = require('../services/organizationFeatures/featureService');
+
+const ORG_POPULATE_FIELDS = 'name showLoopLeads showVendorData inboundDids liveTransferDid inboundCallsDid features';
 
 // Helper: check if a user is the main-org admin (privilege for chat service)
 // Override the org name via MAIN_ORG_NAME env var; default is 'REDDINGTON GLOBAL CONSULTANCY'
@@ -192,13 +195,18 @@ router.post('/create-agent', protect, registerValidation, handleValidationErrors
     });
 
     // Populate organization for response
-    await user.populate('organization', 'name showLoopLeads showVendorData');
+    await user.populate('organization', ORG_POPULATE_FIELDS);
+
+    const userJson = user.toJSON();
+    if (userJson.organization) {
+      userJson.organization.features = resolveOrgFeatures(user.organization);
+    }
 
     res.status(201).json({
       success: true,
       message: `${role} account created successfully`,
       data: {
-        user: user.toJSON()
+        user: userJson
       }
     });
 
@@ -404,8 +412,8 @@ router.post('/login', loginValidation, handleValidationErrors, async (req, res) 
       });
     }
 
-    // Populate organization name for client-side role checks
-    await user.populate('organization', 'name showLoopLeads showVendorData');
+    // Populate organization for client-side role checks and features
+    await user.populate('organization', ORG_POPULATE_FIELDS);
 
     // Update last login
     user.lastLogin = new Date();
@@ -414,7 +422,7 @@ router.post('/login', loginValidation, handleValidationErrors, async (req, res) 
     // Generate token
     const token = generateToken(user._id);
 
-    // Sync with chat service (non-blocking â€” never fails login)
+    // Sync with chat service (non-blocking — never fails login)
     // isMainOrgAdmin grants chat-service privilege to the Reddington org admin
     const mainOrgAdmin = user.role === 'admin' ? await isMainOrgAdminUser(user) : false;
     const chatToken = await syncWithChatService({
@@ -423,15 +431,19 @@ router.post('/login', loginValidation, handleValidationErrors, async (req, res) 
       name: user.name,
       appUserId: user._id.toString(),
       role: user.role,
-      isMainOrgAdmin: mainOrgAdmin,
+      token,
     });
 
-    notifyCheckIn(user.email); // HRMS check-in â€” fire-and-forget
+    const userJson = user.toJSON();
+    if (userJson.organization) {
+      userJson.organization.features = resolveOrgFeatures(user.organization);
+    }
+
     res.status(200).json({
       success: true,
       message: 'Login successful',
       data: {
-        user: { ...user.toJSON(), isMainOrgAdmin: mainOrgAdmin },
+        user: { ...userJson, isMainOrgAdmin: mainOrgAdmin },
         token,
         ...(chatToken ? { chatToken } : {}),
       }
@@ -485,15 +497,20 @@ router.get('/me', protect, async (req, res) => {
     const user = req.user;
 
     if (user && user.populate) {
-      await user.populate('organization', 'name showLoopLeads showVendorData');
+      await user.populate('organization', ORG_POPULATE_FIELDS);
     }
 
     const mainOrgAdmin = user.role === 'admin' ? await isMainOrgAdminUser(user) : false;
 
+    const userJson = user.toJSON();
+    if (userJson.organization) {
+      userJson.organization.features = resolveOrgFeatures(user.organization);
+    }
+
     res.status(200).json({
       success: true,
       data: {
-        user: { ...user.toJSON(), isMainOrgAdmin: mainOrgAdmin }
+        user: { ...userJson, isMainOrgAdmin: mainOrgAdmin }
       }
     });
 
@@ -692,7 +709,7 @@ router.get('/agents', protect, async (req, res) => {
     }
 
     const agents = await User.find(query)
-      .populate('organization', 'name showLoopLeads showVendorData')
+      .populate('organization', ORG_POPULATE_FIELDS)
       .populate('createdBy', 'name email')
       .select('-password');
 
@@ -1043,7 +1060,7 @@ router.get('/admins', protect, async (req, res) => {
     const admins = await User.find(query)
       .select('-password')
       .populate('createdBy', 'name email')
-      .populate('organization', 'name showLoopLeads showVendorData');
+      .populate('organization', ORG_POPULATE_FIELDS);
 
     res.status(200).json({
       success: true,

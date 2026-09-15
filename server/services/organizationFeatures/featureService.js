@@ -68,12 +68,13 @@ const resolveOrgFeatures = (org) => {
   // 5. Outbound / Vendor Data Access
   const hasOutboundData = isExplicit(rawFeatures.hasOutboundData)
     ? rawFeatures.hasOutboundData
-    : Boolean(
-        org.showVendorData === true ||
-        orgNameLower.includes('westlake') ||
-        orgNameLower.includes('social up') ||
-        orgNameLower.includes('socialup')
-      );
+    : (typeof org.showVendorData === 'boolean'
+        ? org.showVendorData
+        : Boolean(
+            orgNameLower.includes('westlake') ||
+            orgNameLower.includes('social up') ||
+            orgNameLower.includes('socialup')
+          ));
 
   // 6. CSV Export Permission
   const canDownloadCsv = isExplicit(rawFeatures.canDownloadCsv)

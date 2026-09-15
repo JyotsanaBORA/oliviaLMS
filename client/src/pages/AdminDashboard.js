@@ -1331,6 +1331,43 @@ const AdminDashboard = () => {
                   <span>•</span>
                   <span>Last updated: {formatEasternTimeForDisplay(lastUpdated, { includeTimezone: true })}</span>
                 </div>
+
+                {/* Display Assigned DIDs for tenant admins */}
+                {!isReddingtonAdmin && (
+                  <div className="flex items-center gap-2 mt-2 flex-wrap">
+                    <span className="text-xs font-semibold text-gray-600 flex items-center gap-1">
+                      <PhoneIncoming className="w-3.5 h-3.5 text-indigo-600" />
+                      Assigned DID{orgDids.allDids.length > 1 ? 's' : ''}:
+                    </span>
+                    {orgDids.allDids.length > 0 ? (
+                      orgDids.allDids.map((did) => {
+                        const isLt = did === orgDids.liveTransferDid;
+                        const isIn = did === orgDids.inboundCallsDid;
+                        return (
+                          <span
+                            key={did}
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold font-mono tracking-tight shadow-sm border ${
+                              isLt
+                                ? 'bg-amber-50 text-amber-900 border-amber-300'
+                                : isIn
+                                ? 'bg-blue-50 text-blue-900 border-blue-300'
+                                : 'bg-emerald-50 text-emerald-900 border-emerald-300'
+                            }`}
+                          >
+                            <span className="text-[11px] font-sans font-semibold text-gray-600">
+                              {isLt ? '⚡ Live Transfer:' : isIn ? '📞 Inbound:' : '📞 Line:'}
+                            </span>
+                            {did}
+                          </span>
+                        );
+                      })
+                    ) : (
+                      <span className="text-xs italic text-gray-400">
+                        No DIDs assigned to this organisation
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 

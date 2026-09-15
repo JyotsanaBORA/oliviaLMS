@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import LoadingSpinner from './LoadingSpinner';
 import toast from 'react-hot-toast';
+import { hasOrgFeature } from '../features/organization/utils/orgPermissions';
 
 const Layout = ({ onDashboardRefresh }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -249,10 +250,8 @@ const Layout = ({ onDashboardRefresh }) => {
     } else if (user.role === 'admin') {
       if (isMainAdmin) {
         const isVendorDataEnabled = user.isMainOrgAdmin ||
-          user.organization?.showVendorData === true ||
-          user.organization?.name?.toLowerCase().includes('westlake') ||
-          user.organization?.name?.toLowerCase().includes('social up') ||
-          user.organization?.name?.toLowerCase().includes('socialup');
+          hasOrgFeature(user?.organization, 'hasOutboundData') ||
+          user.organization?.showVendorData === true;
 
         const adminItems = [
           { name: 'Dashboard', href: '/admin', icon: BarChart3 },
@@ -271,10 +270,7 @@ const Layout = ({ onDashboardRefresh }) => {
       }
 
       // Tenant organisation admins (e.g. Jake, Jake 2, partner orgs):
-      const isTenantVendorEnabled = user.organization?.showVendorData === true ||
-        user.organization?.name?.toLowerCase().includes('westlake') ||
-        user.organization?.name?.toLowerCase().includes('social up') ||
-        user.organization?.name?.toLowerCase().includes('socialup');
+      const isTenantVendorEnabled = hasOrgFeature(user?.organization, 'hasOutboundData');
 
       const tenantItems = [
         { name: 'Dashboard', href: '/admin', icon: BarChart3 }

@@ -76,12 +76,13 @@ export const resolveClientOrgFeatures = (org) => {
 
     hasOutboundData: isExplicit(rawFeatures.hasOutboundData)
       ? rawFeatures.hasOutboundData
-      : Boolean(
-          org.showVendorData === true ||
-          orgNameLower.includes('westlake') ||
-          orgNameLower.includes('social up') ||
-          orgNameLower.includes('socialup')
-        ),
+      : (typeof org.showVendorData === 'boolean'
+          ? org.showVendorData
+          : Boolean(
+              orgNameLower.includes('westlake') ||
+              orgNameLower.includes('social up') ||
+              orgNameLower.includes('socialup')
+            )),
 
     canDownloadCsv: isExplicit(rawFeatures.canDownloadCsv)
       ? rawFeatures.canDownloadCsv

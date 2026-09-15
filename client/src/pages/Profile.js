@@ -247,6 +247,49 @@ const Profile = () => {
                       </div>
                     </div>
                   )}
+                  {user.organization && (
+                    <div className="sm:col-span-2 pt-2 border-t border-gray-200">
+                      <span className="text-sm font-semibold text-gray-700">Organisation:</span>
+                      <p className="text-sm font-bold text-indigo-700 mt-0.5">
+                        {user.organization.name || 'Unnamed Organisation'}
+                      </p>
+                      
+                      {(() => {
+                        const org = user.organization;
+                        const ltDid = org?.liveTransferDid;
+                        const inDid = org?.inboundCallsDid;
+                        const rawDids = [
+                          ...(ltDid ? [ltDid] : []),
+                          ...(inDid ? [inDid] : []),
+                          ...(Array.isArray(org?.inboundDids) ? org.inboundDids : [])
+                        ];
+                        const dids = Array.from(new Set(rawDids.map(d => String(d).trim()))).filter(Boolean);
+                        
+                        return (
+                          <div className="mt-2">
+                            <span className="text-xs font-semibold text-gray-600 block mb-1">
+                              Assigned DID(s):
+                            </span>
+                            {dids.length > 0 ? (
+                              <div className="flex flex-wrap gap-1.5">
+                                {dids.map(did => (
+                                  <span
+                                    key={did}
+                                    className="inline-flex items-center px-2 py-0.5 rounded text-xs font-mono font-bold bg-indigo-50 text-indigo-700 border border-indigo-200"
+                                  >
+                                    <Phone className="h-3 w-3 mr-1 text-indigo-500" />
+                                    {did === ltDid ? `⚡ ${did} (Live Transfer)` : did === inDid ? `📞 ${did} (Inbound)` : `📞 ${did}`}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : (
+                              <span className="text-xs text-gray-400 italic">No DIDs assigned</span>
+                            )}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
                 </div>
               </div>
 
