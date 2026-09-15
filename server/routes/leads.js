@@ -2263,13 +2263,13 @@ router.put('/:id', protect, updateLeadValidation, handleValidationErrors, async 
     const rawProg = req.body.leadProgressStatus !== undefined
       ? req.body.leadProgressStatus
       : (lead.leadProgressStatus || '');
-    const isNowDisposed = lead.isDisposed === true;
+    const isLeadDisposedFlag = lead.isDisposed === true;
 
-    if (rawDisp || rawProg || isNowDisposed) {
+    if (rawDisp || rawProg || isLeadDisposedFlag) {
       const computedQual = resolveLeadQualification({
         disposition: rawDisp,
         leadProgressStatus: rawProg,
-        isDisposed: isNowDisposed,
+        isDisposed: isLeadDisposedFlag,
         currentQualificationStatus: (req.body.qualificationStatus && req.body.qualificationStatus !== 'pending')
           ? req.body.qualificationStatus
           : lead.qualificationStatus
