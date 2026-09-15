@@ -89,6 +89,41 @@ const getOrganizationNameById = async (organizationId) => {
   return org ? org.name : null;
 };
 
+const resolveLeadQualification = ({ disposition, leadProgressStatus, isDisposed, currentQualificationStatus }) => {
+  const prog = String(leadProgressStatus || disposition || '').trim();
+  const lower = prog.toLowerCase();
+
+  // 1. Qualified / Sales
+  const qualifiedMatches = [
+    'sale', 'immediate enrollment', 'sale made', 'sale long play', 
+    'request for loan', 'existing client', 'aip client', 
+    'call transferred', 'hot lead', 'xfer', 'hlead'
+  ];
+  if (qualifiedMatches.some(m => lower === m || lower.includes(m))) {
+    return 'qualified';
+  }
+
+  // 2. Pending Callbacks
+  const pendingMatches = ['callback', 'call back', 'callbk', 'hlcb', 'pending', 'follow-up'];
+  if (pendingMatches.some(m => lower === m || lower.includes(m))) {
+    return 'pending';
+  }
+
+  // 3. Disqualified / Not Qualified
+  const notQualifiedMatches = [
+    'not qualified', 'disqualified', 'unqualified', 'affordability', 'hang-up', 'hangup',
+    'do not call', 'dnc', 'litigator', 'dead air', 'ringing', 'no answer',
+    'answering machine', 'no debt', 'not interested', 'unacceptable creditors',
+    'not serviceable', 'declined', 'no pitch', 'loan', 'busy', 'disconnected',
+    'wrong number', 'language barrier', 'others'
+  ];
+  if (notQualifiedMatches.some(m => lower === m || lower.includes(m)) || isDisposed === true) {
+    return 'not-qualified';
+  }
+
+  return currentQualificationStatus || 'pending';
+};
+
 /**
  * Build the MongoDB filter that scopes a leads query to the org admin's visible leads.
  *
@@ -2221,53 +2256,34 @@ router.put('/:id', protect, updateLeadValidation, handleValidationErrors, async 
       }
     }
 
-    // Automatic Status Resolution based on Disposition
-    if (hasDispositionField) {
-      const disp = typeof req.body.disposition1 === 'string' ? req.body.disposition1.trim() : '';
-      
-      if (disp === 'SALE - Sale Made') {
-        lead.qualificationStatus = 'qualified';
-        lead.leadProgressStatus = 'SALE';
-      } else if (disp === 'XFER - Call Transferred' || disp === 'HLEAD - Hot Lead') {
-        lead.qualificationStatus = 'qualified';
-      } else if (
-        disp === 'DEC - Declined Sale' ||
-        disp === 'NI - Not Interested' ||
-        disp === 'NP - No Pitch No Price' ||
-        disp === 'Loan - LOAN' ||
-        disp === 'ND - No Debt' ||
-        disp === 'NIAP - Not Interested After Pitch' ||
-        disp === 'NIBP - Not Interested Before Pitch' ||
-        disp === 'NQ - Not Qualified'
-      ) {
-        lead.qualificationStatus = 'not-qualified';
-      } else if (
-        disp === 'A - Answering Machine' ||
-        disp === 'B - Busy' ||
-        disp === 'DAIR - Dead Air' ||
-        disp === 'DC - Disconnected Number' ||
-        disp === 'DNC - DO NOT CALL' ||
-        disp === 'N - No Answer' ||
-        disp === 'HU - Hangup' ||
-        disp === 'LB - Language Barrier' ||
-        disp === 'WNU - Wrong Number'
-      ) {
-        lead.qualificationStatus = 'disqualified';
-      } else if (disp === 'CALLBK - Call Back' || disp === 'HLCB - Hot Lead Callback') {
-        lead.leadProgressStatus = 'Callback Needed';
-        lead.qualificationStatus = 'pending';
-      }
-    }
+    // Automatic Status & Qualification Resolution based on Disposition & Progress Status
+    const rawDisp = hasDispositionField && typeof req.body.disposition1 === 'string'
+      ? req.body.disposition1.trim()
+      : (lead.disposition1 || '');
+    const rawProg = req.body.leadProgressStatus !== undefined
+      ? req.body.leadProgressStatus
+      : (lead.leadProgressStatus || '');
+    const isNowDisposed = lead.isDisposed === true;
 
-    // Automatic Status Resolution based on Lead Progress Status (Agent 2 updates)
-    if (req.body.leadProgressStatus && !req.body.qualificationStatus) {
-      const prog = req.body.leadProgressStatus;
-      if (['SALE', 'Request for Loan', 'Existing Client', 'Sale Long Play', 'AIP Client'].includes(prog)) {
-        lead.qualificationStatus = 'qualified';
-      } else if (['Not Qualified', 'Unacceptable Creditors', 'Not Serviceable State', 'Affordability', 'DO NOT CALL - Litigator', 'DO NOT CALL', 'Hang-up', 'Not Interested', 'No Answer'].includes(prog)) {
-        lead.qualificationStatus = 'not-qualified';
-      } else if (['Callback Needed', 'Pending'].includes(prog)) {
-        lead.qualificationStatus = 'pending';
+    if (rawDisp || rawProg || isNowDisposed) {
+      const computedQual = resolveLeadQualification({
+        disposition: rawDisp,
+        leadProgressStatus: rawProg,
+        isDisposed: isNowDisposed,
+        currentQualificationStatus: (req.body.qualificationStatus && req.body.qualificationStatus !== 'pending')
+          ? req.body.qualificationStatus
+          : lead.qualificationStatus
+      });
+
+      lead.qualificationStatus = computedQual;
+
+      if (computedQual === 'qualified') {
+        if (!lead.leadProgressStatus) lead.leadProgressStatus = 'SALE';
+        lead.status = 'closed';
+      } else if (computedQual === 'not-qualified') {
+        lead.status = 'Dead';
+      } else if (computedQual === 'pending' && rawProg === 'Callback Needed') {
+        lead.leadProgressStatus = 'Callback Needed';
       }
     }
 
@@ -2815,6 +2831,16 @@ router.get('/dashboard/stats', protect, async (req, res) => {
               { $match: { isDisposed: true } },
               { $count: 'count' }
             ],
+            disposedNotQualified: [
+              {
+                $match: {
+                  isDisposed: true,
+                  qualificationStatus: { $nin: ['qualified', 'not-qualified', 'disqualified', 'unqualified'] },
+                  leadProgressStatus: { $nin: ['SALE', 'Immediate Enrollment', 'Sale Long Play', 'Request for Loan', 'Existing Client', 'AIP Client'] }
+                }
+              },
+              { $count: 'count' }
+            ],
             sales: [
               { $match: { leadProgressStatus: { $in: ['SALE', 'Immediate Enrollment', 'Sale Long Play'] } } },
               { $count: 'count' }
@@ -2827,13 +2853,33 @@ router.get('/dashboard/stats', protect, async (req, res) => {
                   total: { $sum: 1 },
                   qualified: {
                     $sum: {
-                      $cond: [{ $eq: ['$qualificationStatus', 'qualified'] }, 1, 0]
+                      $cond: [
+                        {
+                          $or: [
+                            { $eq: ['$qualificationStatus', 'qualified'] },
+                            { $in: ['$leadProgressStatus', ['SALE', 'Immediate Enrollment', 'Sale Long Play', 'Request for Loan', 'Existing Client', 'AIP Client']] }
+                          ]
+                        },
+                        1,
+                        0
+                      ]
                     }
                   },
                   notQualified: {
                     $sum: {
                       $cond: [
-                        { $in: ['$qualificationStatus', ['not-qualified', 'disqualified', 'unqualified']] },
+                        {
+                          $or: [
+                            { $in: ['$qualificationStatus', ['not-qualified', 'disqualified', 'unqualified']] },
+                            {
+                              $and: [
+                                { $eq: ['$isDisposed', true] },
+                                { $ne: ['$qualificationStatus', 'qualified'] },
+                                { $not: { $in: ['$leadProgressStatus', ['SALE', 'Immediate Enrollment', 'Sale Long Play', 'Request for Loan', 'Existing Client', 'AIP Client']] } }
+                              ]
+                            }
+                          ]
+                        },
                         1,
                         0
                       ]
@@ -2884,7 +2930,8 @@ router.get('/dashboard/stats', protect, async (req, res) => {
       
       const newLeads = statusMap.new || 0;
       const qualified = qualMap.qualified || 0;
-      const notQualified = (qualMap['not-qualified'] || 0) + (qualMap.disqualified || 0) + (qualMap.unqualified || 0);
+      const unclassifiedDisposed = results.disposedNotQualified[0]?.count || 0;
+      const notQualified = (qualMap['not-qualified'] || 0) + (qualMap.disqualified || 0) + (qualMap.unqualified || 0) + unclassifiedDisposed;
       const pending = results.pendingActive[0]?.count || 0;
       const disposedLeads = results.disposed[0]?.count || 0;
       const followUp = statusMap['follow-up'] || 0;

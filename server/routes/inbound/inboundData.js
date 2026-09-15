@@ -950,6 +950,17 @@ router.put('/:id/disposition', protect, async (req, res) => {
         matchedLead.disposition1 = leadProgressStatus;
         matchedLead.disposedBy = req.user._id;
         matchedLead.disposedAt = new Date();
+
+        const progLower = leadProgressStatus.toLowerCase();
+        if (['sale', 'immediate enrollment', 'sale long play', 'request for loan'].some(s => progLower.includes(s))) {
+          matchedLead.qualificationStatus = 'qualified';
+          matchedLead.status = 'closed';
+        } else if (['callback', 'pending', 'follow-up'].some(s => progLower.includes(s))) {
+          matchedLead.qualificationStatus = 'pending';
+        } else {
+          matchedLead.qualificationStatus = 'not-qualified';
+          matchedLead.status = 'Dead';
+        }
       }
 
       matchedLead.agent2LastAction = agentLabel;
