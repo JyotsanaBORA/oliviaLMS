@@ -20,6 +20,7 @@ import {
   Database,
   Zap,
   PhoneCall,
+  PhoneIncoming,
   Globe,
   Activity
 } from 'lucide-react';
@@ -38,6 +39,9 @@ import BenWebsiteLeadsModal from '../components/BenWebsiteLeadsModal';
 import LoopLeadsModal from '../components/LoopLeadsModal';
 import InboundDataModal from '../components/InboundDataModal';
 import Pagination from '../components/Pagination';
+import VendorPortalButton from '../features/organization/components/VendorPortalButton';
+import DidBreakdownTable from '../features/organization/components/DidBreakdownTable';
+import { hasOrgFeature } from '../features/organization/utils/orgPermissions';
 import { useSocket } from '../contexts/SocketContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useRefresh } from '../contexts/RefreshContext';
@@ -193,6 +197,10 @@ const AdminDashboard = () => {
   // Jake 2 Leads modal
   const [showJake2Leads, setShowJake2Leads] = useState(false);
   const [jake2Badge, setJake2Badge] = useState(0);
+
+  // Dynamic Vendor Leads portal modal & badges
+  const [activeVendorPortalOrg, setActiveVendorPortalOrg] = useState(null);
+  const [portalBadges, setPortalBadges] = useState({});
 
   // Loop leads modal (orgs with showLoopLeads === true)
   const [showLoopLeads, setShowLoopLeads] = useState(false);
@@ -658,7 +666,11 @@ const AdminDashboard = () => {
   const isSocialUpAdmin = useMemo(() => {
     const orgName = (user?.organization?.name || '').trim().toLowerCase();
     const orgId = String(user?.organization?._id || user?.organization || '');
-    if (orgId === '6aa03313a396c53fdf24e16f' || orgName.includes('2') || orgName.includes('jake2')) {
+    if (
+      orgId === '6aa03313a396c53fdf24e16f' || orgId === '6aa825d0de03dd4a4e976381' || orgId === '6aa825f973457be744ec45ea' ||
+      orgName.includes('2') || orgName.includes('3') || orgName.includes('4') ||
+      orgName.includes('jake2') || orgName.includes('jake3') || orgName.includes('jake4')
+    ) {
       return false;
     }
     return user?.role === 'admin' && (orgName === 'social up media llc' || orgName === 'social up media' || orgName === 'social up' || orgName === 'socialup media' || orgName === 'socialup' || orgId === '6a99ddd7cea428c97ea29bdb');
@@ -684,15 +696,21 @@ const AdminDashboard = () => {
 
     const ltDid = org?.liveTransferDid || (isSocialUp ? '19162330004' : null);
     const inDid = org?.inboundCallsDid || (isSocialUp ? '19162330139' : null);
-    const allDids = isSocialUp ? ['19162330004', '19162330139'] : (Array.isArray(org?.inboundDids) ? org.inboundDids : []);
+    const rawDids = [
+      ...(isSocialUp ? ['19162330004', '19162330139'] : []),
+      ...(ltDid ? [ltDid] : []),
+      ...(inDid ? [inDid] : []),
+      ...(Array.isArray(org?.inboundDids) ? org.inboundDids : [])
+    ];
+    const allDids = Array.from(new Set(rawDids.map(d => String(d).trim()))).filter(Boolean);
 
     return {
       liveTransferDid: ltDid,
       inboundCallsDid: inDid,
       allDids,
-      hasMultiple: Boolean(isSocialUp || (ltDid && inDid) || (allDids.length > 1 && !isJake2Admin))
+      hasMultiple: Boolean(isSocialUp || allDids.length > 1 || (ltDid && inDid))
     };
-  }, [user, isSocialUpAdmin, isJake2Admin]);
+  }, [user, isSocialUpAdmin]);
 
   const handleDidTabChange = (tabValue) => {
     setSelectedDidTab(tabValue);
@@ -942,6 +960,15 @@ const AdminDashboard = () => {
         if (!isMyLead && !isReddingtonAdmin) return;
         if (benLeadTotalRef.current !== null) benLeadTotalRef.current += 1;
         
+        if (leadOrgId) {
+          const orgIdStr = String(leadOrgId);
+          setPortalBadges(prev => ({
+            ...prev,
+            [orgIdStr]: (prev[orgIdStr] || 0) + 1,
+            default: (prev.default || 0) + 1
+          }));
+        }
+
         const orgNameLower = (data?.organizationName || '').toLowerCase();
         if (orgNameLower.includes('socialupmedia 2') || orgNameLower.includes('social up media 2') || orgNameLower.includes('jake2') || String(leadOrgId) === '6aa03313a396c53fdf24e16f') {
           setJake2Badge(n => n + 1);
@@ -1385,44 +1412,20 @@ const AdminDashboard = () => {
                   )}
                 </button>
               )}
-              {/* TruClick Media Leads button — Reddington admin or TruClick admin */}
-              {user?.role === 'admin' && (isReddingtonAdmin || user?.organization?.name?.toLowerCase().includes('truclick') || user?.organization?.name?.toLowerCase().includes('tru click')) && (
-                <button
-                  onClick={() => { setShowTruClickLeads(true); setTruClickBadge(0); }}
-                  className="relative flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold text-white transition-all duration-200 active:scale-95 shadow-md"
-                  style={{ background: 'linear-gradient(135deg,#0284c7,#0369a1)', boxShadow: '0 4px 12px rgba(2,132,199,0.4)' }}
-                  title="View TruClick Media leads"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9" />
-                  </svg>
-                  TruClick Media Leads
-                  {truClickBadge > 0 && (
-                    <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] flex items-center justify-center bg-red-500 text-white text-[10px] font-bold rounded-full px-1">
-                      {truClickBadge > 99 ? '99+' : truClickBadge}
-                    </span>
-                  )}
-                </button>
-              )}
-              {/* Jake 2 Leads button — Reddington admin or Jake 2 admin */}
-              {user?.role === 'admin' && (isReddingtonAdmin || isJake2Admin) && (
-                <button
-                  onClick={() => { setShowJake2Leads(true); setJake2Badge(0); }}
-                  className="relative flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold text-white transition-all duration-200 active:scale-95 shadow-md"
-                  style={{ background: 'linear-gradient(135deg,#8b5cf6,#7c3aed)', boxShadow: '0 4px 12px rgba(139,92,246,0.4)' }}
-                  title="View Jake 2 / Socialupmedia 2 leads"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9" />
-                  </svg>
-                  Jake 2 Leads
-                  {jake2Badge > 0 && (
-                    <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] flex items-center justify-center bg-red-500 text-white text-[10px] font-bold rounded-full px-1">
-                      {jake2Badge > 99 ? '99+' : jake2Badge}
-                    </span>
-                  )}
-                </button>
-              )}
+              {/* Dynamic Vendor Leads Portal Buttons (Jake 2, Jake 3, Jake 4, TruClick, etc.) */}
+              <VendorPortalButton
+                user={user}
+                isReddingtonAdmin={isReddingtonAdmin}
+                organizations={organizations}
+                portalBadges={portalBadges}
+                onOpenPortal={(org) => {
+                  setActiveVendorPortalOrg(org);
+                  const orgIdStr = String(org._id || org.id);
+                  setPortalBadges(prev => ({ ...prev, [orgIdStr]: 0, default: 0 }));
+                  if (org.name?.toLowerCase().includes('truclick')) setTruClickBadge(0);
+                  if (org.name?.toLowerCase().includes('2')) setJake2Badge(0);
+                }}
+              />
               {/* Inbound Calls button — all admins (scoped for tenant admins, full access for Reddington admin) */}
               {user?.role === 'admin' && (
                 <button
@@ -1497,8 +1500,8 @@ const AdminDashboard = () => {
           </div>
         </div>
 
-        {/* Feature / DID Segregated Dashboard Switcher for Jake 1 / Team 1 & Orgs with multiple DIDs (Hidden for Jake 2) */}
-        {!isJake2Admin && (isSocialUpAdmin || orgDids.hasMultiple) && (
+        {/* Feature / DID Segregated Dashboard Switcher (Dynamic based on hasDualDidSwitcher or multi-DID setup) */}
+        {(hasOrgFeature(user?.organization, 'hasDualDidSwitcher') || (isSocialUpAdmin || orgDids.hasMultiple)) && (
           <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 p-4 rounded-2xl shadow-xl border border-indigo-500/30 text-white mb-1 transition-all duration-300">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div className="flex items-center gap-3">
@@ -1515,13 +1518,13 @@ const AdminDashboard = () => {
                     </span>
                   </div>
                   <p className="text-xs text-indigo-200/80 mt-0.5">
-                    Click to slide between <span className="text-amber-300 font-semibold">Live Transfers</span> and <span className="text-cyan-300 font-semibold">Inbound Calls</span> to view segregated metrics, call counts, and leads.
+                    Click to toggle between <span className="text-amber-300 font-semibold">Live Transfers</span>, <span className="text-cyan-300 font-semibold">Inbound Calls</span>, and individual DIDs to view segregated metrics, call counts, and leads.
                   </p>
                 </div>
               </div>
 
               {/* Sliding Segregated Pills */}
-              <div className="flex items-center bg-black/40 p-1.5 rounded-xl border border-white/10 backdrop-blur-md shadow-inner gap-1">
+              <div className="flex flex-wrap items-center bg-black/40 p-1.5 rounded-xl border border-white/10 backdrop-blur-md shadow-inner gap-1">
                 {/* All Data Pill */}
                 <button
                   type="button"
@@ -1536,51 +1539,62 @@ const AdminDashboard = () => {
                   <span>All Calls</span>
                 </button>
 
-                {/* Live Transfers Pill */}
-                <button
-                  type="button"
-                  onClick={() => handleDidTabChange(orgDids.liveTransferDid || '19162330004')}
-                  className={`relative flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all duration-300 ${
-                    selectedDidTab === (orgDids.liveTransferDid || '19162330004') || selectedDidTab === 'live_transfer' || selectedDidTab === '19162330004'
-                      ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-white shadow-lg shadow-orange-500/40 ring-2 ring-amber-300/50 scale-105 z-10'
-                      : 'text-gray-300 hover:text-white hover:bg-white/10'
-                  }`}
-                >
-                  <Zap className={`h-4 w-4 ${(selectedDidTab === (orgDids.liveTransferDid || '19162330004') || selectedDidTab === 'live_transfer' || selectedDidTab === '19162330004') ? 'text-amber-200 animate-bounce' : 'text-amber-400'}`} />
-                  <span>Live Transfers</span>
-                  {(orgDids.liveTransferDid || '19162330004') && (
-                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono tracking-tight ${
-                      (selectedDidTab === (orgDids.liveTransferDid || '19162330004') || selectedDidTab === 'live_transfer' || selectedDidTab === '19162330004')
-                        ? 'bg-black/30 text-amber-100 border border-amber-300/30'
-                        : 'bg-amber-400/20 text-amber-300'
-                    }`}>
-                      DID: {orgDids.liveTransferDid || '19162330004'}
-                    </span>
-                  )}
-                </button>
+                {/* Dynamically Render a Pill for Every Assigned DID */}
+                {orgDids.allDids.map((did) => {
+                  const isLt = did === orgDids.liveTransferDid;
+                  const isIn = did === orgDids.inboundCallsDid;
+                  const isSelected = selectedDidTab === did ||
+                    (isLt && (selectedDidTab === 'live_transfer' || selectedDidTab === 'live-transfer')) ||
+                    (isIn && (selectedDidTab === 'inbound' || selectedDidTab === 'inbound-call'));
 
-                {/* Inbound Calls Pill */}
-                <button
-                  type="button"
-                  onClick={() => handleDidTabChange(orgDids.inboundCallsDid || '19162330139')}
-                  className={`relative flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all duration-300 ${
-                    selectedDidTab === (orgDids.inboundCallsDid || '19162330139') || selectedDidTab === 'inbound' || selectedDidTab === '19162330139'
-                      ? 'bg-gradient-to-r from-indigo-500 to-blue-600 text-white shadow-lg shadow-indigo-500/40 ring-2 ring-indigo-300/50 scale-105 z-10'
-                      : 'text-gray-300 hover:text-white hover:bg-white/10'
-                  }`}
-                >
-                  <PhoneCall className={`h-4 w-4 ${(selectedDidTab === (orgDids.inboundCallsDid || '19162330139') || selectedDidTab === 'inbound' || selectedDidTab === '19162330139') ? 'text-blue-200' : 'text-blue-400'}`} />
-                  <span>Inbound Calls</span>
-                  {(orgDids.inboundCallsDid || '19162330139') && (
-                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono tracking-tight ${
-                      (selectedDidTab === (orgDids.inboundCallsDid || '19162330139') || selectedDidTab === 'inbound' || selectedDidTab === '19162330139')
-                        ? 'bg-black/30 text-blue-100 border border-blue-300/30'
-                        : 'bg-blue-400/20 text-blue-300'
-                    }`}>
-                      DID: {orgDids.inboundCallsDid || '19162330139'}
-                    </span>
-                  )}
-                </button>
+                  const didStat = Array.isArray(stats?.byDid) ? stats.byDid.find(b => String(b._id) === String(did)) : null;
+                  const didTotal = didStat?.total;
+
+                  let label = `DID ${did.slice(-4)}`;
+                  let activeStyle = 'bg-gradient-to-r from-emerald-600 to-teal-700 text-white shadow-lg shadow-teal-500/40 ring-2 ring-emerald-300/50 scale-105 z-10';
+                  let IconComp = PhoneIncoming;
+                  let iconClass = isSelected ? 'text-emerald-200' : 'text-emerald-400';
+
+                  if (isLt) {
+                    label = 'Live Transfers';
+                    activeStyle = 'bg-gradient-to-r from-amber-500 to-orange-600 text-white shadow-lg shadow-orange-500/40 ring-2 ring-amber-300/50 scale-105 z-10';
+                    IconComp = Zap;
+                    iconClass = isSelected ? 'text-amber-200 animate-bounce' : 'text-amber-400';
+                  } else if (isIn) {
+                    label = 'Inbound Calls';
+                    activeStyle = 'bg-gradient-to-r from-indigo-500 to-blue-600 text-white shadow-lg shadow-indigo-500/40 ring-2 ring-indigo-300/50 scale-105 z-10';
+                    IconComp = PhoneCall;
+                    iconClass = isSelected ? 'text-blue-200' : 'text-blue-400';
+                  }
+
+                  return (
+                    <button
+                      key={did}
+                      type="button"
+                      onClick={() => handleDidTabChange(did)}
+                      className={`relative flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all duration-300 ${
+                        isSelected ? activeStyle : 'text-gray-300 hover:text-white hover:bg-white/10'
+                      }`}
+                    >
+                      <IconComp className={`h-4 w-4 ${iconClass}`} />
+                      <span>{label}</span>
+                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono tracking-tight ${
+                        isSelected
+                          ? 'bg-black/30 text-white border border-white/20'
+                          : 'bg-white/10 text-gray-300'
+                      }`}>
+                        {did}
+                      </span>
+                      {typeof didTotal === 'number' && didTotal > 0 && (
+                        <span className={`ml-0.5 px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                          isSelected ? 'bg-white text-gray-900' : 'bg-indigo-500/40 text-indigo-200'
+                        }`}>
+                          {didTotal}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
@@ -1596,9 +1610,13 @@ const AdminDashboard = () => {
                   <span className="inline-flex items-center gap-1 font-semibold text-amber-300">
                     ⚡ Live Transfers Mode {orgDids.liveTransferDid ? `(DID: ${orgDids.liveTransferDid})` : ''}
                   </span>
-                ) : (
+                ) : selectedDidTab === (orgDids.inboundCallsDid || 'inbound') ? (
                   <span className="inline-flex items-center gap-1 font-semibold text-cyan-300">
                     📞 Inbound Calls Mode {orgDids.inboundCallsDid ? `(DID: ${orgDids.inboundCallsDid})` : ''}
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 font-semibold text-emerald-300">
+                    📞 Inbound Line Mode (DID: {selectedDidTab})
                   </span>
                 )}
               </div>
@@ -1848,6 +1866,17 @@ const AdminDashboard = () => {
           )}
         </div>
         )} {/* end isReddingtonAdmin call report */}
+
+        {/* Multi-DID Performance Breakdown Table (Shown when All Calls is selected & multiple DIDs exist) */}
+        {selectedDidTab === 'all' && orgDids.hasMultiple && (
+          <DidBreakdownTable
+            dids={orgDids.allDids}
+            liveTransferDid={orgDids.liveTransferDid}
+            inboundCallsDid={orgDids.inboundCallsDid}
+            byDidStats={stats?.byDid || []}
+            onSelectDid={handleDidTabChange}
+          />
+        )}
 
         {/* Lead Management Toggle */}
         <div className="bg-white rounded-xl shadow-md border border-gray-100 overflow-hidden backdrop-blur-sm bg-opacity-95">
@@ -3391,6 +3420,15 @@ const AdminDashboard = () => {
           targetOrgName={isReddingtonAdmin ? 'Socialupmedia 2' : undefined}
           title="Jake 2 Leads"
           onClose={() => setShowJake2Leads(false)}
+        />
+      )}
+
+      {/* Dynamic Vendor Leads Portal Modal */}
+      {activeVendorPortalOrg && (
+        <BenWebsiteLeadsModal
+          targetOrgName={isReddingtonAdmin ? activeVendorPortalOrg.name : undefined}
+          title={`${activeVendorPortalOrg.name} Leads`}
+          onClose={() => setActiveVendorPortalOrg(null)}
         />
       )}
 

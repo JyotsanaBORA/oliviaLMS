@@ -7,6 +7,7 @@ const User = require('../../models/User');
 const Lead = require('../../models/Lead');
 const WebsiteLead = require('../../models/WebsiteLead');
 const BenWebsiteLead = require('../../models/BenWebsiteLead');
+const { hasFeature } = require('../../services/organizationFeatures/featureService');
 const { protect } = require('../../middleware/auth');
 const { getEasternStartOfDay, getEasternEndOfDay } = require('../../utils/timeFilters');
 const cache = require('../../utils/cache');
@@ -249,14 +250,22 @@ const handleInboundIngestion = async (req, res) => {
     // Look up matching Organization by DID
     let matchedOrg = null;
     if (did) {
+      // Prioritize explicit dedicated DID assignment (liveTransferDid / inboundCallsDid) first
       matchedOrg = await Organization.findOne({
         $or: [
-          { inboundDids: did },
-          { inboundCallsDid: did },
-          { liveTransferDid: did }
+          { liveTransferDid: did },
+          { inboundCallsDid: did }
         ],
         isActive: true
-      }).select('_id name inboundDids liveTransferDid inboundCallsDid').lean();
+      }).select('_id name inboundDids liveTransferDid inboundCallsDid features').lean();
+
+      // Fallback to general inboundDids array if no dedicated match
+      if (!matchedOrg) {
+        matchedOrg = await Organization.findOne({
+          inboundDids: did,
+          isActive: true
+        }).select('_id name inboundDids liveTransferDid inboundCallsDid features').lean();
+      }
 
       if (matchedOrg) {
         console.log(`✅ [Inbound API] DID ${did} matched Organization: ${matchedOrg.name}`);
@@ -374,13 +383,10 @@ const handleInboundIngestion = async (req, res) => {
         // Mirror into WebsiteLead / BenWebsiteLead so organization admin vendor modals display all DID calls
         if (matchedOrg && phoneNumber) {
           try {
-            const orgNameLower = (matchedOrg.name || '').toLowerCase();
-            const isBenOrJake2 = orgNameLower.includes('jake2') ||
-              orgNameLower.includes('socialupmedia 2') ||
-              orgNameLower.includes('social up media 2') ||
-              orgNameLower.includes('ben');
-
-            const formType = (did && did === matchedOrg.liveTransferDid) ? 'live-transfer' : 'inbound-call';
+            const isPortalOrg = hasFeature(matchedOrg, 'hasVendorLeadPortal');
+            const isLiveTransfer = (did && did === matchedOrg.liveTransferDid) ||
+              (!matchedOrg.inboundCallsDid && hasFeature(matchedOrg, 'hasLiveTransfer'));
+            const formType = isLiveTransfer ? 'live-transfer' : 'inbound-call';
 
             let digitsOnly = phoneNumber.replace(/\D/g, '');
             if (digitsOnly.length === 11 && digitsOnly.startsWith('1')) digitsOnly = digitsOnly.substring(1);
@@ -407,12 +413,22 @@ const handleInboundIngestion = async (req, res) => {
               rawPayload: raw,
             };
 
-            if (isBenOrJake2) {
-              await BenWebsiteLead.findOneAndUpdate(
+            if (isPortalOrg) {
+              const benDoc = await BenWebsiteLead.findOneAndUpdate(
                 { phone: digitsOnly, organization: matchedOrg._id },
                 { $set: webLeadPayload },
                 { upsert: true, new: true }
               );
+              if (req.io && benDoc) {
+                req.io.emit('newBenWebsiteLead', {
+                  _id: benDoc._id,
+                  name: benDoc.name,
+                  formType: benDoc.formType || formType,
+                  organizationId: String(matchedOrg._id),
+                  organizationName: matchedOrg.name,
+                  createdAt: benDoc.createdAt,
+                });
+              }
             } else {
               await WebsiteLead.findOneAndUpdate(
                 { phone: digitsOnly, organization: matchedOrg._id },

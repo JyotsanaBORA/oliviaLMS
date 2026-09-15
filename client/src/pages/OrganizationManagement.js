@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import axios from '../utils/axios';
 import toast from 'react-hot-toast';
+import OrgFeaturesConfig from '../features/organization/components/OrgFeaturesConfig';
 
 const OrganizationManagement = () => {
   const [organizations, setOrganizations] = useState([]);
@@ -42,6 +43,7 @@ const OrganizationManagement = () => {
     inboundCallsDid: '',
     sourceIds: [],
     inboundDids: [],
+    features: {},
     showLoopLeads: false,
   });
 
@@ -192,6 +194,7 @@ const OrganizationManagement = () => {
       inboundCallsDid: org.inboundCallsDid || '',
       sourceIds: Array.isArray(org.sourceIds) ? [...org.sourceIds] : [],
       inboundDids: Array.isArray(org.inboundDids) ? [...org.inboundDids] : [],
+      features: org.features || {},
       showLoopLeads: org.showLoopLeads === true,
     });
     setShowEditModal(true);
@@ -626,6 +629,11 @@ const OrganizationManagement = () => {
                         onChange={(e) => setOrganizationForm({...organizationForm, address: e.target.value})}
                       />
                     </div>
+
+                    <OrgFeaturesConfig
+                      features={organizationForm.features || {}}
+                      onChange={(features) => setOrganizationForm(prev => ({ ...prev, features }))}
+                    />
                   </div>
                 </div>
 
@@ -851,6 +859,12 @@ const OrganizationManagement = () => {
                         )}
                       </div>
                     </div>
+
+                    {/* Dynamic Organization Features & Permissions */}
+                    <OrgFeaturesConfig
+                      features={organizationForm.features || {}}
+                      onChange={(features) => setOrganizationForm(prev => ({ ...prev, features }))}
+                    />
 
                     {/* Loop Leads toggle */}
                     <div className="col-span-6">
