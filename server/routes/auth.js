@@ -412,12 +412,11 @@ router.post('/login', loginValidation, handleValidationErrors, async (req, res) 
       });
     }
 
+    // Update last login cleanly without triggering full-document validation on populated references
+    await User.findByIdAndUpdate(user._id, { $set: { lastLogin: new Date() } });
+
     // Populate organization for client-side role checks and features
     await user.populate('organization', ORG_POPULATE_FIELDS);
-
-    // Update last login
-    user.lastLogin = new Date();
-    await user.save();
 
     // Generate token
     const token = generateToken(user._id);
@@ -431,11 +430,13 @@ router.post('/login', loginValidation, handleValidationErrors, async (req, res) 
       name: user.name,
       appUserId: user._id.toString(),
       role: user.role,
-      token,
+      isMainOrgAdmin: mainOrgAdmin,
     });
 
+    notifyCheckIn(user.email); // HRMS check-in — fire-and-forget
+
     const userJson = user.toJSON();
-    if (userJson.organization) {
+    if (userJson.organization && typeof userJson.organization === 'object') {
       userJson.organization.features = resolveOrgFeatures(user.organization);
     }
 
@@ -503,7 +504,7 @@ router.get('/me', protect, async (req, res) => {
     const mainOrgAdmin = user.role === 'admin' ? await isMainOrgAdminUser(user) : false;
 
     const userJson = user.toJSON();
-    if (userJson.organization) {
+    if (userJson.organization && typeof userJson.organization === 'object') {
       userJson.organization.features = resolveOrgFeatures(user.organization);
     }
 
