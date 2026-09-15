@@ -106,6 +106,15 @@ const organizationSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+  // Reusable permission & feature flags for dynamic dashboard and routing behavior
+  features: {
+    hasLiveTransfer: { type: Boolean, default: null },
+    hasInboundCalls: { type: Boolean, default: null },
+    hasDualDidSwitcher: { type: Boolean, default: null },
+    hasVendorLeadPortal: { type: Boolean, default: null },
+    hasOutboundData: { type: Boolean, default: null },
+    canDownloadCsv: { type: Boolean, default: null },
+  },
   isActive: {
     type: Boolean,
     default: true

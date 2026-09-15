@@ -5,6 +5,7 @@ const Organization = require('../models/Organization');
 const User = require('../models/User');
 const { protect } = require('../middleware/auth');
 const handleValidationErrors = require('../middleware/validation');
+const { resolveOrgFeatures, sanitizeFeatures } = require('../services/organizationFeatures/featureService');
 
 // Helper — true if the requesting user is the Reddington Global Consultancy admin
 const isReddingtonAdmin = async (user) => {
@@ -165,7 +166,7 @@ router.post('/', protect, organizationCreateValidation, handleValidationErrors, 
       });
     }
 
-    const { name, description, address, phone, email, website } = req.body;
+    const { name, description, address, phone, email, website, liveTransferDid, inboundCallsDid, inboundDids, sourceIds, features, showLoopLeads, showVendorData } = req.body;
 
     // Check if organization with this name already exists
     const existingOrg = await Organization.findOne({ 
@@ -179,6 +180,11 @@ router.post('/', protect, organizationCreateValidation, handleValidationErrors, 
       });
     }
 
+    const sanitizedFeatures = sanitizeFeatures(features);
+    if (sanitizedFeatures.hasOutboundData !== undefined && showVendorData === undefined) {
+      sanitizedFeatures.hasOutboundData = Boolean(sanitizedFeatures.hasOutboundData);
+    }
+
     // Create organization
     const organization = await Organization.create({
       name,
@@ -187,16 +193,26 @@ router.post('/', protect, organizationCreateValidation, handleValidationErrors, 
       phone,
       email,
       website,
+      liveTransferDid: liveTransferDid ? String(liveTransferDid).trim() : null,
+      inboundCallsDid: inboundCallsDid ? String(inboundCallsDid).trim() : null,
+      inboundDids: Array.isArray(inboundDids) ? inboundDids.map(d => String(d).trim()).filter(Boolean) : [],
+      sourceIds: Array.isArray(sourceIds) ? sourceIds.map(s => String(s).trim().toUpperCase()).filter(Boolean) : [],
+      features: sanitizedFeatures,
+      showLoopLeads: Boolean(showLoopLeads),
+      showVendorData: sanitizedFeatures.hasOutboundData !== undefined ? sanitizedFeatures.hasOutboundData : Boolean(showVendorData),
       createdBy: req.user._id
     });
 
     // Populate createdBy field
     await organization.populate('createdBy', 'name email');
 
+    const orgJson = organization.toJSON();
+    orgJson.features = resolveOrgFeatures(organization);
+
     res.status(201).json({
       success: true,
       message: 'Organization created successfully',
-      data: organization
+      data: orgJson
     });
 
   } catch (error) {
@@ -257,8 +273,10 @@ router.get('/', protect, async (req, res) => {
           counts.total += count;
         });
 
+        const orgData = org.toJSON();
+        orgData.features = resolveOrgFeatures(org);
         return {
-          ...org.toJSON(),
+          ...orgData,
           userCounts: counts
         };
       })
@@ -317,10 +335,13 @@ router.get('/:id', protect, async (req, res) => {
       agent2: users.filter(user => user.role === 'agent2')
     };
 
+    const orgData = organization.toJSON();
+    orgData.features = resolveOrgFeatures(organization);
+
     res.status(200).json({
       success: true,
       data: {
-        organization,
+        organization: orgData,
         users: usersByRole,
         totalUsers: users.length
       }
@@ -417,6 +438,18 @@ router.put('/:id', protect, organizationValidation, handleValidationErrors, asyn
       updateData.inboundDids = currentDids;
     }
 
+    // Update features when provided
+    if (req.body.features && typeof req.body.features === 'object') {
+      const sanitized = sanitizeFeatures(req.body.features);
+      updateData.features = {
+        ...(organization.features || {}),
+        ...sanitized
+      };
+      if (sanitized.hasOutboundData !== undefined) {
+        updateData.showVendorData = sanitized.hasOutboundData;
+      }
+    }
+
     // Only update showLoopLeads when explicitly provided
     if (typeof showLoopLeads === 'boolean') {
       updateData.showLoopLeads = showLoopLeads;
@@ -434,10 +467,13 @@ router.put('/:id', protect, organizationValidation, handleValidationErrors, asyn
       { new: true, runValidators: true }
     ).populate('createdBy', 'name email');
 
+    const orgJson = updatedOrganization.toJSON();
+    orgJson.features = resolveOrgFeatures(updatedOrganization);
+
     res.status(200).json({
       success: true,
       message: 'Organization updated successfully',
-      data: updatedOrganization
+      data: orgJson
     });
 
   } catch (error) {
@@ -791,6 +827,10 @@ const generateWebhookKeyHandler = async (req, res) => {
       webhookPath = '/api/webhook/ben-leads';
     } else if (lowerName.includes('jake2') || lowerName.includes('socialupmedia 2') || lowerName.includes('social up media 2') || lowerName.includes('socialupmedia2')) {
       webhookPath = '/api/webhook/jake2-leads';
+    } else if (lowerName.includes('jake3') || lowerName.includes('socialupmedia 3') || lowerName.includes('social up media 3') || lowerName.includes('socialupmedia3')) {
+      webhookPath = '/api/webhook/jake3-leads';
+    } else if (lowerName.includes('jake4') || lowerName.includes('socialupmedia 4') || lowerName.includes('social up media 4') || lowerName.includes('socialupmedia4')) {
+      webhookPath = '/api/webhook/jake4-leads';
     }
 
     return res.status(200).json({

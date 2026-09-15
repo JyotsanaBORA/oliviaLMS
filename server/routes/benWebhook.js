@@ -243,5 +243,9 @@ router.post('/ben-leads', webhookLimiter, handleWebhookSubmission);
 router.post('/truclick-leads', webhookLimiter, handleWebhookSubmission);
 router.post('/jake2-leads', webhookLimiter, handleWebhookSubmission);
 router.post('/jake2', webhookLimiter, handleWebhookSubmission);
+router.post('/jake3-leads', webhookLimiter, handleWebhookSubmission);
+router.post('/jake3', webhookLimiter, handleWebhookSubmission);
+router.post('/jake4-leads', webhookLimiter, handleWebhookSubmission);
+router.post('/jake4', webhookLimiter, handleWebhookSubmission);
 
 module.exports = router;

@@ -38,6 +38,8 @@ import BenWebsiteLeadsModal from '../components/BenWebsiteLeadsModal';
 import LoopLeadsModal from '../components/LoopLeadsModal';
 import InboundDataModal from '../components/InboundDataModal';
 import Pagination from '../components/Pagination';
+import VendorPortalButton from '../features/organization/components/VendorPortalButton';
+import { hasOrgFeature } from '../features/organization/utils/orgPermissions';
 import { useSocket } from '../contexts/SocketContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useRefresh } from '../contexts/RefreshContext';
@@ -193,6 +195,10 @@ const AdminDashboard = () => {
   // Jake 2 Leads modal
   const [showJake2Leads, setShowJake2Leads] = useState(false);
   const [jake2Badge, setJake2Badge] = useState(0);
+
+  // Dynamic Vendor Leads portal modal & badges
+  const [activeVendorPortalOrg, setActiveVendorPortalOrg] = useState(null);
+  const [portalBadges, setPortalBadges] = useState({});
 
   // Loop leads modal (orgs with showLoopLeads === true)
   const [showLoopLeads, setShowLoopLeads] = useState(false);
@@ -658,7 +664,11 @@ const AdminDashboard = () => {
   const isSocialUpAdmin = useMemo(() => {
     const orgName = (user?.organization?.name || '').trim().toLowerCase();
     const orgId = String(user?.organization?._id || user?.organization || '');
-    if (orgId === '6aa03313a396c53fdf24e16f' || orgName.includes('2') || orgName.includes('jake2')) {
+    if (
+      orgId === '6aa03313a396c53fdf24e16f' || orgId === '6aa825d0de03dd4a4e976381' || orgId === '6aa825f973457be744ec45ea' ||
+      orgName.includes('2') || orgName.includes('3') || orgName.includes('4') ||
+      orgName.includes('jake2') || orgName.includes('jake3') || orgName.includes('jake4')
+    ) {
       return false;
     }
     return user?.role === 'admin' && (orgName === 'social up media llc' || orgName === 'social up media' || orgName === 'social up' || orgName === 'socialup media' || orgName === 'socialup' || orgId === '6a99ddd7cea428c97ea29bdb');
@@ -690,9 +700,9 @@ const AdminDashboard = () => {
       liveTransferDid: ltDid,
       inboundCallsDid: inDid,
       allDids,
-      hasMultiple: Boolean(isSocialUp || (ltDid && inDid) || (allDids.length > 1 && !isJake2Admin))
+      hasMultiple: Boolean(isSocialUp || (ltDid && inDid) || (allDids.length > 1 && !hasOrgFeature(user?.organization, 'hasVendorLeadPortal')))
     };
-  }, [user, isSocialUpAdmin, isJake2Admin]);
+  }, [user, isSocialUpAdmin]);
 
   const handleDidTabChange = (tabValue) => {
     setSelectedDidTab(tabValue);
@@ -942,6 +952,15 @@ const AdminDashboard = () => {
         if (!isMyLead && !isReddingtonAdmin) return;
         if (benLeadTotalRef.current !== null) benLeadTotalRef.current += 1;
         
+        if (leadOrgId) {
+          const orgIdStr = String(leadOrgId);
+          setPortalBadges(prev => ({
+            ...prev,
+            [orgIdStr]: (prev[orgIdStr] || 0) + 1,
+            default: (prev.default || 0) + 1
+          }));
+        }
+
         const orgNameLower = (data?.organizationName || '').toLowerCase();
         if (orgNameLower.includes('socialupmedia 2') || orgNameLower.includes('social up media 2') || orgNameLower.includes('jake2') || String(leadOrgId) === '6aa03313a396c53fdf24e16f') {
           setJake2Badge(n => n + 1);
@@ -1385,44 +1404,20 @@ const AdminDashboard = () => {
                   )}
                 </button>
               )}
-              {/* TruClick Media Leads button — Reddington admin or TruClick admin */}
-              {user?.role === 'admin' && (isReddingtonAdmin || user?.organization?.name?.toLowerCase().includes('truclick') || user?.organization?.name?.toLowerCase().includes('tru click')) && (
-                <button
-                  onClick={() => { setShowTruClickLeads(true); setTruClickBadge(0); }}
-                  className="relative flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold text-white transition-all duration-200 active:scale-95 shadow-md"
-                  style={{ background: 'linear-gradient(135deg,#0284c7,#0369a1)', boxShadow: '0 4px 12px rgba(2,132,199,0.4)' }}
-                  title="View TruClick Media leads"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9" />
-                  </svg>
-                  TruClick Media Leads
-                  {truClickBadge > 0 && (
-                    <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] flex items-center justify-center bg-red-500 text-white text-[10px] font-bold rounded-full px-1">
-                      {truClickBadge > 99 ? '99+' : truClickBadge}
-                    </span>
-                  )}
-                </button>
-              )}
-              {/* Jake 2 Leads button — Reddington admin or Jake 2 admin */}
-              {user?.role === 'admin' && (isReddingtonAdmin || isJake2Admin) && (
-                <button
-                  onClick={() => { setShowJake2Leads(true); setJake2Badge(0); }}
-                  className="relative flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold text-white transition-all duration-200 active:scale-95 shadow-md"
-                  style={{ background: 'linear-gradient(135deg,#8b5cf6,#7c3aed)', boxShadow: '0 4px 12px rgba(139,92,246,0.4)' }}
-                  title="View Jake 2 / Socialupmedia 2 leads"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9" />
-                  </svg>
-                  Jake 2 Leads
-                  {jake2Badge > 0 && (
-                    <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] flex items-center justify-center bg-red-500 text-white text-[10px] font-bold rounded-full px-1">
-                      {jake2Badge > 99 ? '99+' : jake2Badge}
-                    </span>
-                  )}
-                </button>
-              )}
+              {/* Dynamic Vendor Leads Portal Buttons (Jake 2, Jake 3, Jake 4, TruClick, etc.) */}
+              <VendorPortalButton
+                user={user}
+                isReddingtonAdmin={isReddingtonAdmin}
+                organizations={organizations}
+                portalBadges={portalBadges}
+                onOpenPortal={(org) => {
+                  setActiveVendorPortalOrg(org);
+                  const orgIdStr = String(org._id || org.id);
+                  setPortalBadges(prev => ({ ...prev, [orgIdStr]: 0, default: 0 }));
+                  if (org.name?.toLowerCase().includes('truclick')) setTruClickBadge(0);
+                  if (org.name?.toLowerCase().includes('2')) setJake2Badge(0);
+                }}
+              />
               {/* Inbound Calls button — all admins (scoped for tenant admins, full access for Reddington admin) */}
               {user?.role === 'admin' && (
                 <button
@@ -1497,8 +1492,8 @@ const AdminDashboard = () => {
           </div>
         </div>
 
-        {/* Feature / DID Segregated Dashboard Switcher for Jake 1 / Team 1 & Orgs with multiple DIDs (Hidden for Jake 2) */}
-        {!isJake2Admin && (isSocialUpAdmin || orgDids.hasMultiple) && (
+        {/* Feature / DID Segregated Dashboard Switcher (Dynamic based on hasDualDidSwitcher or multi-DID setup) */}
+        {(hasOrgFeature(user?.organization, 'hasDualDidSwitcher') || (isSocialUpAdmin || (orgDids.hasMultiple && !hasOrgFeature(user?.organization, 'hasVendorLeadPortal')))) && (
           <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 p-4 rounded-2xl shadow-xl border border-indigo-500/30 text-white mb-1 transition-all duration-300">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div className="flex items-center gap-3">
@@ -3391,6 +3386,15 @@ const AdminDashboard = () => {
           targetOrgName={isReddingtonAdmin ? 'Socialupmedia 2' : undefined}
           title="Jake 2 Leads"
           onClose={() => setShowJake2Leads(false)}
+        />
+      )}
+
+      {/* Dynamic Vendor Leads Portal Modal */}
+      {activeVendorPortalOrg && (
+        <BenWebsiteLeadsModal
+          targetOrgName={isReddingtonAdmin ? activeVendorPortalOrg.name : undefined}
+          title={`${activeVendorPortalOrg.name} Leads`}
+          onClose={() => setActiveVendorPortalOrg(null)}
         />
       )}
 
