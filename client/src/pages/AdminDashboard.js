@@ -1305,7 +1305,7 @@ const AdminDashboard = () => {
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 py-4 px-3">
       <div className="w-full space-y-3">
         {/* Header */}
-        <div className="bg-white rounded-xl shadow-lg border border-gray-100 p-4 backdrop-blur-sm bg-opacity-95">
+        <div className="relative z-30 bg-white rounded-xl shadow-lg border border-gray-100 p-4 backdrop-blur-sm bg-opacity-95">
           <div className="flex flex-col md:flex-row justify-between items-center gap-3">
             <div className="flex items-center gap-3">
               <div className="p-2 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg shadow-lg">

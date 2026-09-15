@@ -167,7 +167,7 @@ const ClientPortalsDropdown = ({
   });
 
   return (
-    <div className="relative" ref={dropdownRef}>
+    <div className="relative z-50" ref={dropdownRef}>
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
@@ -191,7 +191,7 @@ const ClientPortalsDropdown = ({
 
       {/* Dropdown Floating Menu */}
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-72 bg-white rounded-xl shadow-2xl border border-gray-100 py-2 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+        <div className="absolute right-0 mt-2 w-72 bg-white rounded-xl shadow-2xl border border-gray-200 ring-1 ring-black/5 py-2 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
           <div className="px-3 py-1.5 border-b border-gray-100 flex items-center justify-between">
             <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400">Client & Vendor Portals</span>
             {totalBadges > 0 && (
