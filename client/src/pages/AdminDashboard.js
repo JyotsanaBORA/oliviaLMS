@@ -1850,7 +1850,11 @@ const AdminDashboard = () => {
           <DidBreakdownTable
             dids={orgDids.allDids}
             liveTransferDid={orgDids.liveTransferDid}
+            liveTransferDids={orgDids.liveTransferDids}
             inboundCallsDid={orgDids.inboundCallsDid}
+            inboundCallsDids={orgDids.inboundCallsDids}
+            loanFlipDid={orgDids.loanFlipDid}
+            loanFlipDids={orgDids.loanFlipDids}
             byDidStats={stats?.byDid || []}
             onSelectDid={handleDidTabChange}
           />

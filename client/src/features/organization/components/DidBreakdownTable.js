@@ -1,5 +1,5 @@
 import React from 'react';
-import { Zap, PhoneCall, PhoneIncoming, ArrowRight, TrendingUp, CheckCircle2, XCircle, Clock, Award } from 'lucide-react';
+import { Zap, PhoneCall, PhoneIncoming, ArrowRight, TrendingUp, CheckCircle2, XCircle, Clock, Award, RefreshCw } from 'lucide-react';
 
 /**
  * DidBreakdownTable
@@ -9,7 +9,11 @@ import { Zap, PhoneCall, PhoneIncoming, ArrowRight, TrendingUp, CheckCircle2, XC
 const DidBreakdownTable = ({
   dids = [],
   liveTransferDid = null,
+  liveTransferDids = [],
   inboundCallsDid = null,
+  inboundCallsDids = [],
+  loanFlipDid = null,
+  loanFlipDids = [],
   byDidStats = [],
   onSelectDid,
 }) => {
@@ -73,8 +77,9 @@ const DidBreakdownTable = ({
               const sales = Number(stat.sales || 0);
               const convRate = qualified > 0 ? ((sales / qualified) * 100).toFixed(1) : '0.0';
 
-              const isLiveTransfer = did === liveTransferDid;
-              const isInboundCall = did === inboundCallsDid;
+              const isLiveTransfer = (liveTransferDids || []).includes(did) || did === liveTransferDid;
+              const isInboundCall = (inboundCallsDids || []).includes(did) || did === inboundCallsDid;
+              const isLoanFlip = (loanFlipDids || []).includes(did) || did === loanFlipDid;
 
               return (
                 <tr key={did} className="hover:bg-indigo-50/40 transition-colors">
@@ -95,10 +100,15 @@ const DidBreakdownTable = ({
                         <PhoneCall className="h-3.5 w-3.5 text-indigo-600" />
                         Inbound Calls
                       </span>
+                    ) : isLoanFlip ? (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-purple-100 text-purple-800 border border-purple-300">
+                        <RefreshCw className="h-3.5 w-3.5 text-purple-600" />
+                        Loan Flip
+                      </span>
                     ) : (
                       <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-700 border border-slate-300">
                         <PhoneIncoming className="h-3.5 w-3.5 text-slate-500" />
-                        Direct Inbound
+                        Inbound Line
                       </span>
                     )}
                   </td>
