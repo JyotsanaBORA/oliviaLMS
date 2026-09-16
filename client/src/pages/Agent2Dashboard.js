@@ -20,11 +20,13 @@ import {
 } from 'lucide-react';
 import axios from '../utils/axios';
 import toast from 'react-hot-toast';
-import LoadingSpinner from '../components/LoadingSpinner';
-import AgentNotesPad from '../components/AgentNotesModal';
-import InboundDataModal from '../components/InboundDataModal';
-import Pagination from '../components/Pagination';
-import VicidialCallQueue from '../components/VicidialCallQueue';
+import LoadingSpinner from '../components/common/LoadingSpinner';
+import StatusBadge from '../components/common/StatusBadge';
+import AgentNotesPad from '../components/modals/AgentNotesModal';
+import InboundDataModal from '../components/modals/InboundDataModal';
+import Agent2ViewModal from '../components/modals/Agent2ViewModal';
+import Pagination from '../components/common/Pagination';
+import VicidialCallQueue from '../components/vicidial/VicidialCallQueue';
 import { isGtiOrganization } from '../config/constants';
 import { 
   formatEasternTimeForDisplay, 
@@ -1121,6 +1123,123 @@ const Agent2Dashboard = () => {
     );
   };
 
+  // Streamlined lead row rendering (5 unified columns, zero horizontal scrolling)
+  const renderLeadRow = (lead) => {
+    const isInbound = !!(lead.vicidialDid && lead.vicidialDid.trim());
+    return (
+      <tr 
+        key={lead.leadId || lead._id} 
+        className={isInbound ? 'bg-red-50 hover:bg-red-100 border-l-4 border-l-red-500' : 'bg-blue-50 hover:bg-blue-100 border-l-4 border-l-blue-500'}
+      >
+        {/* 1. Lead & Origin */}
+        <td className="px-5 py-3 whitespace-nowrap">
+          <div>
+            {isInbound ? (
+              <div className="mb-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-100 border border-red-300 text-red-700 text-[10px] font-bold">
+                <span>📥</span> INBOUND
+                <span className="font-mono text-[9px] text-red-500 ml-0.5">DID:{lead.vicidialDid}</span>
+              </div>
+            ) : (
+              <div className="mb-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 border border-blue-300 text-blue-700 text-[10px] font-bold">
+                <span>📤</span> OUTBOUND
+              </div>
+            )}
+            <div className="text-sm font-semibold text-gray-900">{lead.name}</div>
+            {lead.leadId && (
+              <div className="text-xs text-primary-600 font-mono">ID: {lead.leadId}</div>
+            )}
+            <div className="text-xs text-gray-400">
+              Created by: {lead.createdBy?.name || 'System'}
+              {lead.lastUpdatedBy && <span className="text-green-600 ml-1">· Upd: {lead.lastUpdatedBy}</span>}
+            </div>
+            {lead.assignmentNotes && (
+              <div className="text-xs text-gray-500 mt-0.5 italic">
+                Note: {lead.assignmentNotes}
+              </div>
+            )}
+          </div>
+        </td>
+
+        {/* 2. Contact */}
+        <td className="px-5 py-3 whitespace-nowrap">
+          <div className="text-sm text-gray-900">{maskEmail(lead.email)}</div>
+          <div className="text-sm font-mono text-gray-600">{maskPhone(lead.phone)}</div>
+          {lead.alternatePhone && (
+            <div className="text-xs font-mono text-gray-400">Alt: {maskPhone(lead.alternatePhone)}</div>
+          )}
+        </td>
+
+        {/* 3. Financial Profile */}
+        <td className="px-5 py-3 whitespace-nowrap">
+          <div className="flex items-center gap-1.5 mb-1">
+            {getCategoryBadge(lead.category, lead.completionPercentage)}
+            <span className="text-xs font-medium text-gray-600">
+              {lead.debtCategory ? `${lead.debtCategory.charAt(0).toUpperCase() + lead.debtCategory.slice(1)} Debt` : ''}
+            </span>
+          </div>
+          <div className="text-sm font-bold text-gray-900">
+            {lead.totalDebtAmount ? maskAmount(lead.totalDebtAmount) : 'N/A'}
+          </div>
+          <div className="text-xs text-gray-500 mt-0.5 truncate max-w-[180px]" title={Array.isArray(lead.debtTypes) ? lead.debtTypes.join(', ') : lead.source}>
+            {Array.isArray(lead.debtTypes) && lead.debtTypes.length > 0
+              ? lead.debtTypes.join(', ')
+              : (lead.source || 'N/A')}
+          </div>
+        </td>
+
+        {/* 4. Status & Date */}
+        <td className="px-5 py-3 whitespace-nowrap">
+          <div className="flex flex-wrap items-center gap-1.5 mb-1">
+            {lead.isDuplicate ? (
+              <span className="inline-flex px-2 py-0.5 text-[11px] font-semibold rounded-full bg-red-100 text-red-800 border border-red-200">
+                🔄 Duplicate
+              </span>
+            ) : (
+              <span className="inline-flex px-2 py-0.5 text-[11px] font-semibold rounded-full bg-green-100 text-green-800 border border-green-200">
+                ✅ Unique
+              </span>
+            )}
+            <StatusBadge 
+              status={lead.qualificationStatus || 'pending'} 
+              label={
+                lead.qualificationStatus === 'qualified' ? '✅ Qualified' :
+                (lead.qualificationStatus === 'not-qualified' || lead.qualificationStatus === 'disqualified' || lead.qualificationStatus === 'unqualified') ? '❌ Not Qualified' :
+                '⏳ Pending'
+              }
+            />
+          </div>
+          <div className="text-xs text-gray-500">
+            {formatEasternTimeForDisplay(lead.createdAt, { includeTime: false })} · <span className="text-gray-400">{formatEasternTimeForDisplay(lead.createdAt, { includeTime: true, timeOnly: true })}</span>
+          </div>
+        </td>
+
+        {/* 5. Actions */}
+        <td className="px-5 py-3 whitespace-nowrap text-right text-sm font-medium">
+          <div className="flex items-center justify-end gap-1.5">
+            <button
+              onClick={() => openViewModal(lead)}
+              className="px-2.5 py-1 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded border border-blue-200 transition-colors"
+            >
+              View
+            </button>
+            <button
+              onClick={() => openEditModal(lead)}
+              className="px-2.5 py-1 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded border border-emerald-200 transition-colors"
+            >
+              Edit
+            </button>
+            <button
+              onClick={() => openUpdateModal(lead)}
+              className="px-2.5 py-1 text-xs font-semibold text-primary-700 bg-primary-50 hover:bg-primary-100 rounded border border-primary-200 transition-colors"
+            >
+              Status
+            </button>
+          </div>
+        </td>
+      </tr>
+    );
+  };
+
   // Render persistent leads table
   const renderPersistentLeadsTable = (leads, type, title, description) => (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200">
@@ -1138,169 +1257,28 @@ const Agent2Dashboard = () => {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Lead Info
+                <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Lead & Origin
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Contact
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Category
+                <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Financial Profile
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Debt Amount
+                <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Status & Date
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Debt Type
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Duplicate Status
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Qualification Status
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Created Date
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-5 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Actions
                 </th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {leads.map((lead) => {
-                const isInbound = !!(lead.vicidialDid && lead.vicidialDid.trim());
-                return (
-                <tr key={lead.leadId || lead._id} className={isInbound ? 'bg-red-50 hover:bg-red-100 border-l-4 border-l-red-500' : 'bg-blue-50 hover:bg-blue-100 border-l-4 border-l-blue-500'}>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div>
-                      {/* Inbound / Outbound call-type badge */}
-                      {isInbound ? (
-                        <div className="mb-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-100 border border-red-300 text-red-700 text-[10px] font-bold">
-                          <span>📥</span> INBOUND
-                          <span className="font-mono text-[9px] text-red-500 ml-0.5">DID:{lead.vicidialDid}</span>
-                        </div>
-                      ) : (
-                        <div className="mb-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 border border-blue-300 text-blue-700 text-[10px] font-bold">
-                          <span>📤</span> OUTBOUND
-                        </div>
-                      )}
-                      <div className="text-sm font-medium text-gray-900">{lead.name}</div>
-                      <div className="text-sm text-gray-500">
-                        {lead.debtCategory ? `${lead.debtCategory.charAt(0).toUpperCase() + lead.debtCategory.slice(1)} Debt` : 'N/A'}
-                      </div>
-                      {lead.leadId && (
-                        <div className="text-xs text-primary-600 font-mono">ID: {lead.leadId}</div>
-                      )}
-                      <div className="text-xs text-gray-400">
-                        Created by: {lead.createdBy?.name}
-                      </div>
-                      {lead.lastUpdatedBy && (
-                        <div className="text-xs text-green-600">
-                          Updated by: {lead.lastUpdatedBy}
-                        </div>
-                      )}
-                      {lead.assignmentNotes && (
-                        <div className="text-xs text-gray-500 mt-1">
-                          Note: {lead.assignmentNotes}
-                        </div>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-900">{maskEmail(lead.email)}</div>
-                    <div className="text-sm text-gray-500">{maskPhone(lead.phone)}</div>
-                    {lead.alternatePhone && (
-                      <div className="text-xs text-gray-400">Alt: {maskPhone(lead.alternatePhone)}</div>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    {getCategoryBadge(lead.category, lead.completionPercentage)}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {lead.totalDebtAmount ? maskAmount(lead.totalDebtAmount) : 'N/A'}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {Array.isArray(lead.debtTypes) && lead.debtTypes.length > 0 
-                      ? (
-                        <div className="space-y-1">
-                          {lead.debtTypes.map((debtType, index) => (
-                            <div key={index} className="text-sm text-gray-900">
-                              {debtType}
-                            </div>
-                          ))}
-                        </div>
-                      )
-                      : (lead.source || 'N/A')}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    {lead.isDuplicate ? (
-                      <div>
-                        <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">
-                          🔄 Duplicate
-                        </span>
-                        {lead.duplicateReason && (
-                          <div className="text-xs text-gray-500 mt-1">
-                            Phone Match
-                          </div>
-                        )}
-                        {lead.duplicateOf && (
-                          <div className="text-xs text-blue-600 mt-1">
-                            Original: {lead.duplicateOf.leadId || lead.duplicateOf}
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
-                        ✅ Unique
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                      lead.qualificationStatus === 'qualified' ? 'bg-green-100 text-green-800' :
-                      (lead.qualificationStatus === 'not-qualified' || lead.qualificationStatus === 'disqualified' || lead.qualificationStatus === 'unqualified') ? 'bg-red-100 text-red-800' :
-                      'bg-yellow-100 text-yellow-800'
-                    }`}>
-                      {lead.qualificationStatus === 'qualified' ? '✅ Qualified' :
-                       (lead.qualificationStatus === 'not-qualified' || lead.qualificationStatus === 'disqualified' || lead.qualificationStatus === 'unqualified') ? '❌ Not - Qualified' :
-                       '⏳ Pending'}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    <div>
-                      {formatEasternTimeForDisplay(lead.createdAt, { includeTime: false })}
-                    </div>
-                    <div className="text-xs text-gray-400">
-                      {formatEasternTimeForDisplay(lead.createdAt, { includeTime: true, timeOnly: true })}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                    <button
-                      onClick={() => openViewModal(lead)}
-                      className="text-blue-600 hover:text-blue-900 mr-3"
-                    >
-                      View Details
-                    </button>
-                    <button
-                      onClick={() => openEditModal(lead)}
-                      className="text-green-600 hover:text-green-900 mr-3"
-                    >
-                      Edit Details
-                    </button>
-                    <button
-                      onClick={() => openUpdateModal(lead)}
-                      className="text-primary-600 hover:text-primary-900 mr-3"
-                    >
-                      Update Status
-                    </button>
-                  </td>
-                </tr>
-                );
-              })}
+              {leads.map(renderLeadRow)}
               {leads.length === 0 && (
                 <tr>
-                  <td colSpan="9" className="px-6 py-8 text-center text-gray-500">
+                  <td colSpan="5" className="px-6 py-8 text-center text-gray-500">
                     No {type === 'qualification' ? 'pending qualification' : 'callback needed'} leads assigned to you.
                   </td>
                 </tr>
@@ -2083,169 +2061,28 @@ const Agent2Dashboard = () => {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Lead Info
+                <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Lead & Origin
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Contact
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Category
+                <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Financial Profile
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Debt Amount
+                <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Status & Date
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Debt Type
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Duplicate Status
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Qualification Status
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Created Date
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-5 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Actions
                 </th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {stats.todaysLeads?.map((lead) => {
-                const isInbound = !!(lead.vicidialDid && lead.vicidialDid.trim());
-                return (
-                <tr key={lead.leadId || lead._id} className={isInbound ? 'bg-red-50 hover:bg-red-100 border-l-4 border-l-red-500' : 'bg-blue-50 hover:bg-blue-100 border-l-4 border-l-blue-500'}>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div>
-                      {/* Inbound / Outbound call-type badge */}
-                      {isInbound ? (
-                        <div className="mb-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-100 border border-red-300 text-red-700 text-[10px] font-bold">
-                          <span>📥</span> INBOUND
-                          <span className="font-mono text-[9px] text-red-500 ml-0.5">DID:{lead.vicidialDid}</span>
-                        </div>
-                      ) : (
-                        <div className="mb-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 border border-blue-300 text-blue-700 text-[10px] font-bold">
-                          <span>📤</span> OUTBOUND
-                        </div>
-                      )}
-                      <div className="text-sm font-medium text-gray-900">{lead.name}</div>
-                      <div className="text-sm text-gray-500">
-                        {lead.debtCategory ? `${lead.debtCategory.charAt(0).toUpperCase() + lead.debtCategory.slice(1)} Debt` : 'N/A'}
-                      </div>
-                      {lead.leadId && (
-                        <div className="text-xs text-primary-600 font-mono">ID: {lead.leadId}</div>
-                      )}
-                      <div className="text-xs text-gray-400">
-                        Created by: {lead.createdBy?.name}
-                      </div>
-                      {lead.lastUpdatedBy && (
-                        <div className="text-xs text-green-600">
-                          Updated by: {lead.lastUpdatedBy}
-                        </div>
-                      )}
-                      {lead.assignmentNotes && (
-                        <div className="text-xs text-gray-500 mt-1">
-                          Note: {lead.assignmentNotes}
-                        </div>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-900">{maskEmail(lead.email)}</div>
-                    <div className="text-sm text-gray-500">{maskPhone(lead.phone)}</div>
-                    {lead.alternatePhone && (
-                      <div className="text-xs text-gray-400">Alt: {maskPhone(lead.alternatePhone)}</div>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    {getCategoryBadge(lead.category, lead.completionPercentage)}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {lead.totalDebtAmount ? maskAmount(lead.totalDebtAmount) : 'N/A'}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {Array.isArray(lead.debtTypes) && lead.debtTypes.length > 0 
-                      ? (
-                        <div className="space-y-1">
-                          {lead.debtTypes.map((debtType, index) => (
-                            <div key={index} className="text-sm text-gray-900">
-                              {debtType}
-                            </div>
-                          ))}
-                        </div>
-                      )
-                      : (lead.source || 'N/A')}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    {lead.isDuplicate ? (
-                      <div>
-                        <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">
-                          🔄 Duplicate
-                        </span>
-                        {lead.duplicateReason && (
-                          <div className="text-xs text-gray-500 mt-1">
-                            Phone Match
-                          </div>
-                        )}
-                        {lead.duplicateOf && (
-                          <div className="text-xs text-blue-600 mt-1">
-                            Original: {lead.duplicateOf.leadId || lead.duplicateOf}
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
-                        ✅ Unique
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                      lead.qualificationStatus === 'qualified' ? 'bg-green-100 text-green-800' :
-                      (lead.qualificationStatus === 'not-qualified' || lead.qualificationStatus === 'disqualified' || lead.qualificationStatus === 'unqualified') ? 'bg-red-100 text-red-800' :
-                      'bg-yellow-100 text-yellow-800'
-                    }`}>
-                      {lead.qualificationStatus === 'qualified' ? '✅ Qualified' :
-                       (lead.qualificationStatus === 'not-qualified' || lead.qualificationStatus === 'disqualified' || lead.qualificationStatus === 'unqualified') ? '❌ Not - Qualified' :
-                       '⏳ Pending'}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    <div>
-                      {formatEasternTimeForDisplay(lead.createdAt, { includeTime: false })}
-                    </div>
-                    <div className="text-xs text-gray-400">
-                      {formatEasternTimeForDisplay(lead.createdAt, { includeTime: true, timeOnly: true })}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                    <button
-                      onClick={() => openViewModal(lead)}
-                      className="text-blue-600 hover:text-blue-900 mr-3"
-                    >
-                      View Details
-                    </button>
-                    <button
-                      onClick={() => openEditModal(lead)}
-                      className="text-green-600 hover:text-green-900 mr-3"
-                    >
-                      Edit Details
-                    </button>
-                    <button
-                      onClick={() => openUpdateModal(lead)}
-                      className="text-primary-600 hover:text-primary-900 mr-3"
-                    >
-                      Update Status
-                    </button>
-                  </td>
-                </tr>
-                );
-              })}
+              {stats.todaysLeads?.map(renderLeadRow)}
               {leads.length === 0 && (
                 <tr>
-                  <td colSpan="6" className="px-6 py-8 text-center text-gray-500">
+                  <td colSpan="5" className="px-6 py-8 text-center text-gray-500">
                     No leads found matching your criteria.
                   </td>
                 </tr>
@@ -2293,360 +2130,29 @@ const Agent2Dashboard = () => {
       </div>
 
       {/* View Lead Details Modal */}
-      {showViewModal && selectedLead && (
-        <div className="fixed inset-0 z-50 overflow-y-auto">
-          <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-            <div className="fixed inset-0 transition-opacity" aria-hidden="true">
-              <div 
-                className="absolute inset-0 bg-gray-500 opacity-75"
-                onClick={() => setShowViewModal(false)}
-              ></div>
-            </div>
-
-            <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-4xl sm:w-full">
-              <div className="bg-white px-6 pt-6 pb-4">
-                <div className="flex justify-between items-center mb-6">
-                  <div>
-                    <h3 className="text-lg font-medium text-gray-900">Lead Details: {selectedLead.name}</h3>
-                    <p className="text-sm text-gray-500">Complete lead information</p>
-                  </div>
-                  <button
-                    onClick={() => setShowViewModal(false)}
-                    className="text-gray-400 hover:text-gray-600"
-                  >
-                    <span className="sr-only">Close</span>
-                    <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* Personal Information */}
-                  <div className="bg-gray-50 p-4 rounded-lg">
-                    <h4 className="text-md font-semibold text-gray-900 mb-3">Personal Information</h4>
-                    <div className="space-y-2">
-                      <div>
-                        <span className="text-sm font-medium text-gray-600">Name:</span>
-                        <span className="ml-2 text-sm text-gray-900">{selectedLead.name || 'N/A'}</span>
-                      </div>
-                      <div>
-                        <span className="text-sm font-medium text-gray-600">Email:</span>
-                        <span className="ml-2 text-sm text-gray-900">{selectedLead.email || 'N/A'}</span>
-                      </div>
-                      <div>
-                        <span className="text-sm font-medium text-gray-600">Phone:</span>
-                        <span className="ml-2 text-sm text-gray-900">{selectedLead.phone || 'N/A'}</span>
-                      </div>
-                      {selectedLead.alternatePhone && (
-                        <div>
-                          <span className="text-sm font-medium text-gray-600">Alternate Phone:</span>
-                          <span className="ml-2 text-sm text-gray-900">{selectedLead.alternatePhone}</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Address Information */}
-                  <div className="bg-gray-50 p-4 rounded-lg">
-                    <h4 className="text-md font-semibold text-gray-900 mb-3">Address Information</h4>
-                    <div className="space-y-2">
-                      <div>
-                        <span className="text-sm font-medium text-gray-600">Address:</span>
-                        <span className="ml-2 text-sm text-gray-900">{selectedLead.address || 'N/A'}</span>
-                      </div>
-                      <div>
-                        <span className="text-sm font-medium text-gray-600">City:</span>
-                        <span className="ml-2 text-sm text-gray-900">{selectedLead.city || 'N/A'}</span>
-                      </div>
-                      <div>
-                        <span className="text-sm font-medium text-gray-600">State:</span>
-                        <span className="ml-2 text-sm text-gray-900">{selectedLead.state || 'N/A'}</span>
-                      </div>
-                      <div>
-                        <span className="text-sm font-medium text-gray-600">Zipcode:</span>
-                        <span className="ml-2 text-sm text-gray-900">{selectedLead.zipcode || 'N/A'}</span>
-                      </div>
-                      <div>
-                        <span className="text-sm font-medium text-gray-600">Location:</span>
-                        <span className="ml-2 text-sm text-gray-900">{selectedLead.location || 'N/A'}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Debt Information */}
-                  <div className="bg-gray-50 p-4 rounded-lg">
-                    <h4 className="text-md font-semibold text-gray-900 mb-3">Debt Information</h4>
-                    <div className="space-y-2">
-                      <div>
-                        <span className="text-sm font-medium text-gray-600">Debt Category:</span>
-                        <span className="ml-2 text-sm text-gray-900 capitalize">
-                          {selectedLead.debtCategory || 'N/A'}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-sm font-medium text-gray-600">Debt Types:</span>
-                        <div className="ml-2 text-sm text-gray-900">
-                          {Array.isArray(selectedLead.debtTypes) && selectedLead.debtTypes.length > 0 
-                            ? (
-                              <div className="space-y-1">
-                                {selectedLead.debtTypes.map((debtType, index) => (
-                                  <div key={index}>
-                                    {debtType}
-                                  </div>
-                                ))}
-                              </div>
-                            )
-                            : selectedLead.source || 'N/A'}
-                        </div>
-                      </div>
-                      <div>
-                        <span className="text-sm font-medium text-gray-600">Total Debt Amount:</span>
-                        <span className="ml-2 text-sm text-gray-900">
-                          {selectedLead.totalDebtAmount ? `$${selectedLead.totalDebtAmount.toLocaleString()}` : 'N/A'}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-sm font-medium text-gray-600">Number of Creditors:</span>
-                        <span className="ml-2 text-sm text-gray-900">{selectedLead.numberOfCreditors || 'N/A'}</span>
-                      </div>
-                      <div>
-                        <span className="text-sm font-medium text-gray-600">Monthly Debt Payment:</span>
-                        <span className="ml-2 text-sm text-gray-900">
-                          {selectedLead.monthlyDebtPayment ? `$${selectedLead.monthlyDebtPayment.toLocaleString()}` : 'N/A'}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-sm font-medium text-gray-600">Credit Score Range:</span>
-                        <span className="ml-2 text-sm text-gray-900">{selectedLead.creditScoreRange || 'N/A'}</span>
-                      </div>
-                      <div>
-                        <span className="text-sm font-medium text-gray-600">Category:</span>
-                        <span className="ml-2">{getCategoryBadge(selectedLead.category, selectedLead.completionPercentage)}</span>
-                      </div>
-                      <div>
-                        <span className="text-sm font-medium text-gray-600">Status:</span>
-                        <span className="ml-2">{getStatusBadge(selectedLead.status)}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Additional Information */}
-                  <div className="bg-gray-50 p-4 rounded-lg">
-                    <h4 className="text-md font-semibold text-gray-900 mb-3">Additional Information</h4>
-                    <div className="space-y-2">
-                      <div>
-                        <span className="text-sm font-medium text-gray-600">Created By:</span>
-                        <span className="ml-2 text-sm text-gray-900">{selectedLead.createdBy?.name || 'N/A'}</span>
-                      </div>
-                      <div>
-                        <span className="text-sm font-medium text-gray-600">Created At:</span>
-                        <span className="ml-2 text-sm text-gray-900">
-                          {selectedLead.createdAt ? formatEasternTimeForDisplay(selectedLead.createdAt, { includeTime: false }) : 'N/A'}
-                        </span>
-                      </div>
-                      {selectedLead.lastUpdatedBy && (
-                        <div>
-                          <span className="text-sm font-medium text-gray-600">Last Updated By:</span>
-                          <span className="ml-2 text-sm text-gray-900">{selectedLead.lastUpdatedBy}</span>
-                        </div>
-                      )}
-                      {selectedLead.lastUpdatedAt && (
-                        <div>
-                          <span className="text-sm font-medium text-gray-600">Last Updated:</span>
-                          <span className="ml-2 text-sm text-gray-900">
-                            {formatEasternTimeForDisplay(selectedLead.lastUpdatedAt)}
-                          </span>
-                        </div>
-                      )}
-                      {selectedLead.agent2LastAction && (
-                        <div>
-                          <span className="text-sm font-medium text-gray-600">Agent 2 Last Action:</span>
-                          <span className="ml-2 text-sm font-semibold text-blue-700">
-                            {selectedLead.agent2LastAction}
-                          </span>
-                        </div>
-                      )}
-                      {selectedLead.followUpDate && (
-                        <div>
-                          <span className="text-sm font-medium text-gray-600">Follow-up Date:</span>
-                          <span className="ml-2 text-sm text-gray-900">
-                            {formatEasternTimeForDisplay(selectedLead.followUpDate, { includeTime: false })}
-                            {selectedLead.followUpTime && ` at ${selectedLead.followUpTime}`}
-                          </span>
-                        </div>
-                      )}
-                      {selectedLead.conversionValue && (
-                        <div>
-                          <span className="text-sm font-medium text-gray-600">Conversion Value:</span>
-                          <span className="ml-2 text-sm text-gray-900">
-                            ${selectedLead.conversionValue.toLocaleString()}
-                          </span>
-                        </div>
-                      )}
-                      <div>
-                        <span className="text-sm font-medium text-gray-600">Client ID:</span>
-                        <span className="ml-2 text-sm font-mono font-semibold text-green-700">
-                          {selectedLead.clientId || '—'}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Lead Progress Status - Prominent Display for Agent 2 */}
-                {selectedLead.leadProgressStatus && (
-                  <div className="mt-6">
-                    <h4 className="text-md font-semibold text-gray-900 mb-3">Current Lead Progress Status</h4>
-                    <div className="bg-blue-50 border-l-4 border-blue-400 p-4 rounded-lg">
-                      <div className="flex items-center">
-                        <div className="flex-shrink-0">
-                          <CheckCircle className="h-5 w-5 text-blue-400" />
-                        </div>
-                        <div className="ml-3">
-                          <p className="text-sm font-medium text-blue-800">
-                            Status: <span className="font-bold">{selectedLead.leadProgressStatus}</span>
-                          </p>
-                          {selectedLead.lastUpdatedAt && (
-                            <p className="text-xs text-blue-600 mt-1">
-                              Updated: {formatEasternTimeForDisplay(selectedLead.lastUpdatedAt)}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Agent2 Status Fields */}
-                {(selectedLead.leadProgressStatus || selectedLead.leadStatus || selectedLead.contactStatus || selectedLead.qualificationOutcome || 
-                  selectedLead.callDisposition || selectedLead.engagementOutcome || selectedLead.disqualification) && (
-                  <div className="mt-6">
-                    <h4 className="text-md font-semibold text-gray-900 mb-3">Agent Status Information</h4>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {selectedLead.leadProgressStatus && (
-                        <div className="bg-blue-50 p-3 rounded-lg col-span-2">
-                          <span className="text-sm font-medium text-gray-600">Lead Progress Status:</span>
-                          <span className="ml-2 text-sm text-gray-900 font-semibold">
-                            {selectedLead.leadProgressStatus}
-                          </span>
-                        </div>
-                      )}
-                      {selectedLead.leadStatus && (
-                        <div className="bg-blue-50 p-3 rounded-lg">
-                          <span className="text-sm font-medium text-gray-600">Lead Status:</span>
-                          <span className="ml-2 text-sm text-gray-900 capitalize">
-                            {selectedLead.leadStatus.replace('-', ' ')}
-                          </span>
-                        </div>
-                      )}
-                      {selectedLead.contactStatus && (
-                        <div className="bg-green-50 p-3 rounded-lg">
-                          <span className="text-sm font-medium text-gray-600">Contact Status:</span>
-                          <span className="ml-2 text-sm text-gray-900 capitalize">
-                            {selectedLead.contactStatus.replace('-', ' ')}
-                          </span>
-                        </div>
-                      )}
-                      {selectedLead.qualificationOutcome && (
-                        <div className="bg-yellow-50 p-3 rounded-lg">
-                          <span className="text-sm font-medium text-gray-600">Qualification:</span>
-                          <span className="ml-2 text-sm text-gray-900 capitalize">
-                            {selectedLead.qualificationOutcome.replace('-', ' ')}
-                          </span>
-                        </div>
-                      )}
-                      {selectedLead.callDisposition && (
-                        <div className="bg-purple-50 p-3 rounded-lg">
-                          <span className="text-sm font-medium text-gray-600">Call Disposition:</span>
-                          <span className="ml-2 text-sm text-gray-900 capitalize">
-                            {selectedLead.callDisposition.replace('-', ' ')}
-                          </span>
-                        </div>
-                      )}
-                      {selectedLead.engagementOutcome && (
-                        <div className="bg-indigo-50 p-3 rounded-lg">
-                          <span className="text-sm font-medium text-gray-600">Engagement:</span>
-                          <span className="ml-2 text-sm text-gray-900 capitalize">
-                            {selectedLead.engagementOutcome.replace('-', ' ')}
-                          </span>
-                        </div>
-                      )}
-                      {selectedLead.disqualification && (
-                        <div className="bg-red-50 p-3 rounded-lg">
-                          <span className="text-sm font-medium text-gray-600">Disqualification:</span>
-                          <span className="ml-2 text-sm text-gray-900 capitalize">
-                            {selectedLead.disqualification.replace('-', ' ')}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Notes Section */}
-                {(selectedLead.requirements || selectedLead.followUpNotes) && (
-                  <div className="mt-6">
-                    <h4 className="text-md font-semibold text-gray-900 mb-3">Notes</h4>
-                    {selectedLead.requirements && (
-                      <div className="bg-gray-50 p-4 rounded-lg mb-3">
-                        <span className="text-sm font-medium text-gray-600 block mb-1">Initial Notes:</span>
-                        <p className="text-sm text-gray-900">{selectedLead.requirements}</p>
-                      </div>
-                    )}
-                    {selectedLead.followUpNotes && (
-                      <div className="bg-gray-50 p-4 rounded-lg">
-                        <span className="text-sm font-medium text-gray-600 block mb-1">Follow-up Notes:</span>
-                        <p className="text-sm text-gray-900">{selectedLead.followUpNotes}</p>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              <div className="bg-gray-50 px-6 py-3 sm:flex sm:flex-row-reverse">
-                <button
-                  onClick={() => {
-                    setShowViewModal(false);
-                    openEditModal(selectedLead);
-                  }}
-                  className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-green-600 text-base font-medium text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 sm:ml-3 sm:w-auto sm:text-sm"
-                >
-                  Edit Lead Details
-                </button>
-                <button
-                  onClick={() => {
-                    setShowViewModal(false);
-                    openUpdateModal(selectedLead);
-                  }}
-                  className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-primary-600 text-base font-medium text-white hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 sm:ml-3 sm:w-auto sm:text-sm"
-                >
-                  Update Status
-                </button>
-                <button
-                  onClick={async () => {
-                    // Single fetch — reuse the already-loaded leads list to find fresh lead data
-                    await fetchLeads(pagination.page);
-                    const freshLead = leads.find(l => (l.leadId || l._id) === (selectedLead.leadId || selectedLead._id));
-                    if (freshLead) {
-                      setSelectedLead(freshLead);
-                    }
-                  }}
-                  className="w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 sm:ml-3 sm:w-auto sm:text-sm"
-                >
-                  Refresh
-                </button>
-                <button
-                  onClick={() => setShowViewModal(false)}
-                  className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 sm:mt-0 sm:w-auto sm:text-sm"
-                >
-                  Close
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <Agent2ViewModal
+        isOpen={showViewModal}
+        onClose={() => setShowViewModal(false)}
+        selectedLead={selectedLead}
+        onOpenEdit={() => {
+          setShowViewModal(false);
+          openEditModal(selectedLead);
+        }}
+        onOpenUpdate={() => {
+          setShowViewModal(false);
+          openUpdateModal(selectedLead);
+        }}
+        onRefreshLead={async () => {
+          await fetchLeads(pagination.page);
+          const freshLead = leads.find(l => (l.leadId || l._id) === (selectedLead.leadId || selectedLead._id));
+          if (freshLead) {
+            setSelectedLead(freshLead);
+          }
+        }}
+        getCategoryBadge={getCategoryBadge}
+        getStatusBadge={getStatusBadge}
+        formatEasternTimeForDisplay={formatEasternTimeForDisplay}
+      />
 
       {/* Update Lead Modal */}
       {showUpdateModal && selectedLead && (

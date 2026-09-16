@@ -26,11 +26,11 @@ import {
 } from 'lucide-react';
 import axios from '../utils/axios';
 import toast from 'react-hot-toast';
-import LoadingSpinner from '../components/LoadingSpinner';
+import LoadingSpinner from '../components/common/LoadingSpinner';
 import OrganizationManagement from './OrganizationManagement';
-import SuperAdminUserManagement from '../components/SuperAdminUserManagement';
-import InboundDataModal from '../components/InboundDataModal';
-import Pagination from '../components/Pagination';
+import SuperAdminUserManagement from '../components/users/SuperAdminUserManagement';
+import InboundDataModal from '../components/modals/InboundDataModal';
+import Pagination from '../components/common/Pagination';
 import { formatEasternTimeForDisplay, formatEasternTime, getEasternNow } from '../utils/dateUtils';
 
 const SuperAdminDashboard = () => {

@@ -94,12 +94,28 @@ const getInboundAccess = async (user) => {
     org.liveTransferDid
   ].filter(Boolean);
 
+  if (user.role === 'sub_agent' || user.role === 'vendor_agent') {
+    const assigned = Array.isArray(user.assignedDids) && user.assignedDids.length > 0
+      ? user.assignedDids
+      : ['__NO_DID_ASSIGNED__'];
+    return {
+      allowed: true,
+      canWrite: false, // Read only
+      isGlobal: false,
+      isSubAgent: true,
+      orgFilter: org._id,
+      orgName: org.name,
+      allowedDids: assigned,
+    };
+  }
+
   const canWrite = user.role === 'agent2' || user.role === 'agent1';
 
   return {
     allowed: true,
     canWrite: canWrite, // Org admins get read-only unless agent role
     isGlobal: false,
+    isSubAgent: false,
     orgFilter: org._id,
     orgName: org.name,
     allowedDids: orgDids,
@@ -555,15 +571,19 @@ router.get('/', protect, async (req, res) => {
 
     // DID & Organization segregation
     if (!access.isGlobal) {
-      // Restricted Org Admin (e.g. Jake, Jake 2, Partner orgs)
-      const didList = access.allowedDids || [];
-      if (didList.length > 0) {
-        filter.$or = [
-          { organization: access.orgFilter },
-          { did: { $in: didList } }
-        ];
+      if (access.isSubAgent) {
+        filter.did = { $in: access.allowedDids };
       } else {
-        filter.organization = access.orgFilter;
+        // Restricted Org Admin (e.g. Jake, Jake 2, Partner orgs)
+        const didList = access.allowedDids || [];
+        if (didList.length > 0) {
+          filter.$or = [
+            { organization: access.orgFilter },
+            { did: { $in: didList } }
+          ];
+        } else {
+          filter.organization = access.orgFilter;
+        }
       }
     } else {
       // Global Admin (SuperAdmin / Reddington)
@@ -669,6 +689,9 @@ router.get('/', protect, async (req, res) => {
  */
 router.get('/export', protect, async (req, res) => {
   try {
+    if (['sub_agent', 'vendor_agent'].includes(req.user.role)) {
+      return res.status(403).json({ success: false, message: 'CSV export is disabled for sub-agent accounts' });
+    }
     const access = await getInboundAccess(req.user);
     if (!access.allowed) {
       return res.status(403).json({ success: false, message: 'Access denied.' });
@@ -843,14 +866,18 @@ router.get('/stats', protect, async (req, res) => {
 
     const filter = { isDeleted: { $ne: true } };
     if (!access.isGlobal) {
-      const didList = access.allowedDids || [];
-      if (didList.length > 0) {
-        filter.$or = [
-          { organization: access.orgFilter },
-          { did: { $in: didList } }
-        ];
+      if (access.isSubAgent) {
+        filter.did = { $in: access.allowedDids };
       } else {
-        filter.organization = access.orgFilter;
+        const didList = access.allowedDids || [];
+        if (didList.length > 0) {
+          filter.$or = [
+            { organization: access.orgFilter },
+            { did: { $in: didList } }
+          ];
+        } else {
+          filter.organization = access.orgFilter;
+        }
       }
     }
 

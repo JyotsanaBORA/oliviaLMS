@@ -10,10 +10,10 @@ import {
 import axios from '../utils/axios';
 import toast from 'react-hot-toast';
 import { useInboundCall } from '../contexts/InboundCallContext';
-import LoadingSpinner from '../components/LoadingSpinner';
-import Pagination from '../components/Pagination';
-import VicidialCallQueue from '../components/VicidialCallQueue';
-import AgentNotesPad from '../components/AgentNotesModal';
+import LoadingSpinner from '../components/common/LoadingSpinner';
+import Pagination from '../components/common/Pagination';
+import VicidialCallQueue from '../components/vicidial/VicidialCallQueue';
+import AgentNotesPad from '../components/modals/AgentNotesModal';
 import { formatEasternTimeForDisplay, getEasternStartOfDay, getEasternEndOfDay } from '../utils/dateUtils';
 
 const GTI_DISPOSITION_OPTIONS = [

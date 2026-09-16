@@ -1,24 +1,27 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider } from './contexts/AuthContext';
 import { SocketProvider } from './contexts/SocketContext';
 import { RefreshProvider } from './contexts/RefreshContext';
 import { InboundCallProvider } from './contexts/InboundCallContext';
-import ProtectedRoute from './components/ProtectedRoute';
-import Layout from './components/Layout';
-import Login from './pages/Login';
-import Register from './pages/Register';
-import Agent1Dashboard from './pages/Agent1Dashboard';
-import Agent2Dashboard from './pages/Agent2Dashboard';
-import AdminDashboard from './pages/AdminDashboard';
-import SuperAdminDashboard from './pages/SuperAdminDashboard';
-import RestrictedAdminDashboard from './pages/RestrictedAdminDashboard';
-import AffiliateDashboard from './pages/AffiliateDashboard';
-import DataVendorDashboard from './pages/DataVendorDashboard';
-import PaymentStatus from './pages/PaymentStatus';
-import Profile from './pages/Profile';
-import Chat from './pages/Chat';
+import ProtectedRoute from './components/common/ProtectedRoute';
+import Layout from './components/layout/Layout';
+import LoadingSpinner from './components/common/LoadingSpinner';
+
+// Lazy-loaded route components for high-performance code splitting
+const Login = lazy(() => import('./pages/Login'));
+const Register = lazy(() => import('./pages/Register'));
+const Agent1Dashboard = lazy(() => import('./pages/Agent1Dashboard'));
+const Agent2Dashboard = lazy(() => import('./pages/Agent2Dashboard'));
+const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
+const SuperAdminDashboard = lazy(() => import('./pages/SuperAdminDashboard'));
+const RestrictedAdminDashboard = lazy(() => import('./pages/RestrictedAdminDashboard'));
+const AffiliateDashboard = lazy(() => import('./pages/AffiliateDashboard'));
+const DataVendorDashboard = lazy(() => import('./pages/DataVendorDashboard'));
+const PaymentStatus = lazy(() => import('./pages/PaymentStatus'));
+const Profile = lazy(() => import('./pages/Profile'));
+const Chat = lazy(() => import('./pages/Chat'));
 
 function App() {
   return (
@@ -53,10 +56,15 @@ function App() {
               }}
             />
             
-            <Routes>
-              {/* Public Routes */}
-              <Route path="/login" element={<Login />} />
-              <Route path="/register" element={<Register />} />
+            <Suspense fallback={
+              <div className="flex h-screen w-full items-center justify-center bg-gray-50">
+                <LoadingSpinner size="lg" text="Loading LMS..." />
+              </div>
+            }>
+              <Routes>
+                {/* Public Routes */}
+                <Route path="/login" element={<Login />} />
+                <Route path="/register" element={<Register />} />
               
               {/* Protected Routes */}
               <Route path="/" element={
@@ -81,7 +89,7 @@ function App() {
                 } />
                 
                 <Route path="admin" element={
-                  <ProtectedRoute roles={['admin', 'superadmin']}>
+                  <ProtectedRoute roles={['admin', 'superadmin', 'sub_agent', 'vendor_agent']}>
                     <AdminDashboard />
                   </ProtectedRoute>
                 } />
@@ -93,7 +101,7 @@ function App() {
                 } />
                 
                 <Route path="profile" element={
-                  <ProtectedRoute roles={['admin', 'superadmin', 'agent1', 'agent2']}>
+                  <ProtectedRoute roles={['admin', 'superadmin', 'agent1', 'agent2', 'sub_agent', 'vendor_agent']}>
                     <Profile />
                   </ProtectedRoute>
                 } />
@@ -138,6 +146,7 @@ function App() {
               {/* Catch all route */}
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
+            </Suspense>
           </Router>
           </InboundCallProvider>
         </SocketProvider>

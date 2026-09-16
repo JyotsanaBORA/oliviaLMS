@@ -24,7 +24,7 @@ const userSchema = new mongoose.Schema({
   },
   role: {
     type: String,
-    enum: ['agent1', 'agent2', 'admin', 'superadmin', 'restricted_admin', 'affiliate_admin', 'data_vendor'],
+    enum: ['agent1', 'agent2', 'admin', 'superadmin', 'restricted_admin', 'affiliate_admin', 'data_vendor', 'sub_agent', 'vendor_agent'],
     default: 'agent1'
   },
   isActive: {
@@ -38,13 +38,18 @@ const userSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Organization',
     required: function() {
-      // Organization is required for admin and agents, but not for superadmin/affiliate_admin/data_vendor
+      // Organization is required for admin, agents, and sub_agents
       return this.role !== 'superadmin' && this.role !== 'affiliate_admin' && this.role !== 'data_vendor';
     }
   },
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
+  },
+  // Assigned DIDs for sub_agent / vendor_agent (strictly scoped to these DIDs)
+  assignedDids: {
+    type: [String],
+    default: []
   },
   // Vicidial integration - maps this LMS user to a Vicidial agent ID
   vicidialAgentId: {
@@ -53,8 +58,8 @@ const userSchema = new mongoose.Schema({
     sparse: true,
     index: true,
   },
-  // Permission: whether this admin can export/download leads as CSV.
-  // Only relevant for role === 'admin'. Defaults to false (no download access).
+  // Permission: whether this user can export/download leads as CSV.
+  // Defaults to false. Strictly forbidden for sub_agent.
   canDownloadLeads: {
     type: Boolean,
     default: false,
@@ -69,9 +74,8 @@ const userSchema = new mongoose.Schema({
 
 // Index for faster queries
 userSchema.index({ email: 1 });
-userSchema.index({ role: 1 });
-userSchema.index({ organization: 1 });
-userSchema.index({ organization: 1, role: 1 });
+userSchema.index({ role: 1, isActive: 1 });
+userSchema.index({ organization: 1, role: 1, isActive: 1 });
 
 // Hash password before saving
 userSchema.pre('save', async function(next) {

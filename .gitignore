@@ -155,9 +155,11 @@ tmp/
 temp/
 
 # ========================
-# Agents
+# Agents & Tools
 # ========================
 .agents/
+ponytail/
+ponytail-repo/
 
 # ========================
 # Local Scripts & Tests

@@ -8,6 +8,7 @@ const { notifyCheckIn, notifyCheckOut } = require('../services/hrmsAttendance');
 const { syncWithChatService } = require('../utils/chatSync');
 const { notifyPasswordChange } = require('../utils/notificationHelper');
 const { resolveOrgFeatures } = require('../services/organizationFeatures/featureService');
+const { validateAssignedDids } = require('../services/vendorHierarchy/vendorScopeService');
 
 const ORG_POPULATE_FIELDS = 'name showLoopLeads showVendorData inboundDids liveTransferDid inboundCallsDid features';
 
@@ -42,8 +43,8 @@ const registerValidation = [
     .withMessage('Password must contain at least one lowercase letter, one uppercase letter, and one number'),
   body('role')
     .optional()
-    .isIn(['agent1', 'agent2', 'admin', 'superadmin'])
-    .withMessage('Role must be agent1, agent2, admin, or superadmin')
+    .isIn(['agent1', 'agent2', 'admin', 'superadmin', 'sub_agent', 'vendor_agent'])
+    .withMessage('Role must be agent1, agent2, sub_agent, admin, or superadmin')
 ];
 
 const loginValidation = [
@@ -134,10 +135,10 @@ router.post('/create-agent', protect, registerValidation, handleValidationErrors
     const vicidialAgentId = (req.body.vicidialAgentId || '').toString().trim();
 
     // Validate role for agents
-    if (!['agent1', 'agent2'].includes(role)) {
+    if (!['agent1', 'agent2', 'sub_agent', 'vendor_agent'].includes(role)) {
       return res.status(400).json({
         success: false,
-        message: 'Role must be either agent1 or agent2'
+        message: 'Role must be agent1, agent2, or sub_agent'
       });
     }
 
@@ -177,10 +178,30 @@ router.post('/create-agent', protect, registerValidation, handleValidationErrors
       if (!orgId) {
         return res.status(400).json({
           success: false,
-          message: 'organization is required when superadmin creates an agent'
+          message: 'organization is required when creating an agent'
         });
       }
       organizationId = orgId;
+    }
+
+    // Validate assignedDids for sub_agent
+    let assignedDids = [];
+    if (['sub_agent', 'vendor_agent'].includes(role)) {
+      const orgDoc = await Organization.findById(organizationId).select('inboundDids');
+      if (!orgDoc) {
+        return res.status(400).json({
+          success: false,
+          message: 'Target organization not found'
+        });
+      }
+      const didValidation = validateAssignedDids(orgDoc.inboundDids, req.body.assignedDids);
+      if (!didValidation.valid) {
+        return res.status(400).json({
+          success: false,
+          message: `Cannot assign DIDs outside organization pool: ${didValidation.invalidDids.join(', ')}`
+        });
+      }
+      assignedDids = didValidation.cleanDids;
     }
 
     // Create agent user
@@ -191,7 +212,9 @@ router.post('/create-agent', protect, registerValidation, handleValidationErrors
       role,
       organization: organizationId,
       createdBy: req.user._id,
-      vicidialAgentId: vicidialAgentId || undefined
+      vicidialAgentId: vicidialAgentId || undefined,
+      assignedDids: assignedDids,
+      canDownloadLeads: false
     });
 
     // Populate organization for response
@@ -678,7 +701,10 @@ router.get('/agents', protect, async (req, res) => {
       });
     }
 
-    let query = { role: { $in: ['agent1', 'agent2'] } };
+    let query = { role: { $in: ['agent1', 'agent2', 'sub_agent', 'vendor_agent'] } };
+    if (req.query.role) {
+      query.role = req.query.role;
+    }
 
     // Reddington admin sees all orgs (like superadmin); regular admin sees own org only
     if (req.user.role === 'admin') {
@@ -899,11 +925,11 @@ router.put('/users/:id', protect, [
       });
     }
 
-    // SuperAdmin can update agent1, agent2, admin, restricted_admin, and data_vendor users
-    if (!['agent1', 'agent2', 'admin', 'restricted_admin', 'affiliate_admin', 'data_vendor'].includes(targetUser.role)) {
+    // SuperAdmin can update agent1, agent2, admin, restricted_admin, data_vendor, and sub_agent users
+    if (!['agent1', 'agent2', 'admin', 'restricted_admin', 'affiliate_admin', 'data_vendor', 'sub_agent', 'vendor_agent'].includes(targetUser.role)) {
       return res.status(400).json({
         success: false,
-        message: 'Can only update agent1, agent2, or admin users'
+        message: 'Can only update agent, sub-agent, or admin users'
       });
     }
 
@@ -951,6 +977,21 @@ router.put('/users/:id', protect, [
     // Update vicidialAgentId for agents
     if (['agent1', 'agent2'].includes(targetUser.role)) {
       targetUser.vicidialAgentId = vicidialAgentId || undefined;
+    }
+
+    // Update assignedDids for sub_agents
+    if (['sub_agent', 'vendor_agent'].includes(targetUser.role) && Array.isArray(req.body.assignedDids)) {
+      const orgDoc = await Organization.findById(targetUser.organization).select('inboundDids');
+      if (orgDoc) {
+        const didValidation = validateAssignedDids(orgDoc.inboundDids, req.body.assignedDids);
+        if (!didValidation.valid) {
+          return res.status(400).json({
+            success: false,
+            message: `Cannot assign DIDs outside organization pool: ${didValidation.invalidDids.join(', ')}`
+          });
+        }
+        targetUser.assignedDids = didValidation.cleanDids;
+      }
     }
 
     // Update password if provided

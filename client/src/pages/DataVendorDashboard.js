@@ -9,8 +9,8 @@ import {
 } from 'lucide-react';
 import axios from '../utils/axios';
 import toast from 'react-hot-toast';
-import LoadingSpinner from '../components/LoadingSpinner';
-import DataVendorShareModal from '../components/DataVendorShareModal';
+import LoadingSpinner from '../components/common/LoadingSpinner';
+import DataVendorShareModal from '../components/modals/DataVendorShareModal';
 import { useAuth } from '../contexts/AuthContext';
 
 // ── All 45 ViciDial columns for the records view ──────────────────

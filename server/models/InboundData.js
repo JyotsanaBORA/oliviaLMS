@@ -145,5 +145,7 @@ inboundDataSchema.index({ isDeleted: 1 });
 inboundDataSchema.index({ did: 1, receivedAt: -1 });
 inboundDataSchema.index({ organization: 1, receivedAt: -1 });
 inboundDataSchema.index({ phoneNumber: 1, receivedAt: -1 });
+inboundDataSchema.index({ isDeleted: 1, did: 1, receivedAt: -1 });
+inboundDataSchema.index({ organization: 1, callStatus: 1, receivedAt: -1 });
 
 module.exports = mongoose.model('InboundData', inboundDataSchema);

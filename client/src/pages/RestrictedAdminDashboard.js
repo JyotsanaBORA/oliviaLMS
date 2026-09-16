@@ -19,7 +19,7 @@ import {
 import axios from '../utils/axios';
 import toast from 'react-hot-toast';
 import { useAuth } from '../contexts/AuthContext';
-import LoadingSpinner from '../components/LoadingSpinner';
+import LoadingSpinner from '../components/common/LoadingSpinner';
 
 // ── All 45 CSV columns in display order ─────────────────────────
 const ALL_COLUMNS = [

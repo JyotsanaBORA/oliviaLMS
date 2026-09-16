@@ -712,4 +712,12 @@ leadSchema.methods.getCategoryColor = function() {
   return colors[this.category] || colors.cold;
 };
 
+// High-Performance Compound Indexes
+leadSchema.index({ organization: 1, createdAt: -1 });
+leadSchema.index({ vicidialDid: 1, createdAt: -1 });
+leadSchema.index({ isDeleted: 1, vicidialDid: 1, createdAt: -1 });
+leadSchema.index({ isDeleted: 1, organization: 1, createdAt: -1 });
+leadSchema.index({ assignedTo: 1, leadProgressStatus: 1, createdAt: -1 });
+leadSchema.index({ phone: 1 });
+
 module.exports = mongoose.model('Lead', leadSchema);

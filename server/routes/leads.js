@@ -137,6 +137,13 @@ const resolveLeadQualification = ({ disposition, leadProgressStatus, isDisposed,
  * Only call this for role === 'admin'.
  */
 const buildAdminLeadScopeFilter = async (user) => {
+  if (user.role === 'sub_agent' || user.role === 'vendor_agent') {
+    const assigned = Array.isArray(user.assignedDids) && user.assignedDids.length > 0
+      ? user.assignedDids
+      : ['__NO_DID_ASSIGNED__'];
+    return { vicidialDid: { $in: assigned } };
+  }
+
   const adminOrg = await Organization.findById(user.organization)
     .select('name sourceIds inboundDids')
     .lean();
@@ -159,6 +166,16 @@ const buildAdminLeadScopeFilter = async (user) => {
 const resolveDidFilter = async (didParam, user) => {
   if (!didParam || !String(didParam).trim() || didParam === 'all') return null;
   const raw = String(didParam).trim();
+
+  // If sub_agent, ensure requested DID is authorized
+  if (user?.role === 'sub_agent' || user?.role === 'vendor_agent') {
+    const assigned = Array.isArray(user.assignedDids) ? user.assignedDids : [];
+    if (!assigned.includes(raw)) {
+      return '__NO_DID_ASSIGNED__';
+    }
+    return raw;
+  }
+
   if (raw === 'inbound' || raw === 'inbound-call' || raw === 'inbound_call') {
     const orgId = user?.organization?._id || user?.organization;
     const org = orgId ? await Organization.findById(orgId).select('inboundCallsDid inboundDids').lean() : null;
@@ -665,7 +682,15 @@ router.get('/export', [
     // --- Permission gate ---
     // Superadmin: always allowed.
     // Admin from REDDINGTON: always allowed (cross-org visibility).
+    // Sub-agents: strictly forbidden from CSV exports.
     // Other admins: only allowed if canDownloadLeads === true.
+    if (['sub_agent', 'vendor_agent'].includes(user.role)) {
+      return res.status(403).json({
+        success: false,
+        message: 'CSV export is disabled for sub-agent accounts'
+      });
+    }
+
     if (user.role === 'admin') {
       const exportOrg = await Organization.findById(user.organization).select('name').lean();
       const isReddington = exportOrg && exportOrg.name === 'REDDINGTON GLOBAL CONSULTANCY';
@@ -680,9 +705,9 @@ router.get('/export', [
     // Build filter object using EXACT same logic as main leads route
     const filter = { isDeleted: { $ne: true } };
     
-    // IMPORTANT: Apply organisation scope filter FIRST for admin users.
+    // IMPORTANT: Apply organisation scope filter FIRST for admin/sub-agent users.
     // This ensures all subsequent filters work within the correct organisation scope.
-    if (req.user.role === 'admin') {
+    if (['admin', 'sub_agent', 'vendor_agent'].includes(req.user.role)) {
       const scopeFilter = await buildAdminLeadScopeFilter(req.user);
       if (scopeFilter === null) {
         // Reddington admin — can optionally filter by a specific organisation
@@ -690,7 +715,7 @@ router.get('/export', [
           filter.organization = req.query.organization;
         }
       } else {
-        // Other admins: locked to their scope (org or sourceId-based).
+        // Other admins / sub-agents: locked to their scope.
         // When scopeFilter itself uses $or (org has both sourceIds and inboundDids), wrap it
         // inside $and so a later search filter.$or assignment doesn't overwrite the scope.
         if (scopeFilter.$or) {
@@ -698,7 +723,7 @@ router.get('/export', [
         } else {
           Object.assign(filter, scopeFilter);
         }
-        console.log('Export - Admin scope filter applied:', JSON.stringify(scopeFilter));
+        console.log('Export - Scope filter applied:', JSON.stringify(scopeFilter));
       }
     } else if (req.user.role === 'superadmin' && req.query.organization) {
       // SuperAdmin can filter by organization if specified
@@ -1230,9 +1255,9 @@ router.get('/', protect, [
     // Build filter object
     const filter = { isDeleted: { $ne: true } };
     
-    // IMPORTANT: Apply organisation scope filter FIRST for admin users.
+    // IMPORTANT: Apply organisation scope filter FIRST for admin and sub_agent users.
     // This ensures all subsequent filters work within the correct organisation scope.
-    if (req.user.role === 'admin') {
+    if (['admin', 'sub_agent', 'vendor_agent'].includes(req.user.role)) {
       const scopeFilter = await buildAdminLeadScopeFilter(req.user);
       if (scopeFilter === null) {
         // Reddington admin — can optionally filter by a specific organisation
@@ -1240,7 +1265,7 @@ router.get('/', protect, [
           filter.organization = req.query.organization;
         }
       } else {
-        // Other admins: locked to their scope (org or sourceId-based).
+        // Other admins / sub_agents: locked to their scope (org, sourceId, or assignedDids based).
         // When scopeFilter itself uses $or (org has both sourceIds and inboundDids), wrap it
         // inside $and so a later search filter.$or assignment doesn't overwrite the scope.
         if (scopeFilter.$or) {
@@ -1545,12 +1570,12 @@ router.get('/available-agents', protect, async (req, res) => {
 
 // @desc    Get today's lead statistics for admin dashboard Today Leads view
 // @route   GET /api/leads/today-stats
-// @access  Private (Admin, SuperAdmin)
-router.get('/today-stats', protect, authorize('admin', 'superadmin'), async (req, res) => {
+// @access  Private (Admin, SuperAdmin, SubAgent)
+router.get('/today-stats', protect, authorize('admin', 'superadmin', 'sub_agent', 'vendor_agent'), async (req, res) => {
   try {
     const resolvedDid = await resolveDidFilter(req.query.did || req.query.vicidialDid, req.user);
     const didSuffix = resolvedDid ? `:did_${resolvedDid}` : '';
-    const statsCacheKey = `today_stats:${role}:${req.user.organization || 'all'}${didSuffix}`;
+    const statsCacheKey = `today_stats:${req.user.role}:${req.user._id || req.user.organization || 'all'}${didSuffix}`;
     const cachedStats = cache.get(statsCacheKey);
     if (cachedStats) {
       return res.json({ success: true, data: cachedStats });
@@ -1560,9 +1585,9 @@ router.get('/today-stats', protect, authorize('admin', 'superadmin'), async (req
     const todayEnd = getEasternEndOfDay();
     const dateFilter = { createdAt: { $gte: todayStart, $lte: todayEnd }, isDeleted: { $ne: true } };
 
-    // Apply organisation scope for admin; superadmin sees all
+    // Apply organisation scope for admin / sub_agent; superadmin sees all
     let orgFilter = {};
-    if (req.user.role === 'admin') {
+    if (['admin', 'sub_agent', 'vendor_agent'].includes(req.user.role)) {
       const scopeFilter = await buildAdminLeadScopeFilter(req.user);
       // null → Reddington admin → see all (orgFilter stays {})
       if (scopeFilter !== null) orgFilter = scopeFilter;
@@ -1604,14 +1629,14 @@ router.get('/today-stats', protect, authorize('admin', 'superadmin'), async (req
 
 // @desc    Get inbound/outbound call report for a date range with optional DID search
 // @route   GET /api/leads/call-report
-// @access  Private (Admin, SuperAdmin)
-router.get('/call-report', protect, authorize('admin', 'superadmin'), async (req, res) => {
+// @access  Private (Admin, SuperAdmin, SubAgent)
+router.get('/call-report', protect, authorize('admin', 'superadmin', 'sub_agent', 'vendor_agent'), async (req, res) => {
   try {
     const { date, did } = req.query;
 
     // Build org scope
     let orgFilter = {};
-    if (req.user.role === 'admin') {
+    if (['admin', 'sub_agent', 'vendor_agent'].includes(req.user.role)) {
       const scopeFilter = await buildAdminLeadScopeFilter(req.user);
       // null → Reddington admin → see all (orgFilter stays {})
       if (scopeFilter !== null) orgFilter = scopeFilter;
@@ -1747,6 +1772,16 @@ router.get('/:id', protect, async (req, res) => {
         success: false,
         message: 'Not authorized to view this lead'
       });
+    }
+
+    if (['sub_agent', 'vendor_agent'].includes(req.user.role)) {
+      const assigned = Array.isArray(req.user.assignedDids) ? req.user.assignedDids : [];
+      if (!lead.vicidialDid || !assigned.includes(lead.vicidialDid)) {
+        return res.status(403).json({
+          success: false,
+          message: 'Not authorized to view leads outside your assigned DIDs'
+        });
+      }
     }
 
     // Organization-based access for admin
@@ -2755,7 +2790,9 @@ router.get('/dashboard/stats', protect, async (req, res) => {
       ? `dash_stats:superadmin${didSuffix}`
       : role === 'admin'
         ? `dash_stats:admin:${req.user.organization || 'all'}${didSuffix}`
-        : `dash_stats:${role}:${userId}${didSuffix}`;
+        : ['sub_agent', 'vendor_agent'].includes(role)
+          ? `dash_stats:${role}:${userId}${didSuffix}`
+          : `dash_stats:${role}:${userId}${didSuffix}`;
     const cachedDashStats = cache.get(statsCacheKey);
     if (cachedDashStats) {
       return res.status(200).json({ success: true, data: cachedDashStats });
@@ -2788,7 +2825,7 @@ router.get('/dashboard/stats', protect, async (req, res) => {
         isActive: { $ne: false } // Count users who are not explicitly inactive
       });
       stats.activeAgents = activeAgents;
-    } else if (role === 'admin') {
+    } else if (['admin', 'sub_agent', 'vendor_agent'].includes(role)) {
       // Use standard admin scope filter (Reddington sees all, tenant admins see their scoped leads)
       const adminOrganization = await Organization.findById(req.user.organization).select('name').lean();
       const isReddingtonAdmin = adminOrganization && adminOrganization.name === 'REDDINGTON GLOBAL CONSULTANCY';

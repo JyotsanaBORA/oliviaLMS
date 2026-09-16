@@ -2,96 +2,11 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Eye, EyeOff, Mail, Lock, Globe, Home, ArrowRight, ShieldCheck } from 'lucide-react';
-import LoadingSpinner from '../components/LoadingSpinner';
+import LoadingSpinner from '../components/common/LoadingSpinner';
 import axios from 'axios';
 
 const DOMESTIC_URL = process.env.REACT_APP_DOMESTIC_URL || 'http://localhost:3004';
 const TYPEWORDS    = ['Secure.', 'Smart.', 'Scalable.', 'Powerful.', 'Reliable.'];
-
-const ANIM_CSS = `
-@keyframes lms-shimmer {
-  0%   { background-position: -400% center; }
-  100% { background-position:  400% center; }
-}
-@keyframes lms-scanline {
-  0%   { top: -3px; opacity: 0.7; }
-  100% { top: 100%; opacity: 0;   }
-}
-@keyframes lms-fadeup {
-  from { opacity: 0; transform: translateY(22px); }
-  to   { opacity: 1; transform: translateY(0);    }
-}
-@keyframes lms-spin {
-  to { transform: rotate(360deg); }
-}
-@keyframes lms-pulse-dot {
-  0%,100% { opacity: 1;   transform: scale(1);    }
-  50%     { opacity: 0.5; transform: scale(1.25); }
-}
-@keyframes lms-glow-breathe {
-  0%,100% { opacity: 0.35; transform: translate(-50%,-50%) scale(1);    }
-  50%     { opacity: 0.7;  transform: translate(-50%,-50%) scale(1.06); }
-}
-@keyframes lms-blob-drift {
-  0%,100% { transform: translate(0,0) scale(1);         }
-  33%     { transform: translate(14px,-11px) scale(1.04); }
-  66%     { transform: translate(-9px,9px)  scale(0.97); }
-}
-@keyframes lms-ripple {
-  to { width: 320px; height: 320px; opacity: 0; transform: translate(-50%,-50%) scale(1); }
-}
-@keyframes lms-ring-spin   { from { transform: translate(-50%,-50%) rotate(0deg);   } to { transform: translate(-50%,-50%) rotate(360deg);  } }
-@keyframes lms-ring-spin-r { from { transform: translate(-50%,-50%) rotate(0deg);   } to { transform: translate(-50%,-50%) rotate(-360deg); } }
-@keyframes lms-float-y {
-  0%,100% { transform: translateY(0);    }
-  50%     { transform: translateY(-8px); }
-}
-.lms-shimmer-text {
-  background: linear-gradient(90deg,#94a3b8 0%,#38bdf8 25%,#e0e7ff 45%,#818cf8 65%,#94a3b8 100%);
-  background-size: 400% auto;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  animation: lms-shimmer 5s linear infinite;
-}
-.lms-scanline {
-  position: absolute; left: 0; right: 0; height: 2px;
-  background: linear-gradient(90deg,transparent,rgba(56,189,248,0.55),rgba(129,140,248,0.4),transparent);
-  animation: lms-scanline 6s linear infinite;
-  pointer-events: none; z-index: 4;
-}
-.lms-input {
-  width: 100%; box-sizing: border-box;
-  padding: 13px 16px 13px 42px;
-  background: rgba(255,255,255,0.04);
-  border: 1.5px solid rgba(255,255,255,0.08);
-  border-radius: 12px; color: #e2e8f0; font-size: 14px;
-  outline: none; transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
-  font-family: inherit;
-}
-.lms-input::placeholder { color: #2d3f56; }
-.lms-ripple-span {
-  position: absolute; width: 0; height: 0; border-radius: 50%;
-  background: rgba(255,255,255,0.28);
-  transform: translate(-50%,-50%) scale(0);
-  animation: lms-ripple 0.65s ease-out forwards;
-  pointer-events: none;
-}
-.lms-card-3d {
-  transition: transform 0.1s cubic-bezier(0.23,1,0.32,1);
-  transform-style: preserve-3d;
-  will-change: transform;
-}
-.lms-btn-mag {
-  position: relative; overflow: hidden;
-  width: 100%; display: flex; align-items: center; justify-content: center;
-  gap: 8px; padding: 14px 20px; border-radius: 12px;
-  font-size: 14px; font-weight: 700; color: #fff; border: none;
-  cursor: pointer; font-family: inherit; letter-spacing: 0.02em;
-  transition: box-shadow 0.25s, opacity 0.2s;
-}
-.lms-btn-mag:disabled { opacity: 0.62; cursor: not-allowed; }
-`;
 
 const Login = () => {
   const { login, isAuthenticated, loading, user, clearError } = useAuth();
@@ -123,13 +38,6 @@ const Login = () => {
   const accentGlow = isDom ? 'rgba(249,115,22,0.42)' : 'rgba(56,189,248,0.42)';
   const btnBg      = isDom ? 'linear-gradient(135deg,#f97316,#ea580c)' : 'linear-gradient(135deg,#0ea5e9,#2563eb)';
 
-  useEffect(() => {
-    const el = document.createElement('style');
-    el.setAttribute('data-lms', '1');
-    el.textContent = ANIM_CSS;
-    document.head.appendChild(el);
-    return () => { if (el.parentNode) el.parentNode.removeChild(el); };
-  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -245,7 +153,7 @@ const Login = () => {
   if (loading) return <LoadingSpinner message="Checking authentication..." />;
 
   if (isAuthenticated && user && !isDom) {
-    const MAP  = { superadmin:'/super-admin-dashboard', admin:'/admin-dashboard', restricted_admin:'/restricted-dashboard', agent1:'/agent1-dashboard', agent2:'/agent2-dashboard' };
+    const MAP  = { superadmin:'/superadmin', admin:'/admin', sub_agent:'/admin', vendor_agent:'/admin', restricted_admin:'/restricted-dashboard', affiliate_admin:'/affiliate', data_vendor:'/vendor-dashboard', agent1:'/dashboard', agent2:'/leads' };
     const dest = location.state?.from?.pathname || MAP[user.role] || '/dashboard';
     return <Navigate to={dest} replace />;
   }
@@ -446,11 +354,6 @@ const Login = () => {
           </div>
         </div>
       </div>
-
-      <style>{`
-        @media (min-width: 1024px) { .lms-left-panel  { display: flex  !important; } }
-        @media (max-width: 1023px) { .lms-mobile-brand { display: block !important; } }
-      `}</style>
     </div>
   );
 };
