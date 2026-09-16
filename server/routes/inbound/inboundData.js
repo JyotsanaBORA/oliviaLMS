@@ -12,6 +12,7 @@ const { protect } = require('../../middleware/auth');
 const { getEasternStartOfDay, getEasternEndOfDay } = require('../../utils/timeFilters');
 const cache = require('../../utils/cache');
 const { buildPhoneVariants } = require('../../utils/gtiPhoneUtils');
+const { findLeadForEnrichment, enrichLeadWithPayload } = require('../../utils/leadEnrichment');
 
 const router = express.Router();
 
