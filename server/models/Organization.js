@@ -83,17 +83,35 @@ const organizationSchema = new mongoose.Schema({
       message: 'Each inbound DID must be a non-empty string'
     }
   },
-  // Dedicated DID for Live Transfers (e.g. Team 1 / Partner Live Transfers)
+  // Dedicated DIDs for Live Transfers (e.g. Team 1 / Partner Live Transfers)
   liveTransferDid: {
     type: String,
     trim: true,
     default: null
   },
-  // Dedicated DID for direct Inbound Calls
+  liveTransferDids: {
+    type: [String],
+    default: []
+  },
+  // Dedicated DIDs for direct Inbound Calls
   inboundCallsDid: {
     type: String,
     trim: true,
     default: null
+  },
+  inboundCallsDids: {
+    type: [String],
+    default: []
+  },
+  // Dedicated DIDs for Loan Flip
+  loanFlipDid: {
+    type: String,
+    trim: true,
+    default: null
+  },
+  loanFlipDids: {
+    type: [String],
+    default: []
   },
   // When true, the Loop Leads panel is shown on this organisation's admin dashboard.
   // Set via SuperAdmin → Organisation Management.
@@ -138,17 +156,37 @@ const organizationSchema = new mongoose.Schema({
 organizationSchema.pre('save', function(next) {
   this.updatedAt = Date.now();
   
-  // Ensure liveTransferDid and inboundCallsDid are automatically present in inboundDids
-  const dids = Array.isArray(this.inboundDids) ? [...this.inboundDids] : [];
+  // Normalize arrays
+  const ltDids = Array.isArray(this.liveTransferDids) ? this.liveTransferDids.map(d => String(d).trim()).filter(Boolean) : [];
   if (this.liveTransferDid && this.liveTransferDid.trim()) {
     const cleanLt = this.liveTransferDid.trim();
-    if (!dids.includes(cleanLt)) dids.push(cleanLt);
+    if (!ltDids.includes(cleanLt)) ltDids.push(cleanLt);
   }
+  this.liveTransferDids = Array.from(new Set(ltDids));
+  this.liveTransferDid = this.liveTransferDids.length > 0 ? this.liveTransferDids[0] : null;
+
+  const inDids = Array.isArray(this.inboundCallsDids) ? this.inboundCallsDids.map(d => String(d).trim()).filter(Boolean) : [];
   if (this.inboundCallsDid && this.inboundCallsDid.trim()) {
     const cleanIn = this.inboundCallsDid.trim();
-    if (!dids.includes(cleanIn)) dids.push(cleanIn);
+    if (!inDids.includes(cleanIn)) inDids.push(cleanIn);
   }
-  this.inboundDids = dids;
+  this.inboundCallsDids = Array.from(new Set(inDids));
+  this.inboundCallsDid = this.inboundCallsDids.length > 0 ? this.inboundCallsDids[0] : null;
+
+  const lfDids = Array.isArray(this.loanFlipDids) ? this.loanFlipDids.map(d => String(d).trim()).filter(Boolean) : [];
+  if (this.loanFlipDid && this.loanFlipDid.trim()) {
+    const cleanLf = this.loanFlipDid.trim();
+    if (!lfDids.includes(cleanLf)) lfDids.push(cleanLf);
+  }
+  this.loanFlipDids = Array.from(new Set(lfDids));
+  this.loanFlipDid = this.loanFlipDids.length > 0 ? this.loanFlipDids[0] : null;
+
+  // Ensure all categorized DIDs are automatically present in master inboundDids
+  const dids = Array.isArray(this.inboundDids) ? this.inboundDids.map(d => String(d).trim()).filter(Boolean) : [];
+  [...this.liveTransferDids, ...this.inboundCallsDids, ...this.loanFlipDids].forEach(d => {
+    if (d && !dids.includes(d)) dids.push(d);
+  });
+  this.inboundDids = Array.from(new Set(dids));
 
   next();
 });

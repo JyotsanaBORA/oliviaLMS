@@ -166,7 +166,25 @@ router.post('/', protect, organizationCreateValidation, handleValidationErrors, 
       });
     }
 
-    const { name, description, address, phone, email, website, liveTransferDid, inboundCallsDid, inboundDids, sourceIds, features, showLoopLeads, showVendorData } = req.body;
+    const {
+      name,
+      description,
+      address,
+      phone,
+      email,
+      website,
+      liveTransferDid,
+      liveTransferDids,
+      inboundCallsDid,
+      inboundCallsDids,
+      loanFlipDid,
+      loanFlipDids,
+      inboundDids,
+      sourceIds,
+      features,
+      showLoopLeads,
+      showVendorData
+    } = req.body;
 
     // Check if organization with this name already exists
     const existingOrg = await Organization.findOne({ 
@@ -185,6 +203,27 @@ router.post('/', protect, organizationCreateValidation, handleValidationErrors, 
       sanitizedFeatures.hasOutboundData = Boolean(sanitizedFeatures.hasOutboundData);
     }
 
+    // Normalize DID arrays
+    const cleanLtDids = Array.isArray(liveTransferDids) ? liveTransferDids.map(d => String(d).trim()).filter(Boolean) : [];
+    if (liveTransferDid && String(liveTransferDid).trim() && !cleanLtDids.includes(String(liveTransferDid).trim())) {
+      cleanLtDids.push(String(liveTransferDid).trim());
+    }
+
+    const cleanInDids = Array.isArray(inboundCallsDids) ? inboundCallsDids.map(d => String(d).trim()).filter(Boolean) : [];
+    if (inboundCallsDid && String(inboundCallsDid).trim() && !cleanInDids.includes(String(inboundCallsDid).trim())) {
+      cleanInDids.push(String(inboundCallsDid).trim());
+    }
+
+    const cleanLfDids = Array.isArray(loanFlipDids) ? loanFlipDids.map(d => String(d).trim()).filter(Boolean) : [];
+    if (loanFlipDid && String(loanFlipDid).trim() && !cleanLfDids.includes(String(loanFlipDid).trim())) {
+      cleanLfDids.push(String(loanFlipDid).trim());
+    }
+
+    const cleanMasterDids = Array.isArray(inboundDids) ? inboundDids.map(d => String(d).trim()).filter(Boolean) : [];
+    [...cleanLtDids, ...cleanInDids, ...cleanLfDids].forEach(d => {
+      if (d && !cleanMasterDids.includes(d)) cleanMasterDids.push(d);
+    });
+
     // Create organization
     const organization = await Organization.create({
       name,
@@ -193,9 +232,13 @@ router.post('/', protect, organizationCreateValidation, handleValidationErrors, 
       phone,
       email,
       website,
-      liveTransferDid: liveTransferDid ? String(liveTransferDid).trim() : null,
-      inboundCallsDid: inboundCallsDid ? String(inboundCallsDid).trim() : null,
-      inboundDids: Array.isArray(inboundDids) ? inboundDids.map(d => String(d).trim()).filter(Boolean) : [],
+      liveTransferDid: cleanLtDids[0] || (liveTransferDid ? String(liveTransferDid).trim() : null),
+      liveTransferDids: cleanLtDids,
+      inboundCallsDid: cleanInDids[0] || (inboundCallsDid ? String(inboundCallsDid).trim() : null),
+      inboundCallsDids: cleanInDids,
+      loanFlipDid: cleanLfDids[0] || (loanFlipDid ? String(loanFlipDid).trim() : null),
+      loanFlipDids: cleanLfDids,
+      inboundDids: cleanMasterDids,
       sourceIds: Array.isArray(sourceIds) ? sourceIds.map(s => String(s).trim().toUpperCase()).filter(Boolean) : [],
       features: sanitizedFeatures,
       showLoopLeads: Boolean(showLoopLeads),
@@ -371,7 +414,25 @@ router.put('/:id', protect, organizationValidation, handleValidationErrors, asyn
       });
     }
 
-    const { name, description, address, phone, email, website, isActive, sourceIds, inboundDids, liveTransferDid, inboundCallsDid, showLoopLeads, showVendorData } = req.body;
+    const {
+      name,
+      description,
+      address,
+      phone,
+      email,
+      website,
+      isActive,
+      sourceIds,
+      inboundDids,
+      liveTransferDid,
+      liveTransferDids,
+      inboundCallsDid,
+      inboundCallsDids,
+      loanFlipDid,
+      loanFlipDids,
+      showLoopLeads,
+      showVendorData
+    } = req.body;
 
     // Check if organization exists
     const organization = await Organization.findById(req.params.id);
@@ -400,12 +461,37 @@ router.put('/:id', protect, organizationValidation, handleValidationErrors, asyn
     // Build the update object
     const updateData = { name, description, address, phone, email, website, isActive };
 
-    // Update liveTransferDid and inboundCallsDid
-    if (liveTransferDid !== undefined) {
-      updateData.liveTransferDid = liveTransferDid ? String(liveTransferDid).trim() : null;
+    // Update liveTransferDids and liveTransferDid
+    if (Array.isArray(liveTransferDids)) {
+      const cleanLt = liveTransferDids.map(d => String(d).trim()).filter(Boolean);
+      updateData.liveTransferDids = cleanLt;
+      updateData.liveTransferDid = cleanLt[0] || null;
+    } else if (liveTransferDid !== undefined) {
+      const cleanLt = liveTransferDid ? String(liveTransferDid).trim() : null;
+      updateData.liveTransferDid = cleanLt;
+      updateData.liveTransferDids = cleanLt ? [cleanLt] : [];
     }
-    if (inboundCallsDid !== undefined) {
-      updateData.inboundCallsDid = inboundCallsDid ? String(inboundCallsDid).trim() : null;
+
+    // Update inboundCallsDids and inboundCallsDid
+    if (Array.isArray(inboundCallsDids)) {
+      const cleanIn = inboundCallsDids.map(d => String(d).trim()).filter(Boolean);
+      updateData.inboundCallsDids = cleanIn;
+      updateData.inboundCallsDid = cleanIn[0] || null;
+    } else if (inboundCallsDid !== undefined) {
+      const cleanIn = inboundCallsDid ? String(inboundCallsDid).trim() : null;
+      updateData.inboundCallsDid = cleanIn;
+      updateData.inboundCallsDids = cleanIn ? [cleanIn] : [];
+    }
+
+    // Update loanFlipDids and loanFlipDid
+    if (Array.isArray(loanFlipDids)) {
+      const cleanLf = loanFlipDids.map(d => String(d).trim()).filter(Boolean);
+      updateData.loanFlipDids = cleanLf;
+      updateData.loanFlipDid = cleanLf[0] || null;
+    } else if (loanFlipDid !== undefined) {
+      const cleanLf = loanFlipDid ? String(loanFlipDid).trim() : null;
+      updateData.loanFlipDid = cleanLf;
+      updateData.loanFlipDids = cleanLf ? [cleanLf] : [];
     }
 
     // Only update sourceIds when explicitly provided; normalise to uppercase trimmed strings
@@ -415,26 +501,31 @@ router.put('/:id', protect, organizationValidation, handleValidationErrors, asyn
         .filter(id => id.length > 0);
     }
 
-    // Only update inboundDids when explicitly provided; stored as trimmed strings (not uppercased)
+    // Update master inboundDids ensuring all categorized DIDs are included
     if (Array.isArray(inboundDids)) {
       const cleanDids = inboundDids
         .map(d => String(d).trim())
         .filter(d => d.length > 0);
       
-      const lt = updateData.liveTransferDid !== undefined ? updateData.liveTransferDid : organization.liveTransferDid;
-      const ic = updateData.inboundCallsDid !== undefined ? updateData.inboundCallsDid : organization.inboundCallsDid;
-      if (lt && !cleanDids.includes(lt)) cleanDids.push(lt);
-      if (ic && !cleanDids.includes(ic)) cleanDids.push(ic);
+      const ltArr = updateData.liveTransferDids || organization.liveTransferDids || (organization.liveTransferDid ? [organization.liveTransferDid] : []);
+      const inArr = updateData.inboundCallsDids || organization.inboundCallsDids || (organization.inboundCallsDid ? [organization.inboundCallsDid] : []);
+      const lfArr = updateData.loanFlipDids || organization.loanFlipDids || (organization.loanFlipDid ? [organization.loanFlipDid] : []);
+
+      [...ltArr, ...inArr, ...lfArr].forEach(d => {
+        if (d && !cleanDids.includes(d)) cleanDids.push(d);
+      });
 
       updateData.inboundDids = cleanDids;
-    } else if (updateData.liveTransferDid || updateData.inboundCallsDid) {
+    } else if (updateData.liveTransferDids || updateData.inboundCallsDids || updateData.loanFlipDids || updateData.liveTransferDid || updateData.inboundCallsDid) {
       const currentDids = Array.isArray(organization.inboundDids) ? [...organization.inboundDids] : [];
-      if (updateData.liveTransferDid && !currentDids.includes(updateData.liveTransferDid)) {
-        currentDids.push(updateData.liveTransferDid);
-      }
-      if (updateData.inboundCallsDid && !currentDids.includes(updateData.inboundCallsDid)) {
-        currentDids.push(updateData.inboundCallsDid);
-      }
+      const newCategorized = [
+        ...(updateData.liveTransferDids || []),
+        ...(updateData.inboundCallsDids || []),
+        ...(updateData.loanFlipDids || [])
+      ];
+      newCategorized.forEach(d => {
+        if (d && !currentDids.includes(d)) currentDids.push(d);
+      });
       updateData.inboundDids = currentDids;
     }
 

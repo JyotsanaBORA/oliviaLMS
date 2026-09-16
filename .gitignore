@@ -169,4 +169,8 @@ test_scripts/
 server/test_scripts/
 *.test.js
 test_*.js
+maintenance/
+server/scripts/maintenance/
+scripts/maintenance/
+
 

@@ -700,7 +700,11 @@ const AdminDashboard = () => {
       const assigned = Array.isArray(user?.assignedDids) ? user.assignedDids.map(d => String(d).trim()).filter(Boolean) : [];
       return {
         liveTransferDid: null,
+        liveTransferDids: [],
         inboundCallsDid: null,
+        inboundCallsDids: [],
+        loanFlipDid: null,
+        loanFlipDids: [],
         allDids: assigned,
         hasMultiple: assigned.length > 1
       };
@@ -708,21 +712,38 @@ const AdminDashboard = () => {
     const org = user?.organization;
     const isSocialUp = isSocialUpAdmin;
 
-    const ltDid = org?.liveTransferDid || (isSocialUp ? '19162330004' : null);
-    const inDid = org?.inboundCallsDid || (isSocialUp ? '19162330139' : null);
+    const ltArr = Array.isArray(org?.liveTransferDids) && org.liveTransferDids.length > 0
+      ? org.liveTransferDids
+      : (org?.liveTransferDid ? [org.liveTransferDid] : (isSocialUp ? ['19162330004'] : []));
+    const inArr = Array.isArray(org?.inboundCallsDids) && org.inboundCallsDids.length > 0
+      ? org.inboundCallsDids
+      : (org?.inboundCallsDid ? [org.inboundCallsDid] : (isSocialUp ? ['19162330139'] : []));
+    const lfArr = Array.isArray(org?.loanFlipDids) && org.loanFlipDids.length > 0
+      ? org.loanFlipDids
+      : (org?.loanFlipDid ? [org.loanFlipDid] : []);
+
+    const ltDid = ltArr[0] || null;
+    const inDid = inArr[0] || null;
+    const lfDid = lfArr[0] || null;
+
     const rawDids = [
       ...(isSocialUp ? ['19162330004', '19162330139'] : []),
-      ...(ltDid ? [ltDid] : []),
-      ...(inDid ? [inDid] : []),
+      ...ltArr,
+      ...inArr,
+      ...lfArr,
       ...(Array.isArray(org?.inboundDids) ? org.inboundDids : [])
     ];
     const allDids = Array.from(new Set(rawDids.map(d => String(d).trim()))).filter(Boolean);
 
     return {
       liveTransferDid: ltDid,
+      liveTransferDids: ltArr,
       inboundCallsDid: inDid,
+      inboundCallsDids: inArr,
+      loanFlipDid: lfDid,
+      loanFlipDids: lfArr,
       allDids,
-      hasMultiple: Boolean(isSocialUp || allDids.length > 1 || (ltDid && inDid))
+      hasMultiple: Boolean(isSocialUp || allDids.length > 1 || (ltDid && inDid) || lfDid)
     };
   }, [user, isSocialUpAdmin, isSubAgent]);
 
@@ -1487,11 +1508,13 @@ const AdminDashboard = () => {
 
                 {/* Dynamically Render a Pill for Every Assigned DID */}
                 {orgDids.allDids.map((did) => {
-                  const isLt = did === orgDids.liveTransferDid;
-                  const isIn = did === orgDids.inboundCallsDid;
+                  const isLt = (orgDids.liveTransferDids || []).includes(did) || did === orgDids.liveTransferDid;
+                  const isIn = (orgDids.inboundCallsDids || []).includes(did) || did === orgDids.inboundCallsDid;
+                  const isLf = (orgDids.loanFlipDids || []).includes(did) || did === orgDids.loanFlipDid;
                   const isSelected = selectedDidTab === did ||
                     (isLt && (selectedDidTab === 'live_transfer' || selectedDidTab === 'live-transfer')) ||
-                    (isIn && (selectedDidTab === 'inbound' || selectedDidTab === 'inbound-call'));
+                    (isIn && (selectedDidTab === 'inbound' || selectedDidTab === 'inbound-call')) ||
+                    (isLf && (selectedDidTab === 'loan_flip' || selectedDidTab === 'loan-flip'));
 
                   const didStat = Array.isArray(stats?.byDid) ? stats.byDid.find(b => String(b._id) === String(did)) : null;
                   const didTotal = didStat?.total;
@@ -1502,15 +1525,20 @@ const AdminDashboard = () => {
                   let iconClass = isSelected ? 'text-emerald-200' : 'text-emerald-400';
 
                   if (isLt) {
-                    label = 'Live Transfers';
+                    label = (orgDids.liveTransferDids || []).length > 1 ? `Live Transfer (${did.slice(-4)})` : 'Live Transfers';
                     activeStyle = 'bg-gradient-to-r from-amber-500 to-orange-600 text-white shadow-lg shadow-orange-500/40 ring-2 ring-amber-300/50 scale-105 z-10';
                     IconComp = Zap;
                     iconClass = isSelected ? 'text-amber-200 animate-bounce' : 'text-amber-400';
                   } else if (isIn) {
-                    label = 'Inbound Calls';
+                    label = (orgDids.inboundCallsDids || []).length > 1 ? `Inbound (${did.slice(-4)})` : 'Inbound Calls';
                     activeStyle = 'bg-gradient-to-r from-indigo-500 to-blue-600 text-white shadow-lg shadow-indigo-500/40 ring-2 ring-indigo-300/50 scale-105 z-10';
                     IconComp = PhoneCall;
                     iconClass = isSelected ? 'text-blue-200' : 'text-blue-400';
+                  } else if (isLf) {
+                    label = (orgDids.loanFlipDids || []).length > 1 ? `Loan Flip (${did.slice(-4)})` : 'Loan Flip';
+                    activeStyle = 'bg-gradient-to-r from-purple-600 to-fuchsia-600 text-white shadow-lg shadow-purple-500/40 ring-2 ring-purple-300/50 scale-105 z-10';
+                    IconComp = RefreshCw;
+                    iconClass = isSelected ? 'text-purple-200' : 'text-purple-400';
                   }
 
                   return (
@@ -1552,13 +1580,17 @@ const AdminDashboard = () => {
                   <span className="inline-flex items-center gap-1 font-semibold text-gray-200">
                     🌐 Combined Overview (All DIDs)
                   </span>
-                ) : selectedDidTab === (orgDids.liveTransferDid || 'live_transfer') ? (
+                ) : (orgDids.liveTransferDids || []).includes(selectedDidTab) || selectedDidTab === orgDids.liveTransferDid || selectedDidTab === 'live_transfer' ? (
                   <span className="inline-flex items-center gap-1 font-semibold text-amber-300">
-                    ⚡ Live Transfers Mode {orgDids.liveTransferDid ? `(DID: ${orgDids.liveTransferDid})` : ''}
+                    ⚡ Live Transfers Mode (DID: {selectedDidTab})
                   </span>
-                ) : selectedDidTab === (orgDids.inboundCallsDid || 'inbound') ? (
+                ) : (orgDids.inboundCallsDids || []).includes(selectedDidTab) || selectedDidTab === orgDids.inboundCallsDid || selectedDidTab === 'inbound' ? (
                   <span className="inline-flex items-center gap-1 font-semibold text-cyan-300">
-                    📞 Inbound Calls Mode {orgDids.inboundCallsDid ? `(DID: ${orgDids.inboundCallsDid})` : ''}
+                    📞 Inbound Calls Mode (DID: {selectedDidTab})
+                  </span>
+                ) : (orgDids.loanFlipDids || []).includes(selectedDidTab) || selectedDidTab === orgDids.loanFlipDid || selectedDidTab === 'loan_flip' ? (
+                  <span className="inline-flex items-center gap-1 font-semibold text-purple-300">
+                    🔄 Loan Flip Mode (DID: {selectedDidTab})
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1 font-semibold text-emerald-300">

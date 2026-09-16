@@ -40,17 +40,23 @@ const OrganizationManagement = () => {
     email: '',
     website: '',
     liveTransferDid: '',
+    liveTransferDids: [],
     inboundCallsDid: '',
+    inboundCallsDids: [],
+    loanFlipDid: '',
+    loanFlipDids: [],
     sourceIds: [],
     inboundDids: [],
     features: {},
     showLoopLeads: false,
   });
 
-  // Controlled input for adding a new source ID
+  // Controlled inputs for adding items
   const [sourceIdInput, setSourceIdInput] = useState('');
-  // Controlled input for adding a new inbound DID
   const [didInput, setDidInput] = useState('');
+  const [ltDidInput, setLtDidInput] = useState('');
+  const [inDidInput, setInDidInput] = useState('');
+  const [lfDidInput, setLfDidInput] = useState('');
 
   const [userForm, setUserForm] = useState({
     name: '',
@@ -92,7 +98,11 @@ const OrganizationManagement = () => {
         email: '',
         website: '',
         liveTransferDid: '',
+        liveTransferDids: [],
         inboundCallsDid: '',
+        inboundCallsDids: [],
+        loanFlipDid: '',
+        loanFlipDids: [],
         sourceIds: [],
         inboundDids: [],
         features: {},
@@ -189,6 +199,20 @@ const OrganizationManagement = () => {
     setSelectedOrg(org);
     setSourceIdInput('');
     setDidInput('');
+    setLtDidInput('');
+    setInDidInput('');
+    setLfDidInput('');
+
+    const ltArr = Array.isArray(org.liveTransferDids) && org.liveTransferDids.length > 0
+      ? [...org.liveTransferDids]
+      : (org.liveTransferDid ? [org.liveTransferDid] : []);
+    const inArr = Array.isArray(org.inboundCallsDids) && org.inboundCallsDids.length > 0
+      ? [...org.inboundCallsDids]
+      : (org.inboundCallsDid ? [org.inboundCallsDid] : []);
+    const lfArr = Array.isArray(org.loanFlipDids) && org.loanFlipDids.length > 0
+      ? [...org.loanFlipDids]
+      : (org.loanFlipDid ? [org.loanFlipDid] : []);
+
     setOrganizationForm({
       name: org.name || '',
       description: org.description || '',
@@ -196,8 +220,12 @@ const OrganizationManagement = () => {
       phone: org.phone || '',
       email: org.email || '',
       website: org.website || '',
-      liveTransferDid: org.liveTransferDid || '',
-      inboundCallsDid: org.inboundCallsDid || '',
+      liveTransferDid: org.liveTransferDid || ltArr[0] || '',
+      liveTransferDids: ltArr,
+      inboundCallsDid: org.inboundCallsDid || inArr[0] || '',
+      inboundCallsDids: inArr,
+      loanFlipDid: org.loanFlipDid || lfArr[0] || '',
+      loanFlipDids: lfArr,
       sourceIds: Array.isArray(org.sourceIds) ? [...org.sourceIds] : [],
       inboundDids: Array.isArray(org.inboundDids) ? [...org.inboundDids] : [],
       features: org.features || {},
@@ -266,6 +294,90 @@ const OrganizationManagement = () => {
 
   const handleRemoveDid = (did) => {
     setOrganizationForm(prev => ({ ...prev, inboundDids: (prev.inboundDids || []).filter(d => d !== did) }));
+  };
+
+  // Live Transfer DIDs Handlers
+  const handleAddLtDid = () => {
+    const val = ltDidInput.trim();
+    if (!val) return;
+    if ((organizationForm.liveTransferDids || []).includes(val)) {
+      toast.error('This Live Transfer DID is already added');
+      return;
+    }
+    const updatedLt = [...(organizationForm.liveTransferDids || []), val];
+    const updatedMaster = Array.from(new Set([...(organizationForm.inboundDids || []), val]));
+    setOrganizationForm(prev => ({
+      ...prev,
+      liveTransferDids: updatedLt,
+      liveTransferDid: updatedLt[0] || '',
+      inboundDids: updatedMaster
+    }));
+    setLtDidInput('');
+  };
+
+  const handleRemoveLtDid = (did) => {
+    const updatedLt = (organizationForm.liveTransferDids || []).filter(d => d !== did);
+    setOrganizationForm(prev => ({
+      ...prev,
+      liveTransferDids: updatedLt,
+      liveTransferDid: updatedLt[0] || ''
+    }));
+  };
+
+  // Inbound Calls DIDs Handlers
+  const handleAddInboundCallsDid = () => {
+    const val = inDidInput.trim();
+    if (!val) return;
+    if ((organizationForm.inboundCallsDids || []).includes(val)) {
+      toast.error('This Inbound Calls DID is already added');
+      return;
+    }
+    const updatedIn = [...(organizationForm.inboundCallsDids || []), val];
+    const updatedMaster = Array.from(new Set([...(organizationForm.inboundDids || []), val]));
+    setOrganizationForm(prev => ({
+      ...prev,
+      inboundCallsDids: updatedIn,
+      inboundCallsDid: updatedIn[0] || '',
+      inboundDids: updatedMaster
+    }));
+    setInDidInput('');
+  };
+
+  const handleRemoveInboundCallsDid = (did) => {
+    const updatedIn = (organizationForm.inboundCallsDids || []).filter(d => d !== did);
+    setOrganizationForm(prev => ({
+      ...prev,
+      inboundCallsDids: updatedIn,
+      inboundCallsDid: updatedIn[0] || ''
+    }));
+  };
+
+  // Loan Flip DIDs Handlers
+  const handleAddLoanFlipDid = () => {
+    const val = lfDidInput.trim();
+    if (!val) return;
+    if ((organizationForm.loanFlipDids || []).includes(val)) {
+      toast.error('This Loan Flip DID is already added');
+      return;
+    }
+    const updatedLf = [...(organizationForm.loanFlipDids || []), val];
+    const updatedMaster = Array.from(new Set([...(organizationForm.inboundDids || []), val]));
+    setOrganizationForm(prev => ({
+      ...prev,
+      loanFlipDids: updatedLf,
+      loanFlipDid: updatedLf[0] || '',
+      inboundDids: updatedMaster
+    }));
+    setLfDidInput('');
+  };
+
+  const handleRemoveLoanFlipDid = (did) => {
+    const updatedLf = (organizationForm.loanFlipDids || []).filter(d => d !== did);
+    setOrganizationForm(prev => ({
+      ...prev,
+      loanFlipDids: updatedLf,
+      loanFlipDid: updatedLf[0] || ''
+    }));
   };
 
   const filteredOrganizations = organizations.filter(org => {
@@ -437,18 +549,25 @@ const OrganizationManagement = () => {
                           {org.description}
                         </div>
                       )}
-                      {(org.liveTransferDid || org.inboundCallsDid) && (
+                      {((org.liveTransferDids && org.liveTransferDids.length > 0) || org.liveTransferDid ||
+                        (org.inboundCallsDids && org.inboundCallsDids.length > 0) || org.inboundCallsDid ||
+                        (org.loanFlipDids && org.loanFlipDids.length > 0) || org.loanFlipDid) && (
                         <div className="flex flex-wrap gap-1.5 mt-1.5">
-                          {org.liveTransferDid && (
-                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-800">
-                              ⚡ Live Transfer DID: {org.liveTransferDid}
+                          {((org.liveTransferDids && org.liveTransferDids.length > 0) ? org.liveTransferDids : (org.liveTransferDid ? [org.liveTransferDid] : [])).map(d => (
+                            <span key={`lt-${d}`} className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-800 font-mono">
+                              ⚡ LT: {d}
                             </span>
-                          )}
-                          {org.inboundCallsDid && (
-                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-100 text-indigo-800">
-                              📞 Inbound DID: {org.inboundCallsDid}
+                          ))}
+                          {((org.inboundCallsDids && org.inboundCallsDids.length > 0) ? org.inboundCallsDids : (org.inboundCallsDid ? [org.inboundCallsDid] : [])).map(d => (
+                            <span key={`in-${d}`} className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-100 text-indigo-800 font-mono">
+                              📞 Inbound: {d}
                             </span>
-                          )}
+                          ))}
+                          {((org.loanFlipDids && org.loanFlipDids.length > 0) ? org.loanFlipDids : (org.loanFlipDid ? [org.loanFlipDid] : [])).map(d => (
+                            <span key={`lf-${d}`} className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-100 text-purple-800 font-mono">
+                              🔄 Loan Flip: {d}
+                            </span>
+                          ))}
                         </div>
                       )}
                     </div>
@@ -636,32 +755,154 @@ const OrganizationManagement = () => {
                       />
                     </div>
 
-                    {/* Dedicated DIDs for Segregated Dashboards */}
-                    <div className="p-3 bg-gradient-to-r from-amber-50 to-indigo-50 border border-indigo-100 rounded-lg space-y-3">
+                    {/* Dedicated DIDs for Segregated Dashboards (Live Transfers, Inbound Calls, Loan Flip) */}
+                    <div className="p-3.5 bg-gradient-to-br from-amber-50/70 via-indigo-50/50 to-purple-50/70 border border-indigo-100 rounded-xl space-y-3.5 shadow-sm">
                       <div>
-                        <span className="text-xs font-bold uppercase tracking-wider text-indigo-900">Dashboard Segregation DIDs</span>
-                        <p className="text-xs text-gray-500 mt-0.5">Assign dedicated DIDs for Live Transfers and direct Inbound Calls.</p>
+                        <span className="text-xs font-bold uppercase tracking-wider text-indigo-950 flex items-center gap-1.5">
+                          <span>⚡</span> Dashboard Segregation DIDs (Live Transfers / Inbound / Loan Flip)
+                        </span>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          Assign dedicated DIDs to categorize incoming leads into segregated dashboard tabs. Any DID added here is automatically included in All Assigned ViciDial DIDs.
+                        </p>
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        <div>
-                          <label className="block text-xs font-semibold text-amber-900 mb-1">⚡ Live Transfer DID</label>
-                          <input
-                            type="text"
-                            placeholder="e.g. 19548366271"
-                            className="w-full border border-amber-300 rounded-md px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-amber-500 focus:border-amber-500 bg-white"
-                            value={organizationForm.liveTransferDid || ''}
-                            onChange={(e) => setOrganizationForm(prev => ({ ...prev, liveTransferDid: e.target.value.replace(/[^0-9+\-\s()]/g, '') }))}
-                          />
+
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        {/* Live Transfers */}
+                        <div className="bg-white/80 backdrop-blur-sm p-2.5 rounded-lg border border-amber-200 flex flex-col justify-between">
+                          <div>
+                            <label className="block text-xs font-bold text-amber-900 mb-1 flex items-center gap-1">
+                              <span>⚡</span> Live Transfers DIDs
+                            </label>
+                            <div className="flex gap-1.5 mb-2">
+                              <input
+                                type="text"
+                                placeholder="e.g. 19548366271"
+                                className="flex-1 min-w-0 border border-amber-300 rounded px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-amber-500 bg-white"
+                                value={ltDidInput}
+                                onChange={(e) => setLtDidInput(e.target.value.replace(/[^0-9+\-\s()]/g, ''))}
+                                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddLtDid(); } }}
+                                maxLength={20}
+                              />
+                              <button
+                                type="button"
+                                onClick={handleAddLtDid}
+                                className="px-2.5 py-1 bg-amber-600 text-white rounded text-xs font-medium hover:bg-amber-700 shadow-sm"
+                              >
+                                Add
+                              </button>
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap gap-1 min-h-[24px]">
+                            {(organizationForm.liveTransferDids || []).length === 0 ? (
+                              <span className="text-[11px] text-gray-400 italic">None</span>
+                            ) : (
+                              (organizationForm.liveTransferDids || []).map((did) => (
+                                <span key={did} className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-amber-100 text-amber-900 rounded text-[11px] font-mono font-medium border border-amber-200">
+                                  {did}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveLtDid(did)}
+                                    className="text-amber-600 hover:text-red-700 font-bold leading-none ml-0.5"
+                                    title={`Remove ${did}`}
+                                  >
+                                    ×
+                                  </button>
+                                </span>
+                              ))
+                            )}
+                          </div>
                         </div>
-                        <div>
-                          <label className="block text-xs font-semibold text-indigo-900 mb-1">📞 Inbound Calls DID</label>
-                          <input
-                            type="text"
-                            placeholder="e.g. 19162330139"
-                            className="w-full border border-indigo-300 rounded-md px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 bg-white"
-                            value={organizationForm.inboundCallsDid || ''}
-                            onChange={(e) => setOrganizationForm(prev => ({ ...prev, inboundCallsDid: e.target.value.replace(/[^0-9+\-\s()]/g, '') }))}
-                          />
+
+                        {/* Inbound Calls */}
+                        <div className="bg-white/80 backdrop-blur-sm p-2.5 rounded-lg border border-indigo-200 flex flex-col justify-between">
+                          <div>
+                            <label className="block text-xs font-bold text-indigo-900 mb-1 flex items-center gap-1">
+                              <span>📞</span> Inbound Calls DIDs
+                            </label>
+                            <div className="flex gap-1.5 mb-2">
+                              <input
+                                type="text"
+                                placeholder="e.g. 19162330139"
+                                className="flex-1 min-w-0 border border-indigo-300 rounded px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-white"
+                                value={inDidInput}
+                                onChange={(e) => setInDidInput(e.target.value.replace(/[^0-9+\-\s()]/g, ''))}
+                                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddInboundCallsDid(); } }}
+                                maxLength={20}
+                              />
+                              <button
+                                type="button"
+                                onClick={handleAddInboundCallsDid}
+                                className="px-2.5 py-1 bg-indigo-600 text-white rounded text-xs font-medium hover:bg-indigo-700 shadow-sm"
+                              >
+                                Add
+                              </button>
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap gap-1 min-h-[24px]">
+                            {(organizationForm.inboundCallsDids || []).length === 0 ? (
+                              <span className="text-[11px] text-gray-400 italic">None</span>
+                            ) : (
+                              (organizationForm.inboundCallsDids || []).map((did) => (
+                                <span key={did} className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-indigo-100 text-indigo-900 rounded text-[11px] font-mono font-medium border border-indigo-200">
+                                  {did}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveInboundCallsDid(did)}
+                                    className="text-indigo-600 hover:text-red-700 font-bold leading-none ml-0.5"
+                                    title={`Remove ${did}`}
+                                  >
+                                    ×
+                                  </button>
+                                </span>
+                              ))
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Loan Flip */}
+                        <div className="bg-white/80 backdrop-blur-sm p-2.5 rounded-lg border border-purple-200 flex flex-col justify-between">
+                          <div>
+                            <label className="block text-xs font-bold text-purple-900 mb-1 flex items-center gap-1">
+                              <span>🔄</span> Loan Flip DIDs
+                            </label>
+                            <div className="flex gap-1.5 mb-2">
+                              <input
+                                type="text"
+                                placeholder="e.g. 19162092006"
+                                className="flex-1 min-w-0 border border-purple-300 rounded px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-purple-500 bg-white"
+                                value={lfDidInput}
+                                onChange={(e) => setLfDidInput(e.target.value.replace(/[^0-9+\-\s()]/g, ''))}
+                                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddLoanFlipDid(); } }}
+                                maxLength={20}
+                              />
+                              <button
+                                type="button"
+                                onClick={handleAddLoanFlipDid}
+                                className="px-2.5 py-1 bg-purple-600 text-white rounded text-xs font-medium hover:bg-purple-700 shadow-sm"
+                              >
+                                Add
+                              </button>
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap gap-1 min-h-[24px]">
+                            {(organizationForm.loanFlipDids || []).length === 0 ? (
+                              <span className="text-[11px] text-gray-400 italic">None</span>
+                            ) : (
+                              (organizationForm.loanFlipDids || []).map((did) => (
+                                <span key={did} className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-purple-100 text-purple-900 rounded text-[11px] font-mono font-medium border border-purple-200">
+                                  {did}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveLoanFlipDid(did)}
+                                    className="text-purple-600 hover:text-red-700 font-bold leading-none ml-0.5"
+                                    title={`Remove ${did}`}
+                                  >
+                                    ×
+                                  </button>
+                                </span>
+                              ))
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -866,32 +1107,152 @@ const OrganizationManagement = () => {
                       </div>
                     </div>
 
-                    {/* Dedicated DIDs for Segregated Dashboards (Live Transfers & Inbound Calls) */}
-                    <div className="p-3 bg-gradient-to-r from-amber-50 to-indigo-50 border border-indigo-100 rounded-lg space-y-3">
+                    {/* Dedicated DIDs for Segregated Dashboards (Live Transfers, Inbound Calls, Loan Flip) */}
+                    <div className="p-3.5 bg-gradient-to-br from-amber-50/70 via-indigo-50/50 to-purple-50/70 border border-indigo-100 rounded-xl space-y-3.5 shadow-sm">
                       <div>
-                        <span className="text-xs font-bold uppercase tracking-wider text-indigo-900">Dashboard Segregation DIDs (Jake / Team 1)</span>
-                        <p className="text-xs text-gray-500 mt-0.5">Assign dedicated DIDs for Live Transfers and direct Inbound Calls to enable sliding segregated dashboards.</p>
+                        <span className="text-xs font-bold uppercase tracking-wider text-indigo-950 flex items-center gap-1.5">
+                          <span>⚡</span> Dashboard Segregation DIDs (Live Transfers / Inbound / Loan Flip)
+                        </span>
+                        <p className="text-xs text-gray-500 mt-0.5">Assign dedicated DIDs for Live Transfers, Inbound Calls, and Loan Flip to enable sliding segregated dashboards. Any DID added here is automatically included in All Assigned ViciDial DIDs.</p>
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        <div>
-                          <label className="block text-xs font-semibold text-amber-900 mb-1">⚡ Live Transfer DID</label>
-                          <input
-                            type="text"
-                            placeholder="e.g. 3239999272"
-                            className="w-full border border-amber-300 rounded-md px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-amber-500 focus:border-amber-500 bg-white"
-                            value={organizationForm.liveTransferDid || ''}
-                            onChange={(e) => setOrganizationForm(prev => ({ ...prev, liveTransferDid: e.target.value.replace(/[^0-9+\-\s()]/g, '') }))}
-                          />
+
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        {/* Live Transfers */}
+                        <div className="bg-white/80 backdrop-blur-sm p-2.5 rounded-lg border border-amber-200 flex flex-col justify-between">
+                          <div>
+                            <label className="block text-xs font-bold text-amber-900 mb-1 flex items-center gap-1">
+                              <span>⚡</span> Live Transfers DIDs
+                            </label>
+                            <div className="flex gap-1.5 mb-2">
+                              <input
+                                type="text"
+                                placeholder="e.g. 3239999272"
+                                className="flex-1 min-w-0 border border-amber-300 rounded px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-amber-500 bg-white"
+                                value={ltDidInput}
+                                onChange={(e) => setLtDidInput(e.target.value.replace(/[^0-9+\-\s()]/g, ''))}
+                                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddLtDid(); } }}
+                                maxLength={20}
+                              />
+                              <button
+                                type="button"
+                                onClick={handleAddLtDid}
+                                className="px-2.5 py-1 bg-amber-600 text-white rounded text-xs font-medium hover:bg-amber-700 shadow-sm"
+                              >
+                                Add
+                              </button>
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap gap-1 min-h-[24px]">
+                            {(organizationForm.liveTransferDids || []).length === 0 ? (
+                              <span className="text-[11px] text-gray-400 italic">None</span>
+                            ) : (
+                              (organizationForm.liveTransferDids || []).map((did) => (
+                                <span key={did} className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-amber-100 text-amber-900 rounded text-[11px] font-mono font-medium border border-amber-200">
+                                  {did}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveLtDid(did)}
+                                    className="text-amber-600 hover:text-red-700 font-bold leading-none ml-0.5"
+                                    title={`Remove ${did}`}
+                                  >
+                                    ×
+                                  </button>
+                                </span>
+                              ))
+                            )}
+                          </div>
                         </div>
-                        <div>
-                          <label className="block text-xs font-semibold text-indigo-900 mb-1">📞 Inbound Calls DID</label>
-                          <input
-                            type="text"
-                            placeholder="e.g. 8001234567"
-                            className="w-full border border-indigo-300 rounded-md px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 bg-white"
-                            value={organizationForm.inboundCallsDid || ''}
-                            onChange={(e) => setOrganizationForm(prev => ({ ...prev, inboundCallsDid: e.target.value.replace(/[^0-9+\-\s()]/g, '') }))}
-                          />
+
+                        {/* Inbound Calls */}
+                        <div className="bg-white/80 backdrop-blur-sm p-2.5 rounded-lg border border-indigo-200 flex flex-col justify-between">
+                          <div>
+                            <label className="block text-xs font-bold text-indigo-900 mb-1 flex items-center gap-1">
+                              <span>📞</span> Inbound Calls DIDs
+                            </label>
+                            <div className="flex gap-1.5 mb-2">
+                              <input
+                                type="text"
+                                placeholder="e.g. 8001234567"
+                                className="flex-1 min-w-0 border border-indigo-300 rounded px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-white"
+                                value={inDidInput}
+                                onChange={(e) => setInDidInput(e.target.value.replace(/[^0-9+\-\s()]/g, ''))}
+                                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddInboundCallsDid(); } }}
+                                maxLength={20}
+                              />
+                              <button
+                                type="button"
+                                onClick={handleAddInboundCallsDid}
+                                className="px-2.5 py-1 bg-indigo-600 text-white rounded text-xs font-medium hover:bg-indigo-700 shadow-sm"
+                              >
+                                Add
+                              </button>
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap gap-1 min-h-[24px]">
+                            {(organizationForm.inboundCallsDids || []).length === 0 ? (
+                              <span className="text-[11px] text-gray-400 italic">None</span>
+                            ) : (
+                              (organizationForm.inboundCallsDids || []).map((did) => (
+                                <span key={did} className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-indigo-100 text-indigo-900 rounded text-[11px] font-mono font-medium border border-indigo-200">
+                                  {did}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveInboundCallsDid(did)}
+                                    className="text-indigo-600 hover:text-red-700 font-bold leading-none ml-0.5"
+                                    title={`Remove ${did}`}
+                                  >
+                                    ×
+                                  </button>
+                                </span>
+                              ))
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Loan Flip */}
+                        <div className="bg-white/80 backdrop-blur-sm p-2.5 rounded-lg border border-purple-200 flex flex-col justify-between">
+                          <div>
+                            <label className="block text-xs font-bold text-purple-900 mb-1 flex items-center gap-1">
+                              <span>🔄</span> Loan Flip DIDs
+                            </label>
+                            <div className="flex gap-1.5 mb-2">
+                              <input
+                                type="text"
+                                placeholder="e.g. 19162092006"
+                                className="flex-1 min-w-0 border border-purple-300 rounded px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-purple-500 bg-white"
+                                value={lfDidInput}
+                                onChange={(e) => setLfDidInput(e.target.value.replace(/[^0-9+\-\s()]/g, ''))}
+                                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddLoanFlipDid(); } }}
+                                maxLength={20}
+                              />
+                              <button
+                                type="button"
+                                onClick={handleAddLoanFlipDid}
+                                className="px-2.5 py-1 bg-purple-600 text-white rounded text-xs font-medium hover:bg-purple-700 shadow-sm"
+                              >
+                                Add
+                              </button>
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap gap-1 min-h-[24px]">
+                            {(organizationForm.loanFlipDids || []).length === 0 ? (
+                              <span className="text-[11px] text-gray-400 italic">None</span>
+                            ) : (
+                              (organizationForm.loanFlipDids || []).map((did) => (
+                                <span key={did} className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-purple-100 text-purple-900 rounded text-[11px] font-mono font-medium border border-purple-200">
+                                  {did}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveLoanFlipDid(did)}
+                                    className="text-purple-600 hover:text-red-700 font-bold leading-none ml-0.5"
+                                    title={`Remove ${did}`}
+                                  >
+                                    ×
+                                  </button>
+                                </span>
+                              ))
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>

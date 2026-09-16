@@ -10,7 +10,7 @@ const { notifyPasswordChange } = require('../utils/notificationHelper');
 const { resolveOrgFeatures } = require('../services/organizationFeatures/featureService');
 const { validateAssignedDids } = require('../services/vendorHierarchy/vendorScopeService');
 
-const ORG_POPULATE_FIELDS = 'name showLoopLeads showVendorData inboundDids liveTransferDid inboundCallsDid features';
+const ORG_POPULATE_FIELDS = 'name showLoopLeads showVendorData inboundDids liveTransferDid liveTransferDids inboundCallsDid inboundCallsDids loanFlipDid loanFlipDids features';
 
 // Helper: check if a user is the main-org admin (privilege for chat service)
 // Override the org name via MAIN_ORG_NAME env var; default is 'REDDINGTON GLOBAL CONSULTANCY'

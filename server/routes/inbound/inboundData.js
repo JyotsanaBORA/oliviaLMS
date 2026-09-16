@@ -90,8 +90,12 @@ const getInboundAccess = async (user) => {
   // Non-Reddington org (e.g. Jake, Jake 2, Partner orgs)
   const orgDids = [
     ...(org.inboundDids || []),
+    ...(org.inboundCallsDids || []),
+    ...(org.liveTransferDids || []),
+    ...(org.loanFlipDids || []),
     org.inboundCallsDid,
-    org.liveTransferDid
+    org.liveTransferDid,
+    org.loanFlipDid
   ].filter(Boolean);
 
   if (user.role === 'sub_agent' || user.role === 'vendor_agent') {
@@ -266,21 +270,25 @@ const handleInboundIngestion = async (req, res) => {
     // Look up matching Organization by DID
     let matchedOrg = null;
     if (did) {
-      // Prioritize explicit dedicated DID assignment (liveTransferDid / inboundCallsDid) first
+      // Prioritize explicit dedicated DID assignment (liveTransferDids / inboundCallsDids / loanFlipDids) first
       matchedOrg = await Organization.findOne({
         $or: [
+          { liveTransferDids: did },
           { liveTransferDid: did },
-          { inboundCallsDid: did }
+          { inboundCallsDids: did },
+          { inboundCallsDid: did },
+          { loanFlipDids: did },
+          { loanFlipDid: did }
         ],
         isActive: true
-      }).select('_id name inboundDids liveTransferDid inboundCallsDid features').lean();
+      }).select('_id name inboundDids liveTransferDid liveTransferDids inboundCallsDid inboundCallsDids loanFlipDid loanFlipDids features').lean();
 
       // Fallback to general inboundDids array if no dedicated match
       if (!matchedOrg) {
         matchedOrg = await Organization.findOne({
           inboundDids: did,
           isActive: true
-        }).select('_id name inboundDids liveTransferDid inboundCallsDid features').lean();
+        }).select('_id name inboundDids liveTransferDid liveTransferDids inboundCallsDid inboundCallsDids loanFlipDid loanFlipDids features').lean();
       }
 
       if (matchedOrg) {
@@ -658,7 +666,7 @@ router.get('/', protect, async (req, res) => {
         .sort({ receivedAt: -1 })
         .skip(skip)
         .limit(limit)
-        .populate('organization', 'name inboundDids liveTransferDid inboundCallsDid')
+        .populate('organization', 'name inboundDids liveTransferDid liveTransferDids inboundCallsDid inboundCallsDids loanFlipDid loanFlipDids')
         .populate('agent', 'name role')
         .populate('importedLeadId', 'leadId name status category')
         .lean(),
