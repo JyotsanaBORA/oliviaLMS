@@ -16,6 +16,7 @@ import {
 import axios from '../utils/axios';
 import toast from 'react-hot-toast';
 import OrgFeaturesConfig from '../features/organization/components/OrgFeaturesConfig';
+import { getDidAlias } from '../utils/didUtils';
 
 const OrganizationManagement = () => {
   const [organizations, setOrganizations] = useState([]);
@@ -47,6 +48,7 @@ const OrganizationManagement = () => {
     loanFlipDids: [],
     sourceIds: [],
     inboundDids: [],
+    didAliases: [],
     features: {},
     showLoopLeads: false,
   });
@@ -54,9 +56,13 @@ const OrganizationManagement = () => {
   // Controlled inputs for adding items
   const [sourceIdInput, setSourceIdInput] = useState('');
   const [didInput, setDidInput] = useState('');
+  const [didAliasInput, setDidAliasInput] = useState('');
   const [ltDidInput, setLtDidInput] = useState('');
+  const [ltAliasInput, setLtAliasInput] = useState('');
   const [inDidInput, setInDidInput] = useState('');
+  const [inAliasInput, setInAliasInput] = useState('');
   const [lfDidInput, setLfDidInput] = useState('');
+  const [lfAliasInput, setLfAliasInput] = useState('');
 
   const [userForm, setUserForm] = useState({
     name: '',
@@ -105,9 +111,18 @@ const OrganizationManagement = () => {
         loanFlipDids: [],
         sourceIds: [],
         inboundDids: [],
+        didAliases: [],
         features: {},
         showLoopLeads: false,
       });
+      setLtDidInput('');
+      setLtAliasInput('');
+      setInDidInput('');
+      setInAliasInput('');
+      setLfDidInput('');
+      setLfAliasInput('');
+      setDidInput('');
+      setDidAliasInput('');
       setShowCreateModal(false);
       fetchOrganizations();
     } catch (error) {
@@ -199,9 +214,13 @@ const OrganizationManagement = () => {
     setSelectedOrg(org);
     setSourceIdInput('');
     setDidInput('');
+    setDidAliasInput('');
     setLtDidInput('');
+    setLtAliasInput('');
     setInDidInput('');
+    setInAliasInput('');
     setLfDidInput('');
+    setLfAliasInput('');
 
     const ltArr = Array.isArray(org.liveTransferDids) && org.liveTransferDids.length > 0
       ? [...org.liveTransferDids]
@@ -212,6 +231,12 @@ const OrganizationManagement = () => {
     const lfArr = Array.isArray(org.loanFlipDids) && org.loanFlipDids.length > 0
       ? [...org.loanFlipDids]
       : (org.loanFlipDid ? [org.loanFlipDid] : []);
+
+    const rawAliases = Array.isArray(org.didAliases)
+      ? org.didAliases
+      : (org.didAliases && typeof org.didAliases === 'object'
+          ? Object.entries(org.didAliases).map(([did, alias]) => ({ did, alias }))
+          : []);
 
     setOrganizationForm({
       name: org.name || '',
@@ -228,6 +253,7 @@ const OrganizationManagement = () => {
       loanFlipDids: lfArr,
       sourceIds: Array.isArray(org.sourceIds) ? [...org.sourceIds] : [],
       inboundDids: Array.isArray(org.inboundDids) ? [...org.inboundDids] : [],
+      didAliases: rawAliases,
       features: org.features || {},
       showLoopLeads: org.showLoopLeads === true,
     });
@@ -283,22 +309,39 @@ const OrganizationManagement = () => {
 
   const handleAddDid = () => {
     const val = didInput.trim();
+    const aliasVal = didAliasInput.trim();
     if (!val) return;
     if ((organizationForm.inboundDids || []).includes(val)) {
       toast.error('This DID is already added');
       return;
     }
-    setOrganizationForm(prev => ({ ...prev, inboundDids: [...(prev.inboundDids || []), val] }));
+    const updatedMaster = [...(organizationForm.inboundDids || []), val];
+    let updatedAliases = [...(organizationForm.didAliases || [])];
+    if (aliasVal) {
+      updatedAliases = updatedAliases.filter(a => a.did !== val);
+      updatedAliases.push({ did: val, alias: aliasVal });
+    }
+    setOrganizationForm(prev => ({
+      ...prev,
+      inboundDids: updatedMaster,
+      didAliases: updatedAliases
+    }));
     setDidInput('');
+    setDidAliasInput('');
   };
 
   const handleRemoveDid = (did) => {
-    setOrganizationForm(prev => ({ ...prev, inboundDids: (prev.inboundDids || []).filter(d => d !== did) }));
+    setOrganizationForm(prev => ({
+      ...prev,
+      inboundDids: (prev.inboundDids || []).filter(d => d !== did),
+      didAliases: (prev.didAliases || []).filter(a => a.did !== did)
+    }));
   };
 
   // Live Transfer DIDs Handlers
   const handleAddLtDid = () => {
     const val = ltDidInput.trim();
+    const aliasVal = ltAliasInput.trim();
     if (!val) return;
     if ((organizationForm.liveTransferDids || []).includes(val)) {
       toast.error('This Live Transfer DID is already added');
@@ -306,13 +349,20 @@ const OrganizationManagement = () => {
     }
     const updatedLt = [...(organizationForm.liveTransferDids || []), val];
     const updatedMaster = Array.from(new Set([...(organizationForm.inboundDids || []), val]));
+    let updatedAliases = [...(organizationForm.didAliases || [])];
+    if (aliasVal) {
+      updatedAliases = updatedAliases.filter(a => a.did !== val);
+      updatedAliases.push({ did: val, alias: aliasVal });
+    }
     setOrganizationForm(prev => ({
       ...prev,
       liveTransferDids: updatedLt,
       liveTransferDid: updatedLt[0] || '',
-      inboundDids: updatedMaster
+      inboundDids: updatedMaster,
+      didAliases: updatedAliases
     }));
     setLtDidInput('');
+    setLtAliasInput('');
   };
 
   const handleRemoveLtDid = (did) => {
@@ -320,13 +370,15 @@ const OrganizationManagement = () => {
     setOrganizationForm(prev => ({
       ...prev,
       liveTransferDids: updatedLt,
-      liveTransferDid: updatedLt[0] || ''
+      liveTransferDid: updatedLt[0] || '',
+      didAliases: (prev.didAliases || []).filter(a => a.did !== did)
     }));
   };
 
   // Inbound Calls DIDs Handlers
   const handleAddInboundCallsDid = () => {
     const val = inDidInput.trim();
+    const aliasVal = inAliasInput.trim();
     if (!val) return;
     if ((organizationForm.inboundCallsDids || []).includes(val)) {
       toast.error('This Inbound Calls DID is already added');
@@ -334,13 +386,20 @@ const OrganizationManagement = () => {
     }
     const updatedIn = [...(organizationForm.inboundCallsDids || []), val];
     const updatedMaster = Array.from(new Set([...(organizationForm.inboundDids || []), val]));
+    let updatedAliases = [...(organizationForm.didAliases || [])];
+    if (aliasVal) {
+      updatedAliases = updatedAliases.filter(a => a.did !== val);
+      updatedAliases.push({ did: val, alias: aliasVal });
+    }
     setOrganizationForm(prev => ({
       ...prev,
       inboundCallsDids: updatedIn,
       inboundCallsDid: updatedIn[0] || '',
-      inboundDids: updatedMaster
+      inboundDids: updatedMaster,
+      didAliases: updatedAliases
     }));
     setInDidInput('');
+    setInAliasInput('');
   };
 
   const handleRemoveInboundCallsDid = (did) => {
@@ -348,13 +407,15 @@ const OrganizationManagement = () => {
     setOrganizationForm(prev => ({
       ...prev,
       inboundCallsDids: updatedIn,
-      inboundCallsDid: updatedIn[0] || ''
+      inboundCallsDid: updatedIn[0] || '',
+      didAliases: (prev.didAliases || []).filter(a => a.did !== did)
     }));
   };
 
   // Loan Flip DIDs Handlers
   const handleAddLoanFlipDid = () => {
     const val = lfDidInput.trim();
+    const aliasVal = lfAliasInput.trim();
     if (!val) return;
     if ((organizationForm.loanFlipDids || []).includes(val)) {
       toast.error('This Loan Flip DID is already added');
@@ -362,13 +423,20 @@ const OrganizationManagement = () => {
     }
     const updatedLf = [...(organizationForm.loanFlipDids || []), val];
     const updatedMaster = Array.from(new Set([...(organizationForm.inboundDids || []), val]));
+    let updatedAliases = [...(organizationForm.didAliases || [])];
+    if (aliasVal) {
+      updatedAliases = updatedAliases.filter(a => a.did !== val);
+      updatedAliases.push({ did: val, alias: aliasVal });
+    }
     setOrganizationForm(prev => ({
       ...prev,
       loanFlipDids: updatedLf,
       loanFlipDid: updatedLf[0] || '',
-      inboundDids: updatedMaster
+      inboundDids: updatedMaster,
+      didAliases: updatedAliases
     }));
     setLfDidInput('');
+    setLfAliasInput('');
   };
 
   const handleRemoveLoanFlipDid = (did) => {
@@ -376,8 +444,20 @@ const OrganizationManagement = () => {
     setOrganizationForm(prev => ({
       ...prev,
       loanFlipDids: updatedLf,
-      loanFlipDid: updatedLf[0] || ''
+      loanFlipDid: updatedLf[0] || '',
+      didAliases: (prev.didAliases || []).filter(a => a.did !== did)
     }));
+  };
+
+  // Direct alias updater for any configured DID
+  const handleUpdateDidAlias = (did, newAlias) => {
+    setOrganizationForm(prev => {
+      const filtered = (prev.didAliases || []).filter(a => a.did !== did);
+      if (newAlias && newAlias.trim()) {
+        filtered.push({ did, alias: newAlias.trim() });
+      }
+      return { ...prev, didAliases: filtered };
+    });
   };
 
   const filteredOrganizations = organizations.filter(org => {
@@ -553,21 +633,33 @@ const OrganizationManagement = () => {
                         (org.inboundCallsDids && org.inboundCallsDids.length > 0) || org.inboundCallsDid ||
                         (org.loanFlipDids && org.loanFlipDids.length > 0) || org.loanFlipDid) && (
                         <div className="flex flex-wrap gap-1.5 mt-1.5">
-                          {((org.liveTransferDids && org.liveTransferDids.length > 0) ? org.liveTransferDids : (org.liveTransferDid ? [org.liveTransferDid] : [])).map(d => (
-                            <span key={`lt-${d}`} className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-800 font-mono">
-                              ⚡ LT: {d}
-                            </span>
-                          ))}
-                          {((org.inboundCallsDids && org.inboundCallsDids.length > 0) ? org.inboundCallsDids : (org.inboundCallsDid ? [org.inboundCallsDid] : [])).map(d => (
-                            <span key={`in-${d}`} className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-100 text-indigo-800 font-mono">
-                              📞 Inbound: {d}
-                            </span>
-                          ))}
-                          {((org.loanFlipDids && org.loanFlipDids.length > 0) ? org.loanFlipDids : (org.loanFlipDid ? [org.loanFlipDid] : [])).map(d => (
-                            <span key={`lf-${d}`} className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-100 text-purple-800 font-mono">
-                              🔄 Loan Flip: {d}
-                            </span>
-                          ))}
+                          {((org.liveTransferDids && org.liveTransferDids.length > 0) ? org.liveTransferDids : (org.liveTransferDid ? [org.liveTransferDid] : [])).map(d => {
+                            const alias = getDidAlias(d, org.didAliases);
+                            return (
+                              <span key={`lt-${d}`} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-800">
+                                <span>⚡ LT:</span>
+                                {alias ? <span className="font-bold">{alias} <span className="font-mono font-normal text-amber-700">({d})</span></span> : <span className="font-mono">{d}</span>}
+                              </span>
+                            );
+                          })}
+                          {((org.inboundCallsDids && org.inboundCallsDids.length > 0) ? org.inboundCallsDids : (org.inboundCallsDid ? [org.inboundCallsDid] : [])).map(d => {
+                            const alias = getDidAlias(d, org.didAliases);
+                            return (
+                              <span key={`in-${d}`} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-100 text-indigo-800">
+                                <span>📞 Inbound:</span>
+                                {alias ? <span className="font-bold">{alias} <span className="font-mono font-normal text-indigo-700">({d})</span></span> : <span className="font-mono">{d}</span>}
+                              </span>
+                            );
+                          })}
+                          {((org.loanFlipDids && org.loanFlipDids.length > 0) ? org.loanFlipDids : (org.loanFlipDid ? [org.loanFlipDid] : [])).map(d => {
+                            const alias = getDidAlias(d, org.didAliases);
+                            return (
+                              <span key={`lf-${d}`} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-100 text-purple-800">
+                                <span>🔄 Loan Flip:</span>
+                                {alias ? <span className="font-bold">{alias} <span className="font-mono font-normal text-purple-700">({d})</span></span> : <span className="font-mono">{d}</span>}
+                              </span>
+                            );
+                          })}
                         </div>
                       )}
                     </div>
@@ -762,7 +854,7 @@ const OrganizationManagement = () => {
                           <span>⚡</span> Dashboard Segregation DIDs (Live Transfers / Inbound / Loan Flip)
                         </span>
                         <p className="text-xs text-gray-500 mt-0.5">
-                          Assign dedicated DIDs to categorize incoming leads into segregated dashboard tabs. Any DID added here is automatically included in All Assigned ViciDial DIDs.
+                          Assign dedicated DIDs and friendly alias names to categorize incoming leads into segregated dashboard tabs. Any DID added here is automatically included in All Assigned ViciDial DIDs.
                         </p>
                       </div>
 
@@ -773,42 +865,60 @@ const OrganizationManagement = () => {
                             <label className="block text-xs font-bold text-amber-900 mb-1 flex items-center gap-1">
                               <span>⚡</span> Live Transfers DIDs
                             </label>
-                            <div className="flex gap-1.5 mb-2">
+                            <div className="space-y-1.5 mb-2">
                               <input
                                 type="text"
-                                placeholder="e.g. 19548366271"
-                                className="flex-1 min-w-0 border border-amber-300 rounded px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-amber-500 bg-white"
+                                placeholder="DID e.g. 19548366271"
+                                className="w-full border border-amber-300 rounded px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-amber-500 bg-white"
                                 value={ltDidInput}
                                 onChange={(e) => setLtDidInput(e.target.value.replace(/[^0-9+\-\s()]/g, ''))}
                                 onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddLtDid(); } }}
                                 maxLength={20}
                               />
-                              <button
-                                type="button"
-                                onClick={handleAddLtDid}
-                                className="px-2.5 py-1 bg-amber-600 text-white rounded text-xs font-medium hover:bg-amber-700 shadow-sm"
-                              >
-                                Add
-                              </button>
+                              <div className="flex gap-1">
+                                <input
+                                  type="text"
+                                  placeholder="Alias (e.g. Phoenix LT)"
+                                  className="flex-1 min-w-0 border border-amber-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-amber-500 bg-white"
+                                  value={ltAliasInput}
+                                  onChange={(e) => setLtAliasInput(e.target.value)}
+                                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddLtDid(); } }}
+                                  maxLength={50}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={handleAddLtDid}
+                                  className="px-2.5 py-1 bg-amber-600 text-white rounded text-xs font-medium hover:bg-amber-700 shadow-sm"
+                                >
+                                  Add
+                                </button>
+                              </div>
                             </div>
                           </div>
                           <div className="flex flex-wrap gap-1 min-h-[24px]">
                             {(organizationForm.liveTransferDids || []).length === 0 ? (
                               <span className="text-[11px] text-gray-400 italic">None</span>
                             ) : (
-                              (organizationForm.liveTransferDids || []).map((did) => (
-                                <span key={did} className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-amber-100 text-amber-900 rounded text-[11px] font-mono font-medium border border-amber-200">
-                                  {did}
-                                  <button
-                                    type="button"
-                                    onClick={() => handleRemoveLtDid(did)}
-                                    className="text-amber-600 hover:text-red-700 font-bold leading-none ml-0.5"
-                                    title={`Remove ${did}`}
-                                  >
-                                    ×
-                                  </button>
-                                </span>
-                              ))
+                              (organizationForm.liveTransferDids || []).map((did) => {
+                                const alias = (organizationForm.didAliases || []).find(a => a.did === did)?.alias;
+                                return (
+                                  <span key={did} className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-amber-100 text-amber-900 rounded text-[11px] font-medium border border-amber-200">
+                                    {alias ? (
+                                      <span><b>{alias}</b> <span className="font-mono text-[10px] text-amber-700 font-normal">({did})</span></span>
+                                    ) : (
+                                      <span className="font-mono">{did}</span>
+                                    )}
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRemoveLtDid(did)}
+                                      className="text-amber-600 hover:text-red-700 font-bold leading-none ml-0.5 cursor-pointer"
+                                      title={`Remove ${did}`}
+                                    >
+                                      ×
+                                    </button>
+                                  </span>
+                                );
+                              })
                             )}
                           </div>
                         </div>
@@ -819,42 +929,60 @@ const OrganizationManagement = () => {
                             <label className="block text-xs font-bold text-indigo-900 mb-1 flex items-center gap-1">
                               <span>📞</span> Inbound Calls DIDs
                             </label>
-                            <div className="flex gap-1.5 mb-2">
+                            <div className="space-y-1.5 mb-2">
                               <input
                                 type="text"
-                                placeholder="e.g. 19162330139"
-                                className="flex-1 min-w-0 border border-indigo-300 rounded px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-white"
+                                placeholder="DID e.g. 19162330139"
+                                className="w-full border border-indigo-300 rounded px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-white"
                                 value={inDidInput}
                                 onChange={(e) => setInDidInput(e.target.value.replace(/[^0-9+\-\s()]/g, ''))}
                                 onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddInboundCallsDid(); } }}
                                 maxLength={20}
                               />
-                              <button
-                                type="button"
-                                onClick={handleAddInboundCallsDid}
-                                className="px-2.5 py-1 bg-indigo-600 text-white rounded text-xs font-medium hover:bg-indigo-700 shadow-sm"
-                              >
-                                Add
-                              </button>
+                              <div className="flex gap-1">
+                                <input
+                                  type="text"
+                                  placeholder="Alias (e.g. Main Inbound)"
+                                  className="flex-1 min-w-0 border border-indigo-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-white"
+                                  value={inAliasInput}
+                                  onChange={(e) => setInAliasInput(e.target.value)}
+                                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddInboundCallsDid(); } }}
+                                  maxLength={50}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={handleAddInboundCallsDid}
+                                  className="px-2.5 py-1 bg-indigo-600 text-white rounded text-xs font-medium hover:bg-indigo-700 shadow-sm"
+                                >
+                                  Add
+                                </button>
+                              </div>
                             </div>
                           </div>
                           <div className="flex flex-wrap gap-1 min-h-[24px]">
                             {(organizationForm.inboundCallsDids || []).length === 0 ? (
                               <span className="text-[11px] text-gray-400 italic">None</span>
                             ) : (
-                              (organizationForm.inboundCallsDids || []).map((did) => (
-                                <span key={did} className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-indigo-100 text-indigo-900 rounded text-[11px] font-mono font-medium border border-indigo-200">
-                                  {did}
-                                  <button
-                                    type="button"
-                                    onClick={() => handleRemoveInboundCallsDid(did)}
-                                    className="text-indigo-600 hover:text-red-700 font-bold leading-none ml-0.5"
-                                    title={`Remove ${did}`}
-                                  >
-                                    ×
-                                  </button>
-                                </span>
-                              ))
+                              (organizationForm.inboundCallsDids || []).map((did) => {
+                                const alias = (organizationForm.didAliases || []).find(a => a.did === did)?.alias;
+                                return (
+                                  <span key={did} className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-indigo-100 text-indigo-900 rounded text-[11px] font-medium border border-indigo-200">
+                                    {alias ? (
+                                      <span><b>{alias}</b> <span className="font-mono text-[10px] text-indigo-700 font-normal">({did})</span></span>
+                                    ) : (
+                                      <span className="font-mono">{did}</span>
+                                    )}
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRemoveInboundCallsDid(did)}
+                                      className="text-indigo-600 hover:text-red-700 font-bold leading-none ml-0.5 cursor-pointer"
+                                      title={`Remove ${did}`}
+                                    >
+                                      ×
+                                    </button>
+                                  </span>
+                                );
+                              })
                             )}
                           </div>
                         </div>
@@ -865,42 +993,60 @@ const OrganizationManagement = () => {
                             <label className="block text-xs font-bold text-purple-900 mb-1 flex items-center gap-1">
                               <span>🔄</span> Loan Flip DIDs
                             </label>
-                            <div className="flex gap-1.5 mb-2">
+                            <div className="space-y-1.5 mb-2">
                               <input
                                 type="text"
-                                placeholder="e.g. 19162092006"
-                                className="flex-1 min-w-0 border border-purple-300 rounded px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-purple-500 bg-white"
+                                placeholder="DID e.g. 19162092006"
+                                className="w-full border border-purple-300 rounded px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-purple-500 bg-white"
                                 value={lfDidInput}
                                 onChange={(e) => setLfDidInput(e.target.value.replace(/[^0-9+\-\s()]/g, ''))}
                                 onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddLoanFlipDid(); } }}
                                 maxLength={20}
                               />
-                              <button
-                                type="button"
-                                onClick={handleAddLoanFlipDid}
-                                className="px-2.5 py-1 bg-purple-600 text-white rounded text-xs font-medium hover:bg-purple-700 shadow-sm"
-                              >
-                                Add
-                              </button>
+                              <div className="flex gap-1">
+                                <input
+                                  type="text"
+                                  placeholder="Alias (e.g. Loan Flip)"
+                                  className="flex-1 min-w-0 border border-purple-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-purple-500 bg-white"
+                                  value={lfAliasInput}
+                                  onChange={(e) => setLfAliasInput(e.target.value)}
+                                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddLoanFlipDid(); } }}
+                                  maxLength={50}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={handleAddLoanFlipDid}
+                                  className="px-2.5 py-1 bg-purple-600 text-white rounded text-xs font-medium hover:bg-purple-700 shadow-sm"
+                                >
+                                  Add
+                                </button>
+                              </div>
                             </div>
                           </div>
                           <div className="flex flex-wrap gap-1 min-h-[24px]">
                             {(organizationForm.loanFlipDids || []).length === 0 ? (
                               <span className="text-[11px] text-gray-400 italic">None</span>
                             ) : (
-                              (organizationForm.loanFlipDids || []).map((did) => (
-                                <span key={did} className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-purple-100 text-purple-900 rounded text-[11px] font-mono font-medium border border-purple-200">
-                                  {did}
-                                  <button
-                                    type="button"
-                                    onClick={() => handleRemoveLoanFlipDid(did)}
-                                    className="text-purple-600 hover:text-red-700 font-bold leading-none ml-0.5"
-                                    title={`Remove ${did}`}
-                                  >
-                                    ×
-                                  </button>
-                                </span>
-                              ))
+                              (organizationForm.loanFlipDids || []).map((did) => {
+                                const alias = (organizationForm.didAliases || []).find(a => a.did === did)?.alias;
+                                return (
+                                  <span key={did} className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-purple-100 text-purple-900 rounded text-[11px] font-medium border border-purple-200">
+                                    {alias ? (
+                                      <span><b>{alias}</b> <span className="font-mono text-[10px] text-purple-700 font-normal">({did})</span></span>
+                                    ) : (
+                                      <span className="font-mono">{did}</span>
+                                    )}
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRemoveLoanFlipDid(did)}
+                                      className="text-purple-600 hover:text-red-700 font-bold leading-none ml-0.5 cursor-pointer"
+                                      title={`Remove ${did}`}
+                                    >
+                                      ×
+                                    </button>
+                                  </span>
+                                );
+                              })
                             )}
                           </div>
                         </div>
@@ -913,7 +1059,7 @@ const OrganizationManagement = () => {
                       <p className="text-xs text-gray-400 mb-2">
                         Inbound call leads matching any of these numbers will appear on this organisation's dashboard.
                       </p>
-                      <div className="flex gap-2 mb-2">
+                      <div className="flex flex-col sm:flex-row gap-2 mb-2">
                         <input
                           type="text"
                           placeholder="Enter DID (e.g. 19548366271)"
@@ -923,33 +1069,78 @@ const OrganizationManagement = () => {
                           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddDid(); } }}
                           maxLength={20}
                         />
+                        <input
+                          type="text"
+                          placeholder="Alias / Friendly Name (optional)"
+                          className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                          value={didAliasInput}
+                          onChange={(e) => setDidAliasInput(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddDid(); } }}
+                          maxLength={50}
+                        />
                         <button
                           type="button"
                           onClick={handleAddDid}
-                          className="px-3 py-2 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                          className="px-4 py-2 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                         >
-                          Add
+                          Add DID
                         </button>
                       </div>
                       <div className="flex flex-wrap gap-2 min-h-[28px]">
                         {(organizationForm.inboundDids || []).length === 0 ? (
                           <span className="text-xs text-gray-400 italic">No inbound DIDs assigned.</span>
                         ) : (
-                          (organizationForm.inboundDids || []).map((did) => (
-                            <span key={did} className="inline-flex items-center gap-1 px-2 py-1 bg-indigo-100 text-indigo-800 rounded text-xs font-mono">
-                              {did}
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveDid(did)}
-                                className="ml-1 text-indigo-500 hover:text-red-600 font-bold leading-none"
-                                title={`Remove ${did}`}
-                              >
-                                ×
-                              </button>
-                            </span>
-                          ))
+                          (organizationForm.inboundDids || []).map((did) => {
+                            const alias = (organizationForm.didAliases || []).find(a => a.did === did)?.alias;
+                            return (
+                              <span key={did} className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-indigo-50 border border-indigo-200 text-indigo-900 rounded-md text-xs">
+                                {alias ? (
+                                  <span><b>{alias}</b> <span className="font-mono text-[11px] text-indigo-700 font-normal">({did})</span></span>
+                                ) : (
+                                  <span className="font-mono font-medium">{did}</span>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveDid(did)}
+                                  className="ml-1 text-indigo-400 hover:text-red-600 font-bold leading-none cursor-pointer"
+                                  title={`Remove ${did}`}
+                                >
+                                  ×
+                                </button>
+                              </span>
+                            );
+                          })
                         )}
                       </div>
+
+                      {/* Configured DID Alias Quick Manager */}
+                      {organizationForm.inboundDids && organizationForm.inboundDids.length > 0 && (
+                        <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 mt-3">
+                          <div className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-1 flex items-center justify-between">
+                            <span>🏷️ Assigned DID Alias Names</span>
+                            <span className="text-[10px] text-gray-500 font-normal">Shown on all admin & agent dashboards</span>
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+                            {organizationForm.inboundDids.map(did => {
+                              const currentAlias = (organizationForm.didAliases || []).find(a => a.did === did)?.alias || '';
+                              return (
+                                <div key={`alias-create-${did}`} className="flex items-center gap-2 bg-white border border-gray-200 rounded p-1.5 shadow-xs">
+                                  <span className="font-mono text-xs font-bold text-gray-700 bg-gray-100 px-2 py-1 rounded min-w-[105px] text-center border border-gray-200">
+                                    {did}
+                                  </span>
+                                  <input
+                                    type="text"
+                                    placeholder="Set alias name..."
+                                    className="flex-1 min-w-0 border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                    value={currentAlias}
+                                    onChange={(e) => handleUpdateDidAlias(did, e.target.value)}
+                                  />
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     <OrgFeaturesConfig
@@ -1113,7 +1304,7 @@ const OrganizationManagement = () => {
                         <span className="text-xs font-bold uppercase tracking-wider text-indigo-950 flex items-center gap-1.5">
                           <span>⚡</span> Dashboard Segregation DIDs (Live Transfers / Inbound / Loan Flip)
                         </span>
-                        <p className="text-xs text-gray-500 mt-0.5">Assign dedicated DIDs for Live Transfers, Inbound Calls, and Loan Flip to enable sliding segregated dashboards. Any DID added here is automatically included in All Assigned ViciDial DIDs.</p>
+                        <p className="text-xs text-gray-500 mt-0.5">Assign dedicated DIDs and friendly alias names for Live Transfers, Inbound Calls, and Loan Flip to enable sliding segregated dashboards. Any DID added here is automatically included in All Assigned ViciDial DIDs.</p>
                       </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -1123,42 +1314,60 @@ const OrganizationManagement = () => {
                             <label className="block text-xs font-bold text-amber-900 mb-1 flex items-center gap-1">
                               <span>⚡</span> Live Transfers DIDs
                             </label>
-                            <div className="flex gap-1.5 mb-2">
+                            <div className="space-y-1.5 mb-2">
                               <input
                                 type="text"
-                                placeholder="e.g. 3239999272"
-                                className="flex-1 min-w-0 border border-amber-300 rounded px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-amber-500 bg-white"
+                                placeholder="DID e.g. 3239999272"
+                                className="w-full border border-amber-300 rounded px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-amber-500 bg-white"
                                 value={ltDidInput}
                                 onChange={(e) => setLtDidInput(e.target.value.replace(/[^0-9+\-\s()]/g, ''))}
                                 onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddLtDid(); } }}
                                 maxLength={20}
                               />
-                              <button
-                                type="button"
-                                onClick={handleAddLtDid}
-                                className="px-2.5 py-1 bg-amber-600 text-white rounded text-xs font-medium hover:bg-amber-700 shadow-sm"
-                              >
-                                Add
-                              </button>
+                              <div className="flex gap-1">
+                                <input
+                                  type="text"
+                                  placeholder="Alias (e.g. Phoenix LT)"
+                                  className="flex-1 min-w-0 border border-amber-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-amber-500 bg-white"
+                                  value={ltAliasInput}
+                                  onChange={(e) => setLtAliasInput(e.target.value)}
+                                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddLtDid(); } }}
+                                  maxLength={50}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={handleAddLtDid}
+                                  className="px-2.5 py-1 bg-amber-600 text-white rounded text-xs font-medium hover:bg-amber-700 shadow-sm"
+                                >
+                                  Add
+                                </button>
+                              </div>
                             </div>
                           </div>
                           <div className="flex flex-wrap gap-1 min-h-[24px]">
                             {(organizationForm.liveTransferDids || []).length === 0 ? (
                               <span className="text-[11px] text-gray-400 italic">None</span>
                             ) : (
-                              (organizationForm.liveTransferDids || []).map((did) => (
-                                <span key={did} className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-amber-100 text-amber-900 rounded text-[11px] font-mono font-medium border border-amber-200">
-                                  {did}
-                                  <button
-                                    type="button"
-                                    onClick={() => handleRemoveLtDid(did)}
-                                    className="text-amber-600 hover:text-red-700 font-bold leading-none ml-0.5"
-                                    title={`Remove ${did}`}
-                                  >
-                                    ×
-                                  </button>
-                                </span>
-                              ))
+                              (organizationForm.liveTransferDids || []).map((did) => {
+                                const alias = (organizationForm.didAliases || []).find(a => a.did === did)?.alias;
+                                return (
+                                  <span key={did} className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-amber-100 text-amber-900 rounded text-[11px] font-medium border border-amber-200">
+                                    {alias ? (
+                                      <span><b>{alias}</b> <span className="font-mono text-[10px] text-amber-700 font-normal">({did})</span></span>
+                                    ) : (
+                                      <span className="font-mono">{did}</span>
+                                    )}
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRemoveLtDid(did)}
+                                      className="text-amber-600 hover:text-red-700 font-bold leading-none ml-0.5 cursor-pointer"
+                                      title={`Remove ${did}`}
+                                    >
+                                      ×
+                                    </button>
+                                  </span>
+                                );
+                              })
                             )}
                           </div>
                         </div>
@@ -1169,42 +1378,60 @@ const OrganizationManagement = () => {
                             <label className="block text-xs font-bold text-indigo-900 mb-1 flex items-center gap-1">
                               <span>📞</span> Inbound Calls DIDs
                             </label>
-                            <div className="flex gap-1.5 mb-2">
+                            <div className="space-y-1.5 mb-2">
                               <input
                                 type="text"
-                                placeholder="e.g. 8001234567"
-                                className="flex-1 min-w-0 border border-indigo-300 rounded px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-white"
+                                placeholder="DID e.g. 8001234567"
+                                className="w-full border border-indigo-300 rounded px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-white"
                                 value={inDidInput}
                                 onChange={(e) => setInDidInput(e.target.value.replace(/[^0-9+\-\s()]/g, ''))}
                                 onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddInboundCallsDid(); } }}
                                 maxLength={20}
                               />
-                              <button
-                                type="button"
-                                onClick={handleAddInboundCallsDid}
-                                className="px-2.5 py-1 bg-indigo-600 text-white rounded text-xs font-medium hover:bg-indigo-700 shadow-sm"
-                              >
-                                Add
-                              </button>
+                              <div className="flex gap-1">
+                                <input
+                                  type="text"
+                                  placeholder="Alias (e.g. Main Inbound)"
+                                  className="flex-1 min-w-0 border border-indigo-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-white"
+                                  value={inAliasInput}
+                                  onChange={(e) => setInAliasInput(e.target.value)}
+                                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddInboundCallsDid(); } }}
+                                  maxLength={50}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={handleAddInboundCallsDid}
+                                  className="px-2.5 py-1 bg-indigo-600 text-white rounded text-xs font-medium hover:bg-indigo-700 shadow-sm"
+                                >
+                                  Add
+                                </button>
+                              </div>
                             </div>
                           </div>
                           <div className="flex flex-wrap gap-1 min-h-[24px]">
                             {(organizationForm.inboundCallsDids || []).length === 0 ? (
                               <span className="text-[11px] text-gray-400 italic">None</span>
                             ) : (
-                              (organizationForm.inboundCallsDids || []).map((did) => (
-                                <span key={did} className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-indigo-100 text-indigo-900 rounded text-[11px] font-mono font-medium border border-indigo-200">
-                                  {did}
-                                  <button
-                                    type="button"
-                                    onClick={() => handleRemoveInboundCallsDid(did)}
-                                    className="text-indigo-600 hover:text-red-700 font-bold leading-none ml-0.5"
-                                    title={`Remove ${did}`}
-                                  >
-                                    ×
-                                  </button>
-                                </span>
-                              ))
+                              (organizationForm.inboundCallsDids || []).map((did) => {
+                                const alias = (organizationForm.didAliases || []).find(a => a.did === did)?.alias;
+                                return (
+                                  <span key={did} className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-indigo-100 text-indigo-900 rounded text-[11px] font-medium border border-indigo-200">
+                                    {alias ? (
+                                      <span><b>{alias}</b> <span className="font-mono text-[10px] text-indigo-700 font-normal">({did})</span></span>
+                                    ) : (
+                                      <span className="font-mono">{did}</span>
+                                    )}
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRemoveInboundCallsDid(did)}
+                                      className="text-indigo-600 hover:text-red-700 font-bold leading-none ml-0.5 cursor-pointer"
+                                      title={`Remove ${did}`}
+                                    >
+                                      ×
+                                    </button>
+                                  </span>
+                                );
+                              })
                             )}
                           </div>
                         </div>
@@ -1215,42 +1442,60 @@ const OrganizationManagement = () => {
                             <label className="block text-xs font-bold text-purple-900 mb-1 flex items-center gap-1">
                               <span>🔄</span> Loan Flip DIDs
                             </label>
-                            <div className="flex gap-1.5 mb-2">
+                            <div className="space-y-1.5 mb-2">
                               <input
                                 type="text"
-                                placeholder="e.g. 19162092006"
-                                className="flex-1 min-w-0 border border-purple-300 rounded px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-purple-500 bg-white"
+                                placeholder="DID e.g. 19162092006"
+                                className="w-full border border-purple-300 rounded px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-purple-500 bg-white"
                                 value={lfDidInput}
                                 onChange={(e) => setLfDidInput(e.target.value.replace(/[^0-9+\-\s()]/g, ''))}
                                 onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddLoanFlipDid(); } }}
                                 maxLength={20}
                               />
-                              <button
-                                type="button"
-                                onClick={handleAddLoanFlipDid}
-                                className="px-2.5 py-1 bg-purple-600 text-white rounded text-xs font-medium hover:bg-purple-700 shadow-sm"
-                              >
-                                Add
-                              </button>
+                              <div className="flex gap-1">
+                                <input
+                                  type="text"
+                                  placeholder="Alias (e.g. Loan Flip)"
+                                  className="flex-1 min-w-0 border border-purple-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-purple-500 bg-white"
+                                  value={lfAliasInput}
+                                  onChange={(e) => setLfAliasInput(e.target.value)}
+                                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddLoanFlipDid(); } }}
+                                  maxLength={50}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={handleAddLoanFlipDid}
+                                  className="px-2.5 py-1 bg-purple-600 text-white rounded text-xs font-medium hover:bg-purple-700 shadow-sm"
+                                >
+                                  Add
+                                </button>
+                              </div>
                             </div>
                           </div>
                           <div className="flex flex-wrap gap-1 min-h-[24px]">
                             {(organizationForm.loanFlipDids || []).length === 0 ? (
                               <span className="text-[11px] text-gray-400 italic">None</span>
                             ) : (
-                              (organizationForm.loanFlipDids || []).map((did) => (
-                                <span key={did} className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-purple-100 text-purple-900 rounded text-[11px] font-mono font-medium border border-purple-200">
-                                  {did}
-                                  <button
-                                    type="button"
-                                    onClick={() => handleRemoveLoanFlipDid(did)}
-                                    className="text-purple-600 hover:text-red-700 font-bold leading-none ml-0.5"
-                                    title={`Remove ${did}`}
-                                  >
-                                    ×
-                                  </button>
-                                </span>
-                              ))
+                              (organizationForm.loanFlipDids || []).map((did) => {
+                                const alias = (organizationForm.didAliases || []).find(a => a.did === did)?.alias;
+                                return (
+                                  <span key={did} className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-purple-100 text-purple-900 rounded text-[11px] font-medium border border-purple-200">
+                                    {alias ? (
+                                      <span><b>{alias}</b> <span className="font-mono text-[10px] text-purple-700 font-normal">({did})</span></span>
+                                    ) : (
+                                      <span className="font-mono">{did}</span>
+                                    )}
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRemoveLoanFlipDid(did)}
+                                      className="text-purple-600 hover:text-red-700 font-bold leading-none ml-0.5 cursor-pointer"
+                                      title={`Remove ${did}`}
+                                    >
+                                      ×
+                                    </button>
+                                  </span>
+                                );
+                              })
                             )}
                           </div>
                         </div>
@@ -1263,7 +1508,7 @@ const OrganizationManagement = () => {
                       <p className="text-xs text-gray-400 mb-2">
                         Inbound call leads whose DID matches one of these numbers will appear on this organisation's admin dashboard (e.g. <span className="font-mono">3239999272</span>).
                       </p>
-                      <div className="flex gap-2 mb-2">
+                      <div className="flex flex-col sm:flex-row gap-2 mb-2">
                         <input
                           type="text"
                           placeholder="Enter DID (e.g. 3239999272)"
@@ -1273,33 +1518,78 @@ const OrganizationManagement = () => {
                           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddDid(); } }}
                           maxLength={20}
                         />
+                        <input
+                          type="text"
+                          placeholder="Alias / Friendly Name (optional)"
+                          className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                          value={didAliasInput}
+                          onChange={(e) => setDidAliasInput(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddDid(); } }}
+                          maxLength={50}
+                        />
                         <button
                           type="button"
                           onClick={handleAddDid}
-                          className="px-3 py-2 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                          className="px-4 py-2 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                         >
-                          Add
+                          Add DID
                         </button>
                       </div>
                       <div className="flex flex-wrap gap-2 min-h-[28px]">
                         {(organizationForm.inboundDids || []).length === 0 ? (
                           <span className="text-xs text-gray-400 italic">No inbound DIDs assigned.</span>
                         ) : (
-                          (organizationForm.inboundDids || []).map((did) => (
-                            <span key={did} className="inline-flex items-center gap-1 px-2 py-1 bg-indigo-100 text-indigo-800 rounded text-xs font-mono">
-                              {did}
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveDid(did)}
-                                className="ml-1 text-indigo-500 hover:text-red-600 font-bold leading-none"
-                                title={`Remove ${did}`}
-                              >
-                                ×
-                              </button>
-                            </span>
-                          ))
+                          (organizationForm.inboundDids || []).map((did) => {
+                            const alias = (organizationForm.didAliases || []).find(a => a.did === did)?.alias;
+                            return (
+                              <span key={did} className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-indigo-50 border border-indigo-200 text-indigo-900 rounded-md text-xs">
+                                {alias ? (
+                                  <span><b>{alias}</b> <span className="font-mono text-[11px] text-indigo-700 font-normal">({did})</span></span>
+                                ) : (
+                                  <span className="font-mono font-medium">{did}</span>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveDid(did)}
+                                  className="ml-1 text-indigo-400 hover:text-red-600 font-bold leading-none cursor-pointer"
+                                  title={`Remove ${did}`}
+                                >
+                                  ×
+                                </button>
+                              </span>
+                            );
+                          })
                         )}
                       </div>
+
+                      {/* Configured DID Alias Quick Manager */}
+                      {organizationForm.inboundDids && organizationForm.inboundDids.length > 0 && (
+                        <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 mt-3">
+                          <div className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-1 flex items-center justify-between">
+                            <span>🏷️ Assigned DID Alias Names</span>
+                            <span className="text-[10px] text-gray-500 font-normal">Shown on all admin & agent dashboards</span>
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+                            {organizationForm.inboundDids.map(did => {
+                              const currentAlias = (organizationForm.didAliases || []).find(a => a.did === did)?.alias || '';
+                              return (
+                                <div key={`alias-edit-${did}`} className="flex items-center gap-2 bg-white border border-gray-200 rounded p-1.5 shadow-xs">
+                                  <span className="font-mono text-xs font-bold text-gray-700 bg-gray-100 px-2 py-1 rounded min-w-[105px] text-center border border-gray-200">
+                                    {did}
+                                  </span>
+                                  <input
+                                    type="text"
+                                    placeholder="Set alias name..."
+                                    className="flex-1 min-w-0 border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                    value={currentAlias}
+                                    onChange={(e) => handleUpdateDidAlias(did, e.target.value)}
+                                  />
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     {/* Dynamic Organization Features & Permissions */}

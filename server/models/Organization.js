@@ -113,6 +113,22 @@ const organizationSchema = new mongoose.Schema({
     type: [String],
     default: []
   },
+  // Custom display aliases for assigned DIDs
+  didAliases: [
+    {
+      _id: false,
+      did: {
+        type: String,
+        trim: true,
+        required: true
+      },
+      alias: {
+        type: String,
+        trim: true,
+        required: true
+      }
+    }
+  ],
   // When true, the Loop Leads panel is shown on this organisation's admin dashboard.
   // Set via SuperAdmin → Organisation Management.
   showLoopLeads: {
@@ -187,6 +203,23 @@ organizationSchema.pre('save', function(next) {
     if (d && !dids.includes(d)) dids.push(d);
   });
   this.inboundDids = Array.from(new Set(dids));
+
+  // Normalize didAliases
+  if (Array.isArray(this.didAliases)) {
+    const seenDids = new Set();
+    const cleanAliases = [];
+    for (const item of this.didAliases) {
+      if (item && item.did && item.alias) {
+        const cleanDid = String(item.did).trim();
+        const cleanAlias = String(item.alias).trim();
+        if (cleanDid && cleanAlias && !seenDids.has(cleanDid)) {
+          seenDids.add(cleanDid);
+          cleanAliases.push({ did: cleanDid, alias: cleanAlias });
+        }
+      }
+    }
+    this.didAliases = cleanAliases;
+  }
 
   next();
 });

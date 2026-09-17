@@ -43,6 +43,7 @@ import Pagination from '../components/common/Pagination';
 import ClientPortalsDropdown from '../features/organization/components/ClientPortalsDropdown';
 import DidBreakdownTable from '../features/organization/components/DidBreakdownTable';
 import { hasOrgFeature } from '../features/organization/utils/orgPermissions';
+import { getDidAliasMap, getDidAlias } from '../utils/didUtils';
 import { useSocket } from '../contexts/SocketContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useRefresh } from '../contexts/RefreshContext';
@@ -694,6 +695,11 @@ const AdminDashboard = () => {
     return user?.role === 'sub_agent' || user?.role === 'vendor_agent';
   }, [user]);
 
+  // DID alias lookup map
+  const didAliasMap = useMemo(() => {
+    return getDidAliasMap(user?.organization?.didAliases);
+  }, [user]);
+
   // DIDs assigned to the current admin's organisation, Jake 1, or Sub-Agent
   const orgDids = useMemo(() => {
     if (isSubAgent) {
@@ -706,6 +712,7 @@ const AdminDashboard = () => {
         loanFlipDid: null,
         loanFlipDids: [],
         allDids: assigned,
+        didAliases: didAliasMap,
         hasMultiple: assigned.length > 1
       };
     }
@@ -743,9 +750,10 @@ const AdminDashboard = () => {
       loanFlipDid: lfDid,
       loanFlipDids: lfArr,
       allDids,
+      didAliases: didAliasMap,
       hasMultiple: Boolean(isSocialUp || allDids.length > 1 || (ltDid && inDid) || lfDid)
     };
-  }, [user, isSocialUpAdmin, isSubAgent]);
+  }, [user, isSocialUpAdmin, isSubAgent, didAliasMap]);
 
   const handleDidTabChange = (tabValue) => {
     setSelectedDidTab(tabValue);
@@ -1352,8 +1360,10 @@ const AdminDashboard = () => {
                     </span>
                     {orgDids.allDids.length > 0 ? (
                       orgDids.allDids.map((did) => {
-                        const isLt = did === orgDids.liveTransferDid;
-                        const isIn = did === orgDids.inboundCallsDid;
+                        const isLt = (orgDids.liveTransferDids || []).includes(did) || did === orgDids.liveTransferDid;
+                        const isIn = (orgDids.inboundCallsDids || []).includes(did) || did === orgDids.inboundCallsDid;
+                        const isLf = (orgDids.loanFlipDids || []).includes(did) || did === orgDids.loanFlipDid;
+                        const alias = didAliasMap[did];
                         return (
                           <span
                             key={did}
@@ -1362,13 +1372,21 @@ const AdminDashboard = () => {
                                 ? 'bg-amber-50 text-amber-900 border-amber-300'
                                 : isIn
                                 ? 'bg-blue-50 text-blue-900 border-blue-300'
+                                : isLf
+                                ? 'bg-purple-50 text-purple-900 border-purple-300'
                                 : 'bg-emerald-50 text-emerald-900 border-emerald-300'
                             }`}
                           >
                             <span className="text-[11px] font-sans font-semibold text-gray-600">
-                              {isLt ? '⚡ Live Transfer:' : isIn ? '📞 Inbound:' : '📞 Line:'}
+                              {isLt ? '⚡ Live Transfer:' : isIn ? '📞 Inbound:' : isLf ? '🔄 Loan Flip:' : '📞 Line:'}
                             </span>
-                            {did}
+                            {alias ? (
+                              <span className="font-sans font-bold text-gray-900">
+                                {alias} <span className="font-mono text-[11px] font-normal text-gray-600">({did})</span>
+                              </span>
+                            ) : (
+                              did
+                            )}
                           </span>
                         );
                       })
@@ -1518,24 +1536,31 @@ const AdminDashboard = () => {
 
                   const didStat = Array.isArray(stats?.byDid) ? stats.byDid.find(b => String(b._id) === String(did)) : null;
                   const didTotal = didStat?.total;
+                  const alias = didAliasMap[did];
 
-                  let label = `DID ${did.slice(-4)}`;
+                  let label = alias || `DID ${did.slice(-4)}`;
                   let activeStyle = 'bg-gradient-to-r from-emerald-600 to-teal-700 text-white shadow-lg shadow-teal-500/40 ring-2 ring-emerald-300/50 scale-105 z-10';
                   let IconComp = PhoneIncoming;
                   let iconClass = isSelected ? 'text-emerald-200' : 'text-emerald-400';
 
                   if (isLt) {
-                    label = (orgDids.liveTransferDids || []).length > 1 ? `Live Transfer (${did.slice(-4)})` : 'Live Transfers';
+                    if (!alias) {
+                      label = (orgDids.liveTransferDids || []).length > 1 ? `Live Transfer (${did.slice(-4)})` : 'Live Transfers';
+                    }
                     activeStyle = 'bg-gradient-to-r from-amber-500 to-orange-600 text-white shadow-lg shadow-orange-500/40 ring-2 ring-amber-300/50 scale-105 z-10';
                     IconComp = Zap;
                     iconClass = isSelected ? 'text-amber-200 animate-bounce' : 'text-amber-400';
                   } else if (isIn) {
-                    label = (orgDids.inboundCallsDids || []).length > 1 ? `Inbound (${did.slice(-4)})` : 'Inbound Calls';
+                    if (!alias) {
+                      label = (orgDids.inboundCallsDids || []).length > 1 ? `Inbound (${did.slice(-4)})` : 'Inbound Calls';
+                    }
                     activeStyle = 'bg-gradient-to-r from-indigo-500 to-blue-600 text-white shadow-lg shadow-indigo-500/40 ring-2 ring-indigo-300/50 scale-105 z-10';
                     IconComp = PhoneCall;
                     iconClass = isSelected ? 'text-blue-200' : 'text-blue-400';
                   } else if (isLf) {
-                    label = (orgDids.loanFlipDids || []).length > 1 ? `Loan Flip (${did.slice(-4)})` : 'Loan Flip';
+                    if (!alias) {
+                      label = (orgDids.loanFlipDids || []).length > 1 ? `Loan Flip (${did.slice(-4)})` : 'Loan Flip';
+                    }
                     activeStyle = 'bg-gradient-to-r from-purple-600 to-fuchsia-600 text-white shadow-lg shadow-purple-500/40 ring-2 ring-purple-300/50 scale-105 z-10';
                     IconComp = RefreshCw;
                     iconClass = isSelected ? 'text-purple-200' : 'text-purple-400';
@@ -1582,19 +1607,19 @@ const AdminDashboard = () => {
                   </span>
                 ) : (orgDids.liveTransferDids || []).includes(selectedDidTab) || selectedDidTab === orgDids.liveTransferDid || selectedDidTab === 'live_transfer' ? (
                   <span className="inline-flex items-center gap-1 font-semibold text-amber-300">
-                    ⚡ Live Transfers Mode (DID: {selectedDidTab})
+                    ⚡ Live Transfers Mode (DID: {didAliasMap[selectedDidTab] ? `${didAliasMap[selectedDidTab]} (${selectedDidTab})` : selectedDidTab})
                   </span>
                 ) : (orgDids.inboundCallsDids || []).includes(selectedDidTab) || selectedDidTab === orgDids.inboundCallsDid || selectedDidTab === 'inbound' ? (
                   <span className="inline-flex items-center gap-1 font-semibold text-cyan-300">
-                    📞 Inbound Calls Mode (DID: {selectedDidTab})
+                    📞 Inbound Calls Mode (DID: {didAliasMap[selectedDidTab] ? `${didAliasMap[selectedDidTab]} (${selectedDidTab})` : selectedDidTab})
                   </span>
                 ) : (orgDids.loanFlipDids || []).includes(selectedDidTab) || selectedDidTab === orgDids.loanFlipDid || selectedDidTab === 'loan_flip' ? (
                   <span className="inline-flex items-center gap-1 font-semibold text-purple-300">
-                    🔄 Loan Flip Mode (DID: {selectedDidTab})
+                    🔄 Loan Flip Mode (DID: {didAliasMap[selectedDidTab] ? `${didAliasMap[selectedDidTab]} (${selectedDidTab})` : selectedDidTab})
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1 font-semibold text-emerald-300">
-                    📞 Inbound Line Mode (DID: {selectedDidTab})
+                    📞 Inbound Line Mode (DID: {didAliasMap[selectedDidTab] ? `${didAliasMap[selectedDidTab]} (${selectedDidTab})` : selectedDidTab})
                   </span>
                 )}
               </div>
@@ -1849,6 +1874,7 @@ const AdminDashboard = () => {
         {selectedDidTab === 'all' && orgDids.hasMultiple && (
           <DidBreakdownTable
             dids={orgDids.allDids}
+            didAliases={didAliasMap}
             liveTransferDid={orgDids.liveTransferDid}
             liveTransferDids={orgDids.liveTransferDids}
             inboundCallsDid={orgDids.inboundCallsDid}
@@ -2385,9 +2411,20 @@ const AdminDashboard = () => {
                             <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-red-100 text-red-700 text-[10px] font-bold border border-red-300">
                               📥 Inbound
                             </span>
-                            <div className="font-mono text-[10px] text-red-600 truncate" title={`DID: ${lead.vicidialDid}`}>
-                              {lead.vicidialDid}
-                            </div>
+                            {didAliasMap[lead.vicidialDid.trim()] ? (
+                              <div className="truncate" title={`DID: ${lead.vicidialDid} (${didAliasMap[lead.vicidialDid.trim()]})`}>
+                                <div className="text-[10px] font-bold text-gray-900 truncate">
+                                  {didAliasMap[lead.vicidialDid.trim()]}
+                                </div>
+                                <div className="font-mono text-[9px] text-red-600 font-normal">
+                                  {lead.vicidialDid}
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="font-mono text-[10px] text-red-600 truncate" title={`DID: ${lead.vicidialDid}`}>
+                                {lead.vicidialDid}
+                              </div>
+                            )}
                           </div>
                         ) : (
                           <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 text-[10px] font-bold border border-blue-300" title="Outbound / Manual">

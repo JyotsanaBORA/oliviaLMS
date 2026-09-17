@@ -18,6 +18,7 @@ import {
 import axios from '../../utils/axios';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSocket } from '../../contexts/SocketContext';
+import { getDidAlias } from '../../utils/didUtils';
 import toast from 'react-hot-toast';
 
 const STATUS_COLORS = {
@@ -696,9 +697,21 @@ const InboundDataModal = ({ onClose, title = 'Inbound Call Data' }) => {
                         )}
                       </td>
                       <td className="py-3 px-4 whitespace-nowrap">
-                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-indigo-100 text-indigo-800 border border-indigo-200">
-                          {call.did || '—'}
-                        </span>
+                        {(() => {
+                          const callAlias = getDidAlias(call.did, call.organization?.didAliases);
+                          return (
+                            <div className="flex flex-col items-start">
+                              {callAlias && (
+                                <span className="font-sans font-bold text-xs text-indigo-950 tracking-tight">
+                                  {callAlias}
+                                </span>
+                              )}
+                              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-mono font-medium bg-indigo-50 text-indigo-800 border border-indigo-200">
+                                {call.did || '—'}
+                              </span>
+                            </div>
+                          );
+                        })()}
                       </td>
                       <td className="py-3 px-4 whitespace-nowrap text-gray-700 font-medium text-xs">
                         {call.campaignName || '—'}

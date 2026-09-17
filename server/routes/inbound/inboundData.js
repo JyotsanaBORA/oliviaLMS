@@ -667,7 +667,7 @@ router.get('/', protect, async (req, res) => {
         .sort({ receivedAt: -1 })
         .skip(skip)
         .limit(limit)
-        .populate('organization', 'name inboundDids liveTransferDid liveTransferDids inboundCallsDid inboundCallsDids loanFlipDid loanFlipDids')
+        .populate('organization', 'name inboundDids liveTransferDid liveTransferDids inboundCallsDid inboundCallsDids loanFlipDid loanFlipDids didAliases')
         .populate('agent', 'name role')
         .populate('importedLeadId', 'leadId name status category')
         .lean(),

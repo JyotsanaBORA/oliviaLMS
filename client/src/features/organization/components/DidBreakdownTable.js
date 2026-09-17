@@ -1,5 +1,6 @@
 import React from 'react';
 import { Zap, PhoneCall, PhoneIncoming, ArrowRight, TrendingUp, CheckCircle2, XCircle, Clock, Award, RefreshCw } from 'lucide-react';
+import { getDidAliasMap } from '../../../utils/didUtils';
 
 /**
  * DidBreakdownTable
@@ -8,6 +9,7 @@ import { Zap, PhoneCall, PhoneIncoming, ArrowRight, TrendingUp, CheckCircle2, XC
  */
 const DidBreakdownTable = ({
   dids = [],
+  didAliases = {},
   liveTransferDid = null,
   liveTransferDids = [],
   inboundCallsDid = null,
@@ -20,6 +22,8 @@ const DidBreakdownTable = ({
   if (!Array.isArray(dids) || dids.length <= 1) {
     return null;
   }
+
+  const aliasMap = getDidAliasMap(didAliases);
 
   // Create a fast lookup map for stats by DID
   const statsMap = {};
@@ -56,7 +60,7 @@ const DidBreakdownTable = ({
         <table className="w-full text-left border-collapse text-xs">
           <thead>
             <tr className="bg-slate-50/80 border-b border-gray-200 text-gray-500 font-semibold uppercase tracking-wider text-[11px]">
-              <th className="py-3 px-4">DID Number</th>
+              <th className="py-3 px-4">DID / Alias</th>
               <th className="py-3 px-4">Channel / Flow</th>
               <th className="py-3 px-4 text-center">Total Calls</th>
               <th className="py-3 px-4 text-center text-emerald-700">Qualified</th>
@@ -76,6 +80,7 @@ const DidBreakdownTable = ({
               const pending = Number(stat.pending || 0);
               const sales = Number(stat.sales || 0);
               const convRate = qualified > 0 ? ((sales / qualified) * 100).toFixed(1) : '0.0';
+              const alias = aliasMap[String(did).trim()];
 
               const isLiveTransfer = (liveTransferDids || []).includes(did) || did === liveTransferDid;
               const isInboundCall = (inboundCallsDids || []).includes(did) || did === inboundCallsDid;
@@ -84,9 +89,16 @@ const DidBreakdownTable = ({
               return (
                 <tr key={did} className="hover:bg-indigo-50/40 transition-colors">
                   <td className="py-3.5 px-4 font-mono font-bold text-gray-900">
-                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-gray-100 border border-gray-200 text-gray-800">
-                      {did}
-                    </span>
+                    <div className="flex flex-col items-start">
+                      {alias && (
+                        <span className="font-sans font-bold text-xs text-indigo-950 mb-0.5 tracking-tight">
+                          {alias}
+                        </span>
+                      )}
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-gray-100 border border-gray-200 text-gray-800 text-xs">
+                        {did}
+                      </span>
+                    </div>
                   </td>
 
                   <td className="py-3.5 px-4">

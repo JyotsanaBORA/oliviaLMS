@@ -15,6 +15,7 @@ import Pagination from '../components/common/Pagination';
 import VicidialCallQueue from '../components/vicidial/VicidialCallQueue';
 import AgentNotesPad from '../components/modals/AgentNotesModal';
 import { formatEasternTimeForDisplay, getEasternStartOfDay, getEasternEndOfDay } from '../utils/dateUtils';
+import { getDidAlias } from '../utils/didUtils';
 
 const GTI_DISPOSITION_OPTIONS = [
   'A - Answering Machine',
@@ -1440,7 +1441,7 @@ const Agent1Dashboard = () => {
             activeVicidialDid ? (
               <div className="bg-red-600 text-white text-xs font-semibold px-4 py-2 rounded-t-xl flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-white animate-pulse inline-block" />
-                📥 INBOUND CALL — DID: {activeVicidialDid}
+                📥 INBOUND CALL — {getDidAlias(activeVicidialDid, user?.organization?.didAliases) ? `${getDidAlias(activeVicidialDid, user?.organization?.didAliases)} (${activeVicidialDid})` : `DID: ${activeVicidialDid}`}
               </div>
             ) : (
               <div className="bg-blue-600 text-white text-xs font-semibold px-4 py-2 rounded-t-xl flex items-center gap-2">

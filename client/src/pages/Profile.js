@@ -3,6 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { User, Mail, Lock, Save, Phone } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { formatEasternTimeForDisplay } from '../utils/dateUtils';
+import { getDidAlias } from '../utils/didUtils';
 
 const Profile = () => {
   const { user, updateProfile, changePassword } = useAuth();
@@ -256,11 +257,13 @@ const Profile = () => {
                       
                       {(() => {
                         const org = user.organization;
-                        const ltDid = org?.liveTransferDid;
-                        const inDid = org?.inboundCallsDid;
+                        const ltArr = Array.isArray(org?.liveTransferDids) ? org.liveTransferDids : (org?.liveTransferDid ? [org.liveTransferDid] : []);
+                        const inArr = Array.isArray(org?.inboundCallsDids) ? org.inboundCallsDids : (org?.inboundCallsDid ? [org.inboundCallsDid] : []);
+                        const lfArr = Array.isArray(org?.loanFlipDids) ? org.loanFlipDids : (org?.loanFlipDid ? [org.loanFlipDid] : []);
                         const rawDids = [
-                          ...(ltDid ? [ltDid] : []),
-                          ...(inDid ? [inDid] : []),
+                          ...ltArr,
+                          ...inArr,
+                          ...lfArr,
                           ...(Array.isArray(org?.inboundDids) ? org.inboundDids : [])
                         ];
                         const dids = Array.from(new Set(rawDids.map(d => String(d).trim()))).filter(Boolean);
@@ -272,15 +275,23 @@ const Profile = () => {
                             </span>
                             {dids.length > 0 ? (
                               <div className="flex flex-wrap gap-1.5">
-                                {dids.map(did => (
-                                  <span
-                                    key={did}
-                                    className="inline-flex items-center px-2 py-0.5 rounded text-xs font-mono font-bold bg-indigo-50 text-indigo-700 border border-indigo-200"
-                                  >
-                                    <Phone className="h-3 w-3 mr-1 text-indigo-500" />
-                                    {did === ltDid ? `⚡ ${did} (Live Transfer)` : did === inDid ? `📞 ${did} (Inbound)` : `📞 ${did}`}
-                                  </span>
-                                ))}
+                                {dids.map(did => {
+                                  const alias = getDidAlias(did, org?.didAliases);
+                                  const isLt = ltArr.includes(did);
+                                  const isIn = inArr.includes(did);
+                                  const isLf = lfArr.includes(did);
+                                  const prefix = isLt ? '⚡' : isIn ? '📞' : isLf ? '🔄' : '📞';
+                                  return (
+                                    <span
+                                      key={did}
+                                      className="inline-flex items-center px-2 py-0.5 rounded text-xs font-mono font-bold bg-indigo-50 text-indigo-700 border border-indigo-200"
+                                      title={alias ? `DID: ${did} (${alias})` : `DID: ${did}`}
+                                    >
+                                      <Phone className="h-3 w-3 mr-1 text-indigo-500" />
+                                      {prefix} {alias ? `${alias} (${did})` : did}
+                                    </span>
+                                  );
+                                })}
                               </div>
                             ) : (
                               <span className="text-xs text-gray-400 italic">No DIDs assigned</span>

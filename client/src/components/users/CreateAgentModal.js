@@ -3,6 +3,7 @@ import { X, User, Mail, Lock, Shield, Phone, Building2, CheckSquare } from 'luci
 import axios from '../../utils/axios';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
+import { getDidAlias } from '../../utils/didUtils';
 
 const CreateAgentModal = ({ isOpen, onClose, onAgentCreated, organizations = [] }) => {
   const { user } = useAuth();
@@ -48,8 +49,12 @@ const CreateAgentModal = ({ isOpen, onClose, onAgentCreated, organizations = [] 
     if (!selectedOrgObj) return [];
     const dids = [
       ...(Array.isArray(selectedOrgObj.inboundDids) ? selectedOrgObj.inboundDids : []),
+      ...(Array.isArray(selectedOrgObj.liveTransferDids) ? selectedOrgObj.liveTransferDids : []),
+      ...(Array.isArray(selectedOrgObj.inboundCallsDids) ? selectedOrgObj.inboundCallsDids : []),
+      ...(Array.isArray(selectedOrgObj.loanFlipDids) ? selectedOrgObj.loanFlipDids : []),
       selectedOrgObj.inboundCallsDid,
-      selectedOrgObj.liveTransferDid
+      selectedOrgObj.liveTransferDid,
+      selectedOrgObj.loanFlipDid
     ].filter(Boolean);
     return Array.from(new Set(dids.map(d => String(d).trim()))).filter(Boolean);
   }, [selectedOrgObj]);
@@ -302,23 +307,39 @@ const CreateAgentModal = ({ isOpen, onClose, onAgentCreated, organizations = [] 
                 </p>
               ) : (
                 <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
-                  {availableOrgDids.map(did => (
-                    <label key={did} className="flex items-center gap-2 p-2 bg-white rounded-md border border-indigo-100 hover:bg-indigo-100/50 cursor-pointer text-xs transition-colors">
-                      <input
-                        type="checkbox"
-                        checked={formData.assignedDids.includes(did)}
-                        onChange={() => handleToggleDid(did)}
-                        className="h-4 w-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"
-                      />
-                      <span className="font-mono font-medium text-gray-800">{did}</span>
-                      {selectedOrgObj?.liveTransferDid === did && (
-                        <span className="text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded font-semibold ml-auto">Live Transfer</span>
-                      )}
-                      {selectedOrgObj?.inboundCallsDid === did && (
-                        <span className="text-[10px] bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded font-semibold ml-auto">Inbound</span>
-                      )}
-                    </label>
-                  ))}
+                  {availableOrgDids.map(did => {
+                    const alias = getDidAlias(did, selectedOrgObj?.didAliases);
+                    const isLt = (selectedOrgObj?.liveTransferDids || []).includes(did) || selectedOrgObj?.liveTransferDid === did;
+                    const isIn = (selectedOrgObj?.inboundCallsDids || []).includes(did) || selectedOrgObj?.inboundCallsDid === did;
+                    const isLf = (selectedOrgObj?.loanFlipDids || []).includes(did) || selectedOrgObj?.loanFlipDid === did;
+                    return (
+                      <label key={did} className="flex items-center gap-2.5 p-2 bg-white rounded-md border border-indigo-100 hover:bg-indigo-100/50 cursor-pointer text-xs transition-colors">
+                        <input
+                          type="checkbox"
+                          checked={formData.assignedDids.includes(did)}
+                          onChange={() => handleToggleDid(did)}
+                          className="h-4 w-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"
+                        />
+                        <div className="flex flex-col">
+                          {alias && (
+                            <span className="font-sans font-bold text-xs text-indigo-950 tracking-tight leading-tight">
+                              {alias}
+                            </span>
+                          )}
+                          <span className="font-mono text-gray-700 text-[11px]">{did}</span>
+                        </div>
+                        {isLt && (
+                          <span className="text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded font-semibold ml-auto">Live Transfer</span>
+                        )}
+                        {isIn && (
+                          <span className="text-[10px] bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded font-semibold ml-auto">Inbound</span>
+                        )}
+                        {isLf && (
+                          <span className="text-[10px] bg-purple-100 text-purple-800 px-1.5 py-0.5 rounded font-semibold ml-auto">Loan Flip</span>
+                        )}
+                      </label>
+                    );
+                  })}
                 </div>
               )}
               {errors.assignedDids && <p className="text-red-500 text-xs mt-1.5">{errors.assignedDids}</p>}

@@ -37,6 +37,7 @@ import {
   isValidDDMMYYYY,
   parseDDMMYYYYToISO
 } from '../utils/dateUtils';
+import { getDidAlias } from '../utils/didUtils';
 
 // Unified Lead Progress Status options for Agent 2
 const agent2LeadProgressOptions = [
@@ -1137,7 +1138,9 @@ const Agent2Dashboard = () => {
             {isInbound ? (
               <div className="mb-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-100 border border-red-300 text-red-700 text-[10px] font-bold">
                 <span>📥</span> INBOUND
-                <span className="font-mono text-[9px] text-red-500 ml-0.5">DID:{lead.vicidialDid}</span>
+                <span className="font-mono text-[9px] text-red-500 ml-0.5" title={getDidAlias(lead.vicidialDid, user?.organization?.didAliases) ? `DID: ${lead.vicidialDid} (${getDidAlias(lead.vicidialDid, user?.organization?.didAliases)})` : `DID: ${lead.vicidialDid}`}>
+                  {getDidAlias(lead.vicidialDid, user?.organization?.didAliases) ? `${getDidAlias(lead.vicidialDid, user?.organization?.didAliases)} (${lead.vicidialDid})` : `DID:${lead.vicidialDid}`}
+                </span>
               </div>
             ) : (
               <div className="mb-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 border border-blue-300 text-blue-700 text-[10px] font-bold">
@@ -2782,7 +2785,7 @@ const Agent2Dashboard = () => {
               activeVicidialDid ? (
                 <div className="bg-red-600 text-white text-xs font-semibold px-4 py-2 rounded-t-xl flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-white animate-pulse inline-block" />
-                  📥 INBOUND CALL — DID: {activeVicidialDid}
+                  📥 INBOUND CALL — {getDidAlias(activeVicidialDid, user?.organization?.didAliases) ? `${getDidAlias(activeVicidialDid, user?.organization?.didAliases)} (${activeVicidialDid})` : `DID: ${activeVicidialDid}`}
                 </div>
               ) : (
                 <div className="bg-blue-600 text-white text-xs font-semibold px-4 py-2 rounded-t-xl flex items-center gap-2">

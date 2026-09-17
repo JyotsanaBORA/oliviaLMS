@@ -10,6 +10,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import toast from 'react-hot-toast';
 import LeadReassignModal from './LeadReassignModal';
 import { STATUS_COLORS, FORM_LABELS, fmt, fmtDate, fmtMoney } from '../../utils/leadConstants';
+import { getDidAlias } from '../../utils/didUtils';
 
 // canWrite comes from the API response — true for Reddington admin / superadmin, false for tenant org admins
 const BenWebsiteLeadsModal = ({ onClose, targetOrgName, title }) => {
@@ -498,11 +499,17 @@ const BenWebsiteLeadsModal = ({ onClose, targetOrgName, title }) => {
                           <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${(FORM_LABELS[lead.formType] || FORM_LABELS.unknown).color}`}>
                             {(FORM_LABELS[lead.formType] || FORM_LABELS.unknown).label}
                           </span>
-                          {(lead.did || lead.vicidialDid) && (
-                            <span className="text-[10px] font-mono font-medium text-slate-700 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded">
-                              DID: {lead.did || lead.vicidialDid}
-                            </span>
-                          )}
+                          {(() => {
+                            const rawDid = lead.did || lead.vicidialDid;
+                            if (!rawDid) return null;
+                            const orgObj = typeof lead.organization === 'object' ? lead.organization : organizations.find(o => String(o._id) === String(lead.organization)) || user?.organization;
+                            const alias = getDidAlias(rawDid, orgObj?.didAliases);
+                            return (
+                              <span className="text-[10px] font-mono font-medium text-slate-700 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded" title={alias ? `DID: ${rawDid} (${alias})` : `DID: ${rawDid}`}>
+                                {alias ? `${alias} (${rawDid})` : `DID: ${rawDid}`}
+                              </span>
+                            );
+                          })()}
                         </div>
                       </td>
                       <td className="px-4 py-3 text-xs text-gray-700">{lead.totalDebtAmount != null ? fmtMoney(lead.totalDebtAmount) : '—'}</td>

@@ -180,6 +180,7 @@ router.post('/', protect, organizationCreateValidation, handleValidationErrors, 
       loanFlipDid,
       loanFlipDids,
       inboundDids,
+      didAliases,
       sourceIds,
       features,
       showLoopLeads,
@@ -224,6 +225,18 @@ router.post('/', protect, organizationCreateValidation, handleValidationErrors, 
       if (d && !cleanMasterDids.includes(d)) cleanMasterDids.push(d);
     });
 
+    let cleanDidAliases = [];
+    if (Array.isArray(didAliases)) {
+      cleanDidAliases = didAliases
+        .filter(a => a && a.did && a.alias)
+        .map(a => ({ did: String(a.did).trim(), alias: String(a.alias).trim() }))
+        .filter(a => a.did && a.alias);
+    } else if (didAliases && typeof didAliases === 'object') {
+      cleanDidAliases = Object.entries(didAliases)
+        .map(([did, alias]) => ({ did: String(did).trim(), alias: String(alias).trim() }))
+        .filter(a => a.did && a.alias);
+    }
+
     // Create organization
     const organization = await Organization.create({
       name,
@@ -239,6 +252,7 @@ router.post('/', protect, organizationCreateValidation, handleValidationErrors, 
       loanFlipDid: cleanLfDids[0] || (loanFlipDid ? String(loanFlipDid).trim() : null),
       loanFlipDids: cleanLfDids,
       inboundDids: cleanMasterDids,
+      didAliases: cleanDidAliases,
       sourceIds: Array.isArray(sourceIds) ? sourceIds.map(s => String(s).trim().toUpperCase()).filter(Boolean) : [],
       features: sanitizedFeatures,
       showLoopLeads: Boolean(showLoopLeads),
@@ -430,6 +444,7 @@ router.put('/:id', protect, organizationValidation, handleValidationErrors, asyn
       inboundCallsDids,
       loanFlipDid,
       loanFlipDids,
+      didAliases,
       showLoopLeads,
       showVendorData
     } = req.body;
@@ -460,6 +475,18 @@ router.put('/:id', protect, organizationValidation, handleValidationErrors, asyn
 
     // Build the update object
     const updateData = { name, description, address, phone, email, website, isActive };
+
+    // Update didAliases if provided
+    if (Array.isArray(didAliases)) {
+      updateData.didAliases = didAliases
+        .filter(a => a && a.did && a.alias)
+        .map(a => ({ did: String(a.did).trim(), alias: String(a.alias).trim() }))
+        .filter(a => a.did && a.alias);
+    } else if (didAliases && typeof didAliases === 'object') {
+      updateData.didAliases = Object.entries(didAliases)
+        .map(([did, alias]) => ({ did: String(did).trim(), alias: String(alias).trim() }))
+        .filter(a => a.did && a.alias);
+    }
 
     // Update liveTransferDids and liveTransferDid
     if (Array.isArray(liveTransferDids)) {

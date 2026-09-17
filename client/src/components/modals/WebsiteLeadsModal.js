@@ -27,6 +27,7 @@ import axios from '../../utils/axios';
 import { useAuth } from '../../contexts/AuthContext';
 import toast from 'react-hot-toast';
 import { STATUS_COLORS, FORM_LABELS, fmt, fmtDate, fmtMoney } from '../../utils/leadConstants';
+import { getDidAlias } from '../../utils/didUtils';
 
 const WebsiteLeadsModal = ({ onClose, title = 'Website Leads', targetOrgName }) => {
   const { user } = useAuth();
@@ -367,11 +368,17 @@ const WebsiteLeadsModal = ({ onClose, title = 'Website Leads', targetOrgName }) 
                           <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${(FORM_LABELS[lead.formType] || FORM_LABELS.unknown).color}`}>
                             {(FORM_LABELS[lead.formType] || FORM_LABELS.unknown).label}
                           </span>
-                          {(lead.did || lead.vicidialDid) && (
-                            <span className="text-[10px] font-mono font-medium text-slate-700 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded">
-                              DID: {lead.did || lead.vicidialDid}
-                            </span>
-                          )}
+                          {(() => {
+                            const rawDid = lead.did || lead.vicidialDid;
+                            if (!rawDid) return null;
+                            const orgObj = typeof lead.organization === 'object' ? lead.organization : user?.organization;
+                            const alias = getDidAlias(rawDid, orgObj?.didAliases);
+                            return (
+                              <span className="text-[10px] font-mono font-medium text-slate-700 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded" title={alias ? `DID: ${rawDid} (${alias})` : `DID: ${rawDid}`}>
+                                {alias ? `${alias} (${rawDid})` : `DID: ${rawDid}`}
+                              </span>
+                            );
+                          })()}
                         </div>
                         {lead.message && (
                           <span className="mt-0.5 inline-flex items-center" title={lead.message}>
@@ -518,11 +525,17 @@ const WebsiteLeadsModal = ({ onClose, title = 'Website Leads', targetOrgName }) 
                 <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${(FORM_LABELS[detail.formType] || FORM_LABELS.unknown).color}`}>
                   {(FORM_LABELS[detail.formType] || FORM_LABELS.unknown).label}
                 </span>
-                {(detail.did || detail.vicidialDid) && (
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold font-mono bg-slate-100 text-slate-800 border border-slate-300">
-                    DID: {detail.did || detail.vicidialDid}
-                  </span>
-                )}
+                {(() => {
+                  const rawDid = detail.did || detail.vicidialDid;
+                  if (!rawDid) return null;
+                  const orgObj = typeof detail.organization === 'object' ? detail.organization : user?.organization;
+                  const alias = getDidAlias(rawDid, orgObj?.didAliases);
+                  return (
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold font-mono bg-slate-100 text-slate-800 border border-slate-300" title={alias ? `DID: ${rawDid} (${alias})` : `DID: ${rawDid}`}>
+                      {alias ? `${alias} (${rawDid})` : `DID: ${rawDid}`}
+                    </span>
+                  );
+                })()}
                 {detail.smsOptIn && (
                   <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-800">
                     <Smartphone className="h-3 w-3 mr-1" /> SMS Opt-In
