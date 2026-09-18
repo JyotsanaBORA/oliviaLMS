@@ -404,25 +404,25 @@ const InboundDataModal = ({ onClose, title = 'Inbound Call Data' }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
-      <div className="bg-white w-full max-w-7xl rounded-2xl shadow-2xl border border-gray-100 flex flex-col max-h-[92vh] overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-1.5 sm:p-3 md:p-4 overflow-hidden">
+      <div className="bg-white w-full max-w-[98vw] 2xl:max-w-7xl rounded-2xl shadow-2xl border border-gray-100 flex flex-col h-[94vh] max-h-[94vh] overflow-hidden animate-in fade-in zoom-in-95 duration-200">
         
         {/* Header */}
-        <div className="px-6 py-4 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white flex items-center justify-between border-b border-indigo-800/40">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-indigo-600/30 border border-indigo-400/30 text-indigo-300">
-              <PhoneCall className="h-6 w-6" />
+        <div className="flex-shrink-0 px-3 sm:px-6 py-3 sm:py-3.5 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white flex flex-wrap items-center justify-between gap-2.5 border-b border-indigo-800/40">
+          <div className="flex items-center gap-2.5 sm:gap-3">
+            <div className="p-2 sm:p-2.5 rounded-xl bg-indigo-600/30 border border-indigo-400/30 text-indigo-300 flex-shrink-0">
+              <PhoneCall className="h-5 w-5 sm:h-6 sm:w-6" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-xl font-bold tracking-tight text-white">{title}</h2>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-base sm:text-lg lg:text-xl font-bold tracking-tight text-white">{title}</h2>
                 {!canWrite && !isGlobal && (
-                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-800/60 text-indigo-200 border border-indigo-600/40">
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-indigo-800/60 text-indigo-200 border border-indigo-600/40">
                     <Lock className="h-3 w-3" /> Read-Only Org Access
                   </span>
                 )}
               </div>
-              <p className="text-xs text-indigo-200/80">
+              <p className="text-xs text-indigo-200/80 hidden sm:block">
                 Real-time DID tracking, campaign identification & disposition management
               </p>
             </div>
@@ -432,22 +432,22 @@ const InboundDataModal = ({ onClose, title = 'Inbound Call Data' }) => {
             <button
               onClick={() => { fetchCalls(page); fetchStats(); }}
               disabled={refreshing}
-              className="p-2 text-indigo-200 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+              className="p-1.5 sm:p-2 text-indigo-200 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
               title="Refresh Inbound Data"
             >
-              <RefreshCw className={`h-5 w-5 ${refreshing ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`h-4 w-4 sm:h-5 sm:w-5 ${refreshing ? 'animate-spin' : ''}`} />
             </button>
             
-            {/* Header CSV Button (Locked if no dates, Unlocked if dates selected) */}
+            {/* Header CSV Button */}
             {isDateRangeSelected ? (
               <button
                 onClick={handleExportCSV}
                 disabled={exporting}
-                className="px-3 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-md transition-all active:scale-95 animate-in fade-in"
+                className="px-2.5 sm:px-3 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-md transition-all active:scale-95 animate-in fade-in"
                 title={`Download CSV for ${dateFrom} to ${dateTo}`}
               >
-                <Download className={`h-4 w-4 ${exporting ? 'animate-bounce' : ''}`} />
-                <span>{exporting ? 'Exporting...' : 'Download CSV'}</span>
+                <Download className={`h-3.5 w-3.5 ${exporting ? 'animate-bounce' : ''}`} />
+                <span className="hidden xs:inline">{exporting ? 'Exporting...' : 'Download CSV'}</span>
               </button>
             ) : (
               <button
@@ -462,83 +462,83 @@ const InboundDataModal = ({ onClose, title = 'Inbound Call Data' }) => {
 
             <button
               onClick={onClose}
-              className="p-2 text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors ml-2"
+              className="p-1.5 sm:p-2 text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors ml-1"
             >
-              <X className="h-6 w-6" />
+              <X className="h-5 w-5 sm:h-6 sm:w-6" />
             </button>
           </div>
         </div>
 
         {/* Stats Summary Bar */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 px-6 py-3 bg-indigo-50/50 border-b border-indigo-100">
-          <div className="bg-white p-3 rounded-xl border border-indigo-100 shadow-sm flex items-center justify-between">
+        <div className="flex-shrink-0 grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 px-3 sm:px-6 py-2.5 bg-indigo-50/50 border-b border-indigo-100">
+          <div className="bg-white p-2.5 sm:p-3 rounded-xl border border-indigo-100 shadow-sm flex items-center justify-between">
             <div>
-              <p className="text-xs font-medium text-gray-500 uppercase">Total Inbound</p>
-              <p className="text-xl font-bold text-gray-900">{stats.totalCalls}</p>
+              <p className="text-[10px] sm:text-xs font-medium text-gray-500 uppercase">Total Inbound</p>
+              <p className="text-lg sm:text-xl font-bold text-gray-900">{stats.totalCalls}</p>
             </div>
-            <PhoneCall className="h-7 w-7 text-indigo-500 opacity-60" />
+            <PhoneCall className="h-5 w-5 sm:h-6 sm:w-6 text-indigo-500 opacity-60 flex-shrink-0" />
           </div>
-          <div className="bg-white p-3 rounded-xl border border-blue-100 shadow-sm flex items-center justify-between">
+          <div className="bg-white p-2.5 sm:p-3 rounded-xl border border-blue-100 shadow-sm flex items-center justify-between">
             <div>
-              <p className="text-xs font-medium text-gray-500 uppercase">Today's Calls</p>
-              <p className="text-xl font-bold text-blue-600">{stats.todayCalls}</p>
+              <p className="text-[10px] sm:text-xs font-medium text-gray-500 uppercase">Today's Calls</p>
+              <p className="text-lg sm:text-xl font-bold text-blue-600">{stats.todayCalls}</p>
             </div>
-            <Clock className="h-7 w-7 text-blue-500 opacity-60" />
+            <Clock className="h-5 w-5 sm:h-6 sm:w-6 text-blue-500 opacity-60 flex-shrink-0" />
           </div>
-          <div className="bg-white p-3 rounded-xl border border-amber-100 shadow-sm flex items-center justify-between">
+          <div className="bg-white p-2.5 sm:p-3 rounded-xl border border-amber-100 shadow-sm flex items-center justify-between">
             <div>
-              <p className="text-xs font-medium text-gray-500 uppercase">Pending Review</p>
-              <p className="text-xl font-bold text-amber-600">{stats.newCalls}</p>
+              <p className="text-[10px] sm:text-xs font-medium text-gray-500 uppercase">Pending Review</p>
+              <p className="text-lg sm:text-xl font-bold text-amber-600">{stats.newCalls}</p>
             </div>
-            <AlertCircle className="h-7 w-7 text-amber-500 opacity-60" />
+            <AlertCircle className="h-5 w-5 sm:h-6 sm:w-6 text-amber-500 opacity-60 flex-shrink-0" />
           </div>
-          <div className="bg-white p-3 rounded-xl border border-emerald-100 shadow-sm flex items-center justify-between">
+          <div className="bg-white p-2.5 sm:p-3 rounded-xl border border-emerald-100 shadow-sm flex items-center justify-between">
             <div>
-              <p className="text-xs font-medium text-gray-500 uppercase">Converted to Leads</p>
-              <p className="text-xl font-bold text-emerald-600">{stats.convertedCalls}</p>
+              <p className="text-[10px] sm:text-xs font-medium text-gray-500 uppercase">Converted to Leads</p>
+              <p className="text-lg sm:text-xl font-bold text-emerald-600">{stats.convertedCalls}</p>
             </div>
-            <CheckCircle className="h-7 w-7 text-emerald-500 opacity-60" />
+            <CheckCircle className="h-5 w-5 sm:h-6 sm:w-6 text-emerald-500 opacity-60 flex-shrink-0" />
           </div>
         </div>
 
         {/* Filters & Export Bar */}
-        <div className="px-6 py-3 bg-white border-b border-gray-100 flex flex-wrap items-center gap-3">
-          <div className="relative flex-1 min-w-[200px]">
+        <div className="flex-shrink-0 px-3 sm:px-6 py-2.5 bg-white border-b border-gray-100 flex flex-wrap items-center gap-2 sm:gap-2.5">
+          <div className="relative flex-1 min-w-[150px] sm:min-w-[180px]">
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
             <input
               type="text"
               placeholder="Search phone, DID, campaign, caller name..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-9 pr-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              className="w-full pl-9 pr-3 py-1.5 text-xs sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
             />
           </div>
 
-          <div className="w-36">
+          <div className="w-28 sm:w-32">
             <input
               type="text"
               placeholder="Filter DID..."
               value={didFilter}
               onChange={(e) => setDidFilter(e.target.value)}
-              className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+              className="w-full px-2.5 py-1.5 text-xs sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
             />
           </div>
 
-          <div className="w-36">
+          <div className="w-28 sm:w-32">
             <input
               type="text"
               placeholder="Filter Campaign..."
               value={campaignFilter}
               onChange={(e) => setCampaignFilter(e.target.value)}
-              className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+              className="w-full px-2.5 py-1.5 text-xs sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
             />
           </div>
 
-          <div className="w-32">
+          <div className="w-28 sm:w-32">
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="w-full px-2.5 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+              className="w-full px-2 py-1.5 text-xs sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
             >
               <option value="">All Statuses</option>
               <option value="RECEIVED">Received</option>
@@ -549,17 +549,17 @@ const InboundDataModal = ({ onClose, title = 'Inbound Call Data' }) => {
           </div>
 
           {/* Date Range & Unlock CSV Section */}
-          <div className="flex items-center gap-2 p-1.5 bg-slate-50 border border-slate-200 rounded-xl shadow-inner">
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 p-1 bg-slate-50 border border-slate-200 rounded-xl shadow-inner">
             <div className="flex items-center gap-1 text-xs text-gray-600 font-medium px-1">
               <Calendar className="h-3.5 w-3.5 text-indigo-600" />
-              <span>Date:</span>
+              <span className="hidden xs:inline">Date:</span>
             </div>
 
             <input
               type="date"
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
-              className="px-2 py-1 border border-gray-300 rounded-md text-xs bg-white focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+              className="px-1.5 py-1 border border-gray-300 rounded-md text-[11px] sm:text-xs bg-white focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
               title="From Date (Required for CSV download)"
             />
             <span className="text-xs text-gray-400 font-bold">→</span>
@@ -567,12 +567,12 @@ const InboundDataModal = ({ onClose, title = 'Inbound Call Data' }) => {
               type="date"
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
-              className="px-2 py-1 border border-gray-300 rounded-md text-xs bg-white focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+              className="px-1.5 py-1 border border-gray-300 rounded-md text-[11px] sm:text-xs bg-white focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
               title="To Date (Required for CSV download)"
             />
 
             {/* Quick Presets */}
-            <div className="hidden lg:flex items-center gap-1 border-l border-slate-200 pl-1.5">
+            <div className="hidden md:flex items-center gap-1 border-l border-slate-200 pl-1">
               <button
                 type="button"
                 onClick={() => applyDatePreset('today')}
@@ -607,28 +607,26 @@ const InboundDataModal = ({ onClose, title = 'Inbound Call Data' }) => {
               </button>
             </div>
 
-            {/* Download CSV Locked vs Unlocked Button */}
+            {/* In-bar CSV button */}
             {isDateRangeSelected ? (
               <button
                 type="button"
                 onClick={handleExportCSV}
                 disabled={exporting}
-                className="flex items-center gap-1.5 px-3 py-1 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-lg text-xs font-bold shadow-sm transition-all duration-150 active:scale-95 animate-in fade-in"
-                title={`Download CSV (${dateFrom} to ${dateTo})`}
+                className="px-2 py-1 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-md flex items-center gap-1 transition-colors shadow-sm"
+                title="Download CSV for selected date range"
               >
-                <Download className={`h-3.5 w-3.5 ${exporting ? 'animate-bounce' : ''}`} />
-                <span>{exporting ? 'Exporting…' : 'Download CSV'}</span>
+                <Download className="h-3 w-3" />
+                <span>{exporting ? 'Exporting...' : 'Export CSV'}</span>
               </button>
             ) : (
-              <button
-                type="button"
-                onClick={() => toast.error("Please select both 'From' and 'To' dates to unlock CSV download.")}
-                className="flex items-center gap-1 px-2.5 py-1 bg-gray-200/70 hover:bg-gray-200 text-gray-400 rounded-lg text-xs font-medium cursor-pointer transition-colors"
+              <div
+                className="flex items-center gap-1 text-[11px] text-gray-400 px-1.5 py-0.5 bg-gray-100 rounded border border-gray-200"
                 title="Select 'From' and 'To' dates to unlock CSV export"
               >
                 <Lock className="h-3 w-3 text-gray-400" />
-                <span className="text-[11px]">CSV Locked</span>
-              </button>
+                <span className="hidden sm:inline">CSV Locked</span>
+              </div>
             )}
           </div>
 
@@ -642,22 +640,22 @@ const InboundDataModal = ({ onClose, title = 'Inbound Call Data' }) => {
                 setDateFrom('');
                 setDateTo('');
               }}
-              className="text-xs font-semibold text-red-600 hover:text-red-700 px-2 py-1 bg-red-50 hover:bg-red-100 rounded-md transition-colors"
+              className="text-xs font-semibold text-red-600 hover:text-red-700 px-2 py-1 bg-red-50 hover:bg-red-100 rounded-md transition-colors ml-auto"
             >
               Reset
             </button>
           )}
         </div>
 
-        {/* Table Content */}
-        <div className="flex-1 overflow-auto bg-gray-50 p-6">
+        {/* Table Content - Responsive Scrollable with Sticky Header & Sticky Right Actions */}
+        <div className="flex-1 min-h-0 bg-gray-50 p-2 sm:p-4 overflow-hidden flex flex-col">
           {loading ? (
-            <div className="flex flex-col items-center justify-center py-20 text-gray-400">
+            <div className="flex flex-col items-center justify-center py-20 text-gray-400 bg-white rounded-xl border border-gray-200 flex-1">
               <RefreshCw className="h-8 w-8 animate-spin text-indigo-500 mb-2" />
               <p className="text-sm font-medium">Loading inbound call data...</p>
             </div>
           ) : calls.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 bg-white rounded-2xl border border-gray-200 text-center">
+            <div className="flex flex-col items-center justify-center py-20 bg-white rounded-xl border border-gray-200 text-center flex-1">
               <div className="p-3 bg-indigo-50 rounded-full text-indigo-500 mb-3">
                 <PhoneCall className="h-8 w-8" />
               </div>
@@ -667,88 +665,92 @@ const InboundDataModal = ({ onClose, title = 'Inbound Call Data' }) => {
               </p>
             </div>
           ) : (
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-gray-50/80 border-b border-gray-200 text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                    <th className="py-3 px-4">Received Time</th>
-                    <th className="py-3 px-4">Caller Phone</th>
-                    <th className="py-3 px-4">Inbound DID</th>
-                    <th className="py-3 px-4">Campaign Name</th>
-                    <th className="py-3 px-4">Organization</th>
-                    <th className="py-3 px-4">Call Status</th>
-                    <th className="py-3 px-4">Disposition / Action</th>
-                    <th className="py-3 px-4 text-right">Actions</th>
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 min-h-0 overflow-auto relative">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead className="sticky top-0 z-20 bg-gray-50 shadow-sm border-b border-gray-200">
+                  <tr className="text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    <th className="py-2.5 px-3 whitespace-nowrap min-w-[125px]">Received Time</th>
+                    <th className="py-2.5 px-3 whitespace-nowrap min-w-[130px]">Caller Phone</th>
+                    <th className="py-2.5 px-3 whitespace-nowrap min-w-[100px]">Inbound DID</th>
+                    <th className="py-2.5 px-3 whitespace-nowrap min-w-[100px]">Campaign Name</th>
+                    <th className="py-2.5 px-3 whitespace-nowrap min-w-[120px]">Organization</th>
+                    <th className="py-2.5 px-3 whitespace-nowrap min-w-[85px]">Call Status</th>
+                    <th className="py-2.5 px-3 min-w-[130px] max-w-[180px]">Disposition / Action</th>
+                    <th className="py-2.5 px-3 whitespace-nowrap text-right sticky right-0 bg-gray-50/95 backdrop-blur-sm shadow-[-6px_0_10px_-4px_rgba(0,0,0,0.12)] border-l border-gray-200 z-30 min-w-[140px]">
+                      Actions
+                    </th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100 text-sm">
+                <tbody className="divide-y divide-gray-100 text-xs sm:text-sm">
                   {calls.map((call) => (
-                    <tr key={call._id} className="hover:bg-indigo-50/30 transition-colors">
-                      <td className="py-3 px-4 whitespace-nowrap text-xs text-gray-600 font-medium">
+                    <tr key={call._id} className="group hover:bg-indigo-50/40 transition-colors">
+                      <td className="py-2.5 px-3 whitespace-nowrap text-xs text-gray-600 font-medium">
                         {fmtDate(call.receivedAt)}
                       </td>
-                      <td className="py-3 px-4 whitespace-nowrap font-semibold text-gray-900">
+                      <td className="py-2.5 px-3 whitespace-nowrap font-semibold text-gray-900">
                         <div className="flex items-center gap-1.5">
-                          <PhoneCall className="h-3.5 w-3.5 text-indigo-600" />
-                          <span>{call.phoneNumber || '—'}</span>
+                          <PhoneCall className="h-3.5 w-3.5 text-indigo-600 flex-shrink-0" />
+                          <span className="font-mono text-xs sm:text-sm">{call.phoneNumber || '—'}</span>
                         </div>
                         {call.callerName && (
-                          <div className="text-xs text-gray-500 font-normal">{call.callerName}</div>
+                          <div className="text-[11px] text-gray-500 font-normal truncate max-w-[130px]">{call.callerName}</div>
                         )}
                       </td>
-                      <td className="py-3 px-4 whitespace-nowrap">
+                      <td className="py-2.5 px-3 whitespace-nowrap">
                         {(() => {
                           const callAlias = getDidAlias(call.did, call.organization?.didAliases);
                           return (
-                            <div className="flex flex-col items-start">
+                            <div className="flex flex-col items-start gap-0.5">
                               {callAlias && (
                                 <span className="font-sans font-bold text-xs text-indigo-950 tracking-tight">
                                   {callAlias}
                                 </span>
                               )}
-                              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-mono font-medium bg-indigo-50 text-indigo-800 border border-indigo-200">
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-mono font-medium bg-indigo-50 text-indigo-800 border border-indigo-200">
                                 {call.did || '—'}
                               </span>
                             </div>
                           );
                         })()}
                       </td>
-                      <td className="py-3 px-4 whitespace-nowrap text-gray-700 font-medium text-xs">
+                      <td className="py-2.5 px-3 whitespace-nowrap text-gray-700 font-medium text-xs">
                         {call.campaignName || '—'}
                       </td>
-                      <td className="py-3 px-4 whitespace-nowrap">
+                      <td className="py-2.5 px-3 whitespace-nowrap">
                         <span className="inline-flex items-center gap-1 text-xs font-medium text-gray-700">
-                          <Building className="h-3 w-3 text-gray-400" />
-                          {call.organization?.name || 'Unassigned'}
+                          <Building className="h-3 w-3 text-gray-400 flex-shrink-0" />
+                          <span className="truncate max-w-[120px]" title={call.organization?.name || 'Unassigned'}>
+                            {call.organization?.name || 'Unassigned'}
+                          </span>
                         </span>
                       </td>
-                      <td className="py-3 px-4 whitespace-nowrap">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${STATUS_COLORS[call.callStatus] || 'bg-gray-100 text-gray-800'}`}>
+                      <td className="py-2.5 px-3 whitespace-nowrap">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold border ${STATUS_COLORS[call.callStatus] || 'bg-gray-100 text-gray-800'}`}>
                           {call.callStatus}
                         </span>
                       </td>
-                      <td className="py-3 px-4 max-w-[200px]">
+                      <td className="py-2.5 px-3 max-w-[180px]">
                         {call.leadProgressStatus ? (
-                          <span className="inline-block text-xs font-semibold px-2 py-0.5 bg-purple-50 text-purple-700 rounded border border-purple-200 truncate">
+                          <span className="inline-block text-[11px] font-semibold px-2 py-0.5 bg-purple-50 text-purple-700 rounded border border-purple-200 truncate max-w-[170px]" title={call.leadProgressStatus}>
                             {call.leadProgressStatus}
                           </span>
                         ) : (
                           <span className="text-xs text-gray-400 italic">No disposition</span>
                         )}
                         {call.agentLastAction && (
-                          <div className="text-[11px] text-gray-500 truncate" title={call.agentLastAction}>
+                          <div className="text-[10px] text-gray-500 truncate max-w-[170px] mt-0.5" title={call.agentLastAction}>
                             by {call.agentLastAction}
                           </div>
                         )}
                       </td>
-                      <td className="py-3 px-4 whitespace-nowrap text-right">
-                        <div className="flex items-center justify-end gap-1.5">
+                      <td className="py-2.5 px-3 whitespace-nowrap text-right sticky right-0 bg-white group-hover:bg-[#f6f7fd] shadow-[-6px_0_10px_-4px_rgba(0,0,0,0.1)] border-l border-gray-100 z-10 min-w-[140px]">
+                        <div className="flex items-center justify-end gap-1.5 flex-nowrap">
                           <button
                             onClick={() => {
                               setSelectedCall(call);
                               setShowDetailModal(true);
                             }}
-                            className="p-1.5 text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                            className="p-1.5 text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors flex-shrink-0"
                             title="View Details"
                           >
                             <FileText className="h-4 w-4" />
@@ -758,21 +760,21 @@ const InboundDataModal = ({ onClose, title = 'Inbound Call Data' }) => {
                             <>
                               <button
                                 onClick={() => handleOpenDisposition(call)}
-                                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 rounded-lg transition-colors"
+                                className="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 rounded-lg transition-colors flex-shrink-0"
                                 title="Update Call Disposition"
                               >
-                                <Edit3 className="h-3.5 w-3.5" />
-                                <span>Disposition</span>
+                                <Edit3 className="h-3 w-3" />
+                                <span className="hidden sm:inline">Disposition</span>
                               </button>
 
                               {!call.importedLeadId && (
                                 <button
                                   onClick={() => handleOpenConvert(call)}
-                                  className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold bg-emerald-600 text-white hover:bg-emerald-700 rounded-lg transition-colors shadow-sm"
+                                  className="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold bg-emerald-600 text-white hover:bg-emerald-700 rounded-lg transition-colors shadow-sm flex-shrink-0"
                                   title="Convert to LMS Lead"
                                 >
-                                  <PlusCircle className="h-3.5 w-3.5" />
-                                  <span>Save Lead</span>
+                                  <PlusCircle className="h-3 w-3" />
+                                  <span className="hidden sm:inline">Save Lead</span>
                                 </button>
                               )}
                             </>
@@ -788,7 +790,7 @@ const InboundDataModal = ({ onClose, title = 'Inbound Call Data' }) => {
         </div>
 
         {/* Footer Pagination */}
-        <div className="px-6 py-3 bg-white border-t border-gray-200 flex items-center justify-between text-xs text-gray-500">
+        <div className="flex-shrink-0 px-4 sm:px-6 py-2.5 bg-white border-t border-gray-200 flex flex-wrap items-center justify-between gap-2 text-xs text-gray-500">
           <span>
             Showing <strong className="text-gray-900">{calls.length}</strong> of <strong className="text-gray-900">{total}</strong> calls
           </span>
@@ -796,7 +798,7 @@ const InboundDataModal = ({ onClose, title = 'Inbound Call Data' }) => {
             <button
               onClick={() => fetchCalls(page - 1)}
               disabled={page <= 1}
-              className="px-3 py-1.5 rounded-lg border border-gray-300 text-gray-700 font-medium hover:bg-gray-50 disabled:opacity-50 transition-colors"
+              className="px-2.5 py-1 rounded-lg border border-gray-300 text-gray-700 font-medium hover:bg-gray-50 disabled:opacity-50 transition-colors"
             >
               Previous
             </button>
@@ -806,7 +808,7 @@ const InboundDataModal = ({ onClose, title = 'Inbound Call Data' }) => {
             <button
               onClick={() => fetchCalls(page + 1)}
               disabled={page >= totalPages}
-              className="px-3 py-1.5 rounded-lg border border-gray-300 text-gray-700 font-medium hover:bg-gray-50 disabled:opacity-50 transition-colors"
+              className="px-2.5 py-1 rounded-lg border border-gray-300 text-gray-700 font-medium hover:bg-gray-50 disabled:opacity-50 transition-colors"
             >
               Next
             </button>
@@ -817,10 +819,10 @@ const InboundDataModal = ({ onClose, title = 'Inbound Call Data' }) => {
 
       {/* Detail Modal */}
       {showDetailModal && selectedCall && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-gray-100 animate-in fade-in zoom-in-95">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-5 sm:p-6 shadow-2xl border border-gray-100 max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in-95">
             <div className="flex items-center justify-between pb-3 border-b border-gray-200">
-              <h3 className="text-lg font-bold text-gray-900">Inbound Call Details</h3>
+              <h3 className="text-base sm:text-lg font-bold text-gray-900">Inbound Call Details</h3>
               <button
                 onClick={() => setShowDetailModal(false)}
                 className="p-1 rounded-lg text-gray-400 hover:text-gray-600"
@@ -829,7 +831,7 @@ const InboundDataModal = ({ onClose, title = 'Inbound Call Data' }) => {
               </button>
             </div>
             <div className="py-4 space-y-2 text-sm text-gray-700">
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs sm:text-sm">
                 <div><strong>Phone Number:</strong> {selectedCall.phoneNumber || '—'}</div>
                 <div><strong>DID:</strong> {selectedCall.did || '—'}</div>
                 <div><strong>Campaign:</strong> {selectedCall.campaignName || '—'}</div>
@@ -841,13 +843,13 @@ const InboundDataModal = ({ onClose, title = 'Inbound Call Data' }) => {
               </div>
               {selectedCall.notes && (
                 <div className="pt-2">
-                  <strong>Notes:</strong>
+                  <strong className="text-xs">Notes:</strong>
                   <p className="mt-1 p-2 bg-gray-50 rounded-lg text-xs font-mono">{selectedCall.notes}</p>
                 </div>
               )}
               {selectedCall.rawPayload && (
                 <div className="pt-2">
-                  <strong>Raw Telephony Payload:</strong>
+                  <strong className="text-xs">Raw Telephony Payload:</strong>
                   <pre className="mt-1 p-2 bg-slate-900 text-slate-100 rounded-lg text-[11px] max-h-40 overflow-auto font-mono">
                     {JSON.stringify(selectedCall.rawPayload, null, 2)}
                   </pre>
@@ -868,10 +870,10 @@ const InboundDataModal = ({ onClose, title = 'Inbound Call Data' }) => {
 
       {/* Disposition Modal */}
       {showDispositionModal && selectedCall && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-gray-100 animate-in fade-in zoom-in-95">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-md w-full p-5 sm:p-6 shadow-2xl border border-gray-100 max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in-95">
             <div className="flex items-center justify-between pb-3 border-b border-gray-200">
-              <h3 className="text-lg font-bold text-gray-900">Update Disposition</h3>
+              <h3 className="text-base sm:text-lg font-bold text-gray-900">Update Disposition</h3>
               <button
                 onClick={() => setShowDispositionModal(false)}
                 className="p-1 rounded-lg text-gray-400 hover:text-gray-600"
@@ -939,12 +941,12 @@ const InboundDataModal = ({ onClose, title = 'Inbound Call Data' }) => {
 
       {/* Convert to LMS Lead Modal */}
       {showConvertModal && selectedCall && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-gray-100 animate-in fade-in zoom-in-95">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-5 sm:p-6 shadow-2xl border border-gray-100 max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in-95">
             <div className="flex items-center justify-between pb-3 border-b border-gray-200">
               <div className="flex items-center gap-2">
                 <PlusCircle className="h-5 w-5 text-emerald-600" />
-                <h3 className="text-lg font-bold text-gray-900">Save Inbound Call as LMS Lead</h3>
+                <h3 className="text-base sm:text-lg font-bold text-gray-900">Save Inbound Call as LMS Lead</h3>
               </div>
               <button
                 onClick={() => setShowConvertModal(false)}
