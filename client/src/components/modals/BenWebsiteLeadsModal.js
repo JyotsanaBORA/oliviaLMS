@@ -452,7 +452,7 @@ const BenWebsiteLeadsModal = ({ onClose, targetOrgName, title }) => {
                       <div>
                         <p className="text-xs font-bold text-emerald-700 flex items-center gap-1">
                           <Globe className="h-3.5 w-3.5" />
-                          Download ALL Organisation Leads
+                          Export all Csv files
                         </p>
                         <p className="text-[11px] text-gray-500 truncate max-w-[170px]">
                           {currentOrgName ? `All leads for ${currentOrgName}` : 'All leads across all statuses'}
