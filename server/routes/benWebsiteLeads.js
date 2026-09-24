@@ -37,6 +37,31 @@ const getAccess = async (user) => {
   } catch { return { allowed: false }; }
 };
 
+// Shared helper to build organization filter
+const buildOrgFilter = async (access, query) => {
+  if (access.orgFilter) {
+    return mongoose.isValidObjectId(access.orgFilter) ? new mongoose.Types.ObjectId(access.orgFilter) : access.orgFilter;
+  }
+  if (query.organizationId && mongoose.isValidObjectId(query.organizationId)) {
+    return new mongoose.Types.ObjectId(query.organizationId);
+  }
+  if (query.orgName) {
+    const term = query.orgName.trim();
+    const matchOrgs = await Organization.find({
+      $or: [
+        { name: { $regex: term, $options: 'i' } },
+        { email: { $regex: term, $options: 'i' } },
+        { website: { $regex: term, $options: 'i' } },
+        ...(term.toLowerCase() === 'ben' ? [{ name: { $regex: 'intro', $options: 'i' } }] : [])
+      ]
+    }).select('_id').lean();
+    return matchOrgs.length > 0
+      ? { $in: matchOrgs.map(o => new mongoose.Types.ObjectId(o._id)) }
+      : new mongoose.Types.ObjectId();
+  }
+  return null;
+};
+
 // GET /api/ben-website-leads
 router.get('/', protect, async (req, res) => {
   try {
@@ -50,28 +75,8 @@ router.get('/', protect, async (req, res) => {
     const search = (req.query.search || '').trim();
 
     const filter = { isDeleted: { $ne: true } };
-    if (access.orgFilter) {
-      filter.organization = mongoose.isValidObjectId(access.orgFilter) ? new mongoose.Types.ObjectId(access.orgFilter) : access.orgFilter;
-    } else if (req.query.organizationId) {
-      if (mongoose.isValidObjectId(req.query.organizationId)) {
-        filter.organization = new mongoose.Types.ObjectId(req.query.organizationId);
-      }
-    } else if (req.query.orgName) {
-      const term = req.query.orgName.trim();
-      const matchOrgs = await Organization.find({
-        $or: [
-          { name: { $regex: term, $options: 'i' } },
-          { email: { $regex: term, $options: 'i' } },
-          { website: { $regex: term, $options: 'i' } },
-          ...(term.toLowerCase() === 'ben' ? [{ name: { $regex: 'intro', $options: 'i' } }] : [])
-        ]
-      }).select('_id').lean();
-      if (matchOrgs.length > 0) {
-        filter.organization = { $in: matchOrgs.map(o => new mongoose.Types.ObjectId(o._id)) };
-      } else {
-        filter.organization = new mongoose.Types.ObjectId();
-      }
-    }
+    const orgMatch = await buildOrgFilter(access, req.query);
+    if (orgMatch) filter.organization = orgMatch;
 
     if (status && ['new', 'reviewed', 'imported', 'rejected'].includes(status)) filter.status = status;
     if (search) {
@@ -357,6 +362,123 @@ router.post('/bulk-import', protect, async (req, res) => {
   } catch (err) {
     console.error('Bulk import ben-website-leads error:', err);
     return res.status(500).json({ success: false, message: 'Error during bulk import.' });
+  }
+});
+
+// GET /api/ben-website-leads/export
+router.get('/export', protect, async (req, res) => {
+  try {
+    const access = await getAccess(req.user);
+    if (!access.allowed) return res.status(403).json({ success: false, message: 'Access denied.' });
+
+    const filter = { isDeleted: { $ne: true } };
+
+    const orgMatch = await buildOrgFilter(access, req.query);
+    if (orgMatch) filter.organization = orgMatch;
+
+    const allOrg = req.query.allOrg === 'true';
+    if (!allOrg) {
+      const status = req.query.status;
+      const search = (req.query.search || '').trim();
+      if (status && ['new', 'reviewed', 'imported', 'rejected'].includes(status)) {
+        filter.status = status;
+      }
+      if (search) {
+        filter.$or = [
+          { name:  { $regex: search, $options: 'i' } },
+          { email: { $regex: search, $options: 'i' } },
+          { phone: { $regex: search, $options: 'i' } },
+        ];
+      }
+    }
+
+    // Deduplicate leads by phone number (keeping the latest submission per phone)
+    const pipeline = [
+      { $match: filter },
+      { $sort: { createdAt: -1 } },
+      {
+        $group: {
+          _id: {
+            $cond: [
+              { $and: [{ $ne: ['$phone', null] }, { $ne: ['$phone', ''] }] },
+              '$phone',
+              '$_id'
+            ]
+          },
+          doc: { $first: '$$ROOT' }
+        }
+      },
+      { $replaceRoot: { newRoot: '$doc' } },
+      { $sort: { createdAt: -1 } }
+    ];
+
+    const leads = await BenWebsiteLead.aggregate(pipeline).allowDiskUse(true);
+    await BenWebsiteLead.populate(leads, { path: 'organization', select: 'name' });
+
+    const headers = [
+      'Organization',
+      'Name',
+      'First Name',
+      'Last Name',
+      'Email',
+      'Phone',
+      'Form Type',
+      'Debt Amount',
+      'Status',
+      'Disposition',
+      'Handled By',
+      'Street Address',
+      'City',
+      'State',
+      'Zip Code',
+      'Message',
+      'SMS Opt-In',
+      'Received'
+    ];
+
+    const esc = (v) => {
+      if (v == null || v === '') return '';
+      const s = String(v);
+      return s.includes(',') || s.includes('"') || s.includes('\n') || s.includes('\r')
+        ? `"${s.replace(/"/g, '""')}"`
+        : s;
+    };
+
+    const rows = leads.map(r => [
+      esc(r.organization?.name || ''),
+      esc(r.name || [r.firstName, r.lastName].filter(Boolean).join(' ') || ''),
+      esc(r.firstName || ''),
+      esc(r.lastName || ''),
+      esc(r.email || ''),
+      esc(r.phone || ''),
+      esc(r.formType === 'contact-form' ? 'Contact Form' : r.formType === 'qualify-form' ? 'Qualify Form' : (r.formType || 'Unknown')),
+      esc(r.totalDebtAmount != null ? r.totalDebtAmount : ''),
+      esc(r.status || ''),
+      esc(r.leadProgressStatus || r.disposition || ''),
+      esc(r.disposedBy || r.agentLastAction || r.handledBy || ''),
+      esc(r.streetAddress || ''),
+      esc(r.city || ''),
+      esc(r.state || ''),
+      esc(r.zipCode || ''),
+      esc(r.message || ''),
+      esc(r.smsOptIn ? 'YES' : 'NO'),
+      esc(r.createdAt ? new Date(r.createdAt).toLocaleString('en-US', { timeZone: 'America/New_York' }) : '')
+    ].join(','));
+
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows].join('\r\n');
+
+    let orgLabel = 'leads';
+    if (leads[0]?.organization?.name) {
+      orgLabel = leads[0].organization.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    }
+
+    const filename = `${orgLabel}-${allOrg ? 'all-' : ''}${new Date().toISOString().split('T')[0]}.csv`;
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    return res.status(200).send(csvContent);
+  } catch (err) {
+    console.error('Export ben website leads error:', err);
+    return res.status(500).json({ success: false, message: 'Export failed.' });
   }
 });
 

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Globe, X, RefreshCw, Search, CheckCircle, XCircle,
   Download, Eye, MessageSquare, PhoneCall, Mail, MapPin,
-  DollarSign, Smartphone, ChevronLeft, ChevronRight,
+  DollarSign, Smartphone, ChevronLeft, ChevronRight, ChevronDown,
   FileDown, Clock, Send, Lock, Building, UserPlus, Trash2, User
 } from 'lucide-react';
 import axios from '../../utils/axios';
@@ -29,6 +29,8 @@ const BenWebsiteLeadsModal = ({ onClose, targetOrgName, title }) => {
   const [detail, setDetail]         = useState(null);
   const [actionLoading, setActionLoading] = useState(null);
   const [exporting, setExporting]   = useState(false);
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const exportMenuRef = useRef(null);
   const [commentText, setCommentText]   = useState('');
   const [commentSubmitting, setCommentSubmitting] = useState(false);
   const [selectedLeads, setSelectedLeads] = useState(new Set());
@@ -37,6 +39,16 @@ const BenWebsiteLeadsModal = ({ onClose, targetOrgName, title }) => {
   const [leadToReassign, setLeadToReassign] = useState(null);
   const [bulkLeadsToReassign, setBulkLeadsToReassign] = useState([]);
   const commentSectionRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target)) {
+        setExportMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const openDetail = useCallback(async (lead, scrollToComments = false) => {
     setDetail(lead);
@@ -104,49 +116,50 @@ const BenWebsiteLeadsModal = ({ onClose, targetOrgName, title }) => {
     setSelectedLeads(new Set());
   }, [statusFilter, orgFilter]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleExport = async () => {
+  const selectedOrg = organizations.find(o => o._id === orgFilter);
+  const currentOrgName = selectedOrg?.name || (targetOrgName && organizations.find(o => o.name?.toLowerCase().includes(targetOrgName.toLowerCase()))?.name) || targetOrgName || title?.replace(/ Leads$/i, '') || '';
+
+  const handleExport = async (opts = {}) => {
+    const { allOrg = false } = opts;
     setExporting(true);
+    setExportMenuOpen(false);
     try {
-      const params = new URLSearchParams({ page: 1, limit: 5000 });
-      if (statusFilter) params.set('status', statusFilter);
+      const params = new URLSearchParams();
+      if (allOrg) {
+        params.set('allOrg', 'true');
+      } else {
+        if (statusFilter) params.set('status', statusFilter);
+        if (search.trim()) params.set('search', search.trim());
+      }
+
       if (orgFilter) {
         params.set('organizationId', orgFilter);
       } else if (targetOrgName && !userSelectedOrg) {
         params.set('orgName', targetOrgName);
       }
-      if (search.trim()) params.set('search', search.trim());
-      const res = await axios.get(`/api/ben-website-leads?${params}`);
-      const rows = res.data?.data || [];
-      if (!rows.length) { toast.error('No leads to export'); return; }
 
-      const headers = canWrite
-        ? ['Organization', 'Name', 'Email', 'Phone', 'Form Type', 'Message', 'Debt Amount', 'Status', 'Received']
-        : ['Name', 'Email', 'Phone', 'Form Type', 'Message', 'Debt Amount', 'Status', 'Received'];
-      const esc = (v) => { if (v == null || v === '') return ''; const s = String(v); return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s; };
-      const csvRows = [
-        headers.join(','),
-        ...rows.map(r => {
-          const rowData = [
-            esc(r.name), esc(r.email), esc(r.phone),
-            esc(r.formType === 'contact-form' ? 'Contact Form' : r.formType === 'qualify-form' ? 'Qualify Form' : 'Unknown'),
-            esc(r.message),
-            esc(r.totalDebtAmount != null ? r.totalDebtAmount : ''),
-            esc(r.status),
-            esc(r.createdAt ? new Date(r.createdAt).toLocaleString('en-US', { timeZone: 'America/New_York' }) : '')
-          ];
-          if (canWrite) {
-            rowData.unshift(esc(r.organization?.name || ''));
-          }
-          return rowData.join(',');
-        })
-      ];
-      const blob = new Blob([csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+      const res = await axios.get(`/api/ben-website-leads/export?${params}`, {
+        responseType: 'blob',
+        timeout: 120000,
+      });
+
+      const blob = new Blob([res.data], { type: 'text/csv;charset=utf-8;' });
       const url  = URL.createObjectURL(blob);
       const a    = document.createElement('a');
-      a.href = url; a.download = `inbound-leads-${new Date().toISOString().split('T')[0]}.csv`; a.click();
+      const safeOrg = (currentOrgName || 'leads').toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      a.href = url;
+      a.download = `${safeOrg}-${allOrg ? 'ALL-' : ''}${new Date().toISOString().split('T')[0]}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      toast.success(`Exported ${rows.length} leads`);
-    } catch { toast.error('Export failed'); } finally { setExporting(false); }
+      toast.success(allOrg ? `Exported all leads for ${currentOrgName || 'organization'}!` : 'Exported filtered leads successfully!');
+    } catch (err) {
+      console.error('Export error:', err);
+      toast.error('Failed to export leads. Please try again.');
+    } finally {
+      setExporting(false);
+    }
   };
 
   const handleStatusChange = async (lead, newStatus) => {
@@ -386,11 +399,72 @@ const BenWebsiteLeadsModal = ({ onClose, targetOrgName, title }) => {
                   </button>
                 </>
               )}
-              <button onClick={handleExport} disabled={exporting}
-                className="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 text-white text-xs font-semibold rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-50">
-                <FileDown className={`h-3.5 w-3.5 ${exporting ? 'animate-bounce' : ''}`} />
-                {exporting ? 'Exporting…' : 'Export CSV'}
-              </button>
+              {/* Export Button / Split Dropdown for Full Access Admin */}
+              <div className="relative inline-flex items-center" ref={exportMenuRef}>
+                <button
+                  onClick={() => handleExport({ allOrg: false })}
+                  disabled={exporting}
+                  title={statusFilter ? `Export ${statusFilter} leads (${pagination.total || leads.length})` : 'Export current view'}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 transition-colors disabled:opacity-50 ${canWrite ? 'rounded-l-lg' : 'rounded-lg'}`}
+                >
+                  <FileDown className={`h-3.5 w-3.5 ${exporting ? 'animate-bounce' : ''}`} />
+                  {exporting ? 'Exporting…' : 'Export CSV'}
+                </button>
+                {canWrite && (
+                  <button
+                    onClick={() => setExportMenuOpen(prev => !prev)}
+                    disabled={exporting}
+                    title="Export options"
+                    className="px-2 py-1.5 bg-emerald-700 text-white text-xs font-semibold rounded-r-lg border-l border-emerald-500 hover:bg-emerald-800 transition-colors disabled:opacity-50 flex items-center justify-center"
+                  >
+                    <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-200 ${exportMenuOpen ? 'rotate-180' : ''}`} />
+                  </button>
+                )}
+
+                {exportMenuOpen && canWrite && (
+                  <div className="absolute right-0 top-full mt-1.5 w-72 bg-white rounded-xl shadow-2xl border border-gray-100 py-1 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+                    <div className="px-3.5 py-2 border-b border-gray-100 flex items-center justify-between">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Export Options</span>
+                      <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">Full Access</span>
+                    </div>
+
+                    {/* Option 1: Filtered / Current View */}
+                    <button
+                      onClick={() => handleExport({ allOrg: false })}
+                      className="w-full text-left px-3.5 py-2.5 hover:bg-gray-50 flex items-center justify-between group transition-colors"
+                    >
+                      <div>
+                        <p className="text-xs font-semibold text-gray-800 group-hover:text-emerald-700">Export Filtered View</p>
+                        <p className="text-[11px] text-gray-400">
+                          {statusFilter ? `Status: ${statusFilter}` : 'Current view'} {search ? `• Search: "${search}"` : ''}
+                        </p>
+                      </div>
+                      <span className="text-xs font-bold text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+                        {pagination.total || leads.length}
+                      </span>
+                    </button>
+
+                    {/* Option 2: Download ALL Leads for Org */}
+                    <button
+                      onClick={() => handleExport({ allOrg: true })}
+                      className="w-full text-left px-3.5 py-2.5 hover:bg-emerald-50/70 border-t border-gray-50 flex items-center justify-between group transition-colors"
+                    >
+                      <div>
+                        <p className="text-xs font-bold text-emerald-700 flex items-center gap-1">
+                          <Globe className="h-3.5 w-3.5" />
+                          Download ALL Organisation Leads
+                        </p>
+                        <p className="text-[11px] text-gray-500 truncate max-w-[170px]">
+                          {currentOrgName ? `All leads for ${currentOrgName}` : 'All leads across all statuses'}
+                        </p>
+                      </div>
+                      <span className="text-xs font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
+                        {summary.total || 0}
+                      </span>
+                    </button>
+                  </div>
+                )}
+              </div>
               <form onSubmit={(e) => { e.preventDefault(); fetchLeads({ page: 1 }); }} className="flex items-center gap-1">
                 <div className="relative">
                   <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
