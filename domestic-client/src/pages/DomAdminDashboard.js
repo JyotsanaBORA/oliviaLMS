@@ -776,6 +776,19 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
     }
   }, [fetchDomLeads, domLeadsPage]);
 
+  // Admin directly updates a lead's disposition / call outcome
+  const handleLeadOutcomeChange = useCallback(async (leadId, newOutcome, currentOutcome) => {
+    if (newOutcome === currentOutcome) return;
+    try {
+      await api.patch(`/domestic-api/leads/${leadId}/disposition`, { callOutcome: newOutcome });
+      toast.success('Disposition updated!');
+      fetchDomLeads(domLeadsPage);
+      setViewDL(prev => (prev && prev._id === leadId ? { ...prev, callOutcome: newOutcome } : prev));
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to update disposition.');
+    }
+  }, [fetchDomLeads, domLeadsPage]);
+
   const handleExportExcel = useCallback(async () => {
     try {
       toast.loading('Exporting Excel', { id: 'csv' });
@@ -1704,10 +1717,24 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                             <SourceBadge lead={dl} />
                           </td>
                           <td className="px-3 py-3.5 text-gray-700 text-sm">{dl.assignedTo?.name || ''}</td>
-                          <td className="px-3 py-3.5">
-                            {outcome
-                              ? <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${outcome.cls}`}>{outcome.label}</span>
-                              : <span className="text-gray-300 text-xs">Not called</span>}
+                          <td className="px-3 py-3.5" onClick={e => e.stopPropagation()}>
+                            <select
+                              value={dl.callOutcome || ''}
+                              onChange={e => handleLeadOutcomeChange(dl._id, e.target.value, dl.callOutcome)}
+                              className={`text-xs px-2 py-1 rounded-full font-semibold border cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#065F36]/20 ${
+                                outcome ? outcome.cls : 'bg-gray-100 text-gray-500 border-gray-200'
+                              }`}
+                            >
+                              <option value="">Select Disposition</option>
+                              <option value="interested">Interested</option>
+                              <option value="not_interested">Not Interested</option>
+                              <option value="not_eligible">Not Eligible</option>
+                              <option value="callback">Callback</option>
+                              <option value="not_reachable">Not Reachable</option>
+                              <option value="not_answering">Not Answering</option>
+                              <option value="wrong_number">Wrong Number</option>
+                              <option value="other">Other</option>
+                            </select>
                           </td>
                           <td className="px-3 py-3.5">
                             <div className="flex flex-col gap-1">
@@ -3831,7 +3858,23 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                 <Row2 label="Existing EMI"    value={viewDL.existingEMI ? `${viewDL.existingEMI.toLocaleString('en-IN')}` : null} />
               </Section>
               <Section label="Call & Status">
-                <Row2 label="Call Outcome"  value={viewDL.callOutcome?.replace(/_/g,' ')} />
+                <Row2 label="Call Outcome"  value={
+                  <select
+                    value={viewDL.callOutcome || ''}
+                    onChange={e => handleLeadOutcomeChange(viewDL._id, e.target.value, viewDL.callOutcome)}
+                    className="text-xs px-2.5 py-1 rounded-lg font-semibold border border-gray-300 bg-white cursor-pointer"
+                  >
+                    <option value="">Select Disposition</option>
+                    <option value="interested">Interested</option>
+                    <option value="not_interested">Not Interested</option>
+                    <option value="not_eligible">Not Eligible</option>
+                    <option value="callback">Callback</option>
+                    <option value="not_reachable">Not Reachable</option>
+                    <option value="not_answering">Not Answering</option>
+                    <option value="wrong_number">Wrong Number</option>
+                    <option value="other">Other</option>
+                  </select>
+                } />
                 <Row2 label="Callback Date" value={viewDL.callbackDate} />
                 <Row2 label="Notes"         value={viewDL.notes} />
                 <Row2 label="Status"        value={<StatusBadge status={viewDL.status} />} />

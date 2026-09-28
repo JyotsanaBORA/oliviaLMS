@@ -236,6 +236,28 @@ const DomAgentDashboard = () => {
     setModalOpen(true);
   }, []);
 
+  // Agent quick-updates disposition / call outcome directly from table
+  const handleQuickOutcomeChange = useCallback(async (lead, newOutcome) => {
+    const isWebsite = lead._src === 'website';
+    const leadId = isWebsite
+      ? (lead.domLead?._id || lead._id)
+      : (lead.domLeadId?._id || lead.domLeadId || lead._id);
+    const currentOutcome = isWebsite
+      ? (lead.domLead?.callOutcome || '')
+      : (lead.callOutcome || lead.domLeadId?.callOutcome || '');
+    if (newOutcome === currentOutcome) return;
+
+    try {
+      await api.patch(`/domestic-api/leads/${leadId}/disposition`, { callOutcome: newOutcome });
+      toast.success('Disposition updated!');
+      fetchMyLeads(true);
+      fetchAssignedLeads();
+      fetchFollowups();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to update disposition.');
+    }
+  }, [fetchMyLeads, fetchAssignedLeads, fetchFollowups]);
+
   // Combined views
   const toWorkLeads  = useMemo(() => [
     ...myLeads.filter(l => !l.isWorked).map(l => ({ ...l, _src: 'website' })),
@@ -772,15 +794,24 @@ const DomAgentDashboard = () => {
                             </div>
                           </td>
                           <td className="px-3 py-3.5 font-mono text-xs text-gray-600">{lead.mobile || ''}</td>
-                          <td className="px-3 py-3.5">
-                            {outcome
-                              ? <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${outcome.cls}`}>
-                                  {outcome.label}
-                                  {outcomeKey === 'not_eligible' && (lead.notEligibleReason || lead.domLead?.notEligibleReason || lead.domLeadId?.notEligibleReason) ? ` (${lead.notEligibleReason || lead.domLead?.notEligibleReason || lead.domLeadId?.notEligibleReason})` : ''}
-                                </span>
-                              : wsInfo
-                                ? <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${wsInfo}`}>{lead.workStatus?.replace(/_/g,' ')}</span>
-                                : <span className="text-gray-300 text-xs">—</span>}
+                          <td className="px-3 py-3.5" onClick={e => e.stopPropagation()}>
+                            <select
+                              value={outcomeKey}
+                              onChange={e => handleQuickOutcomeChange(lead, e.target.value)}
+                              className={`text-xs px-2 py-1 rounded-full font-semibold border cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#065F36]/20 transition-all ${
+                                outcome ? outcome.cls : wsInfo ? wsInfo : 'bg-gray-100 text-gray-500 border-gray-200'
+                              }`}
+                            >
+                              <option value="">Select Disposition</option>
+                              <option value="interested">Interested</option>
+                              <option value="not_interested">Not Interested</option>
+                              <option value="not_eligible">Not Eligible</option>
+                              <option value="callback">Callback</option>
+                              <option value="not_reachable">Not Reachable</option>
+                              <option value="not_answering">Not Answering</option>
+                              <option value="wrong_number">Wrong Number</option>
+                              <option value="other">Other</option>
+                            </select>
                           </td>
                           <td className="px-3 py-3.5">
                             {(() => {
@@ -1023,7 +1054,14 @@ const DomAgentDashboard = () => {
           websiteLead={selectedWLead}
           existingDomLead={selectedDomLead}
           onClose={() => { setModalOpen(false); setSelectedWLead(null); setSelectedDomLead(null); }}
-          onSaved={() => fetchMyLeads(true)}
+          onSaved={() => {
+            fetchMyLeads(true);
+            fetchAssignedLeads();
+            fetchFollowups();
+            setModalOpen(false);
+            setSelectedWLead(null);
+            setSelectedDomLead(null);
+          }}
         />
       )}
 
@@ -1050,7 +1088,14 @@ const DomAgentDashboard = () => {
             setSelectedImportedLead(null);
             setImportedLeadDomLead(null);
           }}
-          onSaved={() => { fetchAssignedLeads(); }}
+          onSaved={() => {
+            fetchAssignedLeads();
+            fetchMyLeads(true);
+            fetchFollowups();
+            setImportedModalOpen(false);
+            setSelectedImportedLead(null);
+            setImportedLeadDomLead(null);
+          }}
         />
       )}
 

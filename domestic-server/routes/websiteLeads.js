@@ -168,9 +168,13 @@ router.get('/my', protect, authorize('domagent', 'dom_admin', 'dom_superadmin'),
       return true;
     });
 
-    // Find all DomLeads created by this agent – include full doc so documents
-    // array is available when the modal opens without a second fetch.
-    const domLeads = await DomLead.find({ assignedTo: agentId, sourceWebsiteLead: { $ne: null } }).lean();
+    const leadIds = uniqueLeads.map(l => l._id);
+    const domLeads = await DomLead.find({
+      $or: [
+        { sourceWebsiteLead: { $in: leadIds } },
+        { assignedTo: agentId, sourceWebsiteLead: { $ne: null } }
+      ]
+    }).lean();
     const workedMap = {};
     domLeads.forEach((dl) => {
       if (dl.sourceWebsiteLead) workedMap[dl.sourceWebsiteLead.toString()] = dl;

@@ -56,7 +56,8 @@ router.post('/', protect, authorize('domagent', 'dom_admin', 'dom_superadmin'), 
 
       if (
         req.user.role === 'domagent' &&
-        websiteLead.loadedBy?.toString() !== req.user._id.toString()
+        websiteLead.loadedBy?.toString() !== req.user._id.toString() &&
+        websiteLead.assignedTo?.toString() !== req.user._id.toString()
       ) {
         return res.status(403).json({ success: false, message: 'You did not load this lead.' });
       }
@@ -90,12 +91,12 @@ router.post('/', protect, authorize('domagent', 'dom_admin', 'dom_superadmin'), 
 
       const sanitized = sanitizeLeadFields(fields);
       // Auto-status: close rejected outcomes immediately
-      if (['not_interested', 'wrong_number'].includes(sanitized.callOutcome)) {
+      if (['not_interested', 'wrong_number', 'not_eligible'].includes(sanitized.callOutcome)) {
         sanitized.status = 'rejected';
       }
       const domLead = await DomLead.create({
         sourceWebsiteLead,
-        assignedTo:    websiteLead.loadedBy || req.user._id,
+        assignedTo:    req.user.role === 'domagent' ? req.user._id : (websiteLead.assignedTo || websiteLead.loadedBy || req.user._id),
         createdBy:     req.user._id,
         lastUpdatedBy: req.user._id,
         leadRef:       generateLeadRef(sanitized.productType || ''),
@@ -227,6 +228,14 @@ router.patch('/:id', protect, authorize('domagent', 'dom_admin', 'dom_superadmin
           lead.assignedTo = req.user._id;
         }
       }
+      if (lead.sourceWebsiteLead) {
+        const web = await DomWebsiteLead.findById(lead.sourceWebsiteLead).select('loadedBy assignedTo').lean();
+        if (web && (web.loadedBy?.toString() === req.user._id.toString() || web.assignedTo?.toString() === req.user._id.toString())) {
+          isReassigned = true;
+          await DomLead.findByIdAndUpdate(lead._id, { assignedTo: req.user._id });
+          lead.assignedTo = req.user._id;
+        }
+      }
       if (!isReassigned) {
         return res.status(403).json({ success: false, message: 'Not authorized to edit this lead.' });
       }
@@ -280,7 +289,16 @@ router.patch('/:id', protect, authorize('domagent', 'dom_admin', 'dom_superadmin
         workStatus,
         callOutcome: updates.callOutcome,
         ...(updates.notEligibleReason !== undefined ? { notEligibleReason: updates.notEligibleReason } : {}),
+        ...(updates.callbackDate !== undefined ? { callbackDate: updates.callbackDate } : {}),
         workedAt:    new Date(),
+      });
+    }
+
+    // Sync to website lead if linked
+    if (updated.sourceWebsiteLead) {
+      await DomWebsiteLead.findByIdAndUpdate(updated.sourceWebsiteLead._id || updated.sourceWebsiteLead, {
+        status: 'completed',
+        domLeadId: updated._id,
       });
     }
 
@@ -461,6 +479,136 @@ router.patch('/:id/status', protect, authorize('dom_admin', 'dom_superadmin'), a
   } catch (err) {
     console.error('[Leads] Status update error:', err.message);
     return res.status(500).json({ success: false, message: 'Failed to update lead status.' });
+  }
+});
+
+// ── PATCH /domestic-api/leads/:id/disposition ────────────────────────────────
+// Update disposition / call outcome directly with auto-status and cross-model sync
+router.patch('/:id/disposition', protect, authorize('domagent', 'dom_admin', 'dom_superadmin'), async (req, res) => {
+  try {
+    const { callOutcome, callbackDate, notes, notEligibleReason, customCallOutcome } = req.body;
+    const validOutcomes = ['interested', 'not_interested', 'not_eligible', 'callback', 'not_reachable', 'not_answering', 'wrong_number', 'other', ''];
+    if (callOutcome !== undefined && !validOutcomes.includes(callOutcome)) {
+      return res.status(400).json({ success: false, message: 'Invalid disposition value.' });
+    }
+
+    let lead = await DomLead.findById(req.params.id);
+    if (!lead) {
+      const [webLead, impLead] = await Promise.all([
+        DomWebsiteLead.findById(req.params.id),
+        DomImportedLead.findById(req.params.id),
+      ]);
+      const source = webLead || impLead;
+      if (source) {
+        const sourceFilter = webLead ? { sourceWebsiteLead: webLead._id } : { sourceImportedLead: impLead._id };
+        lead = (source.domLeadId ? await DomLead.findById(source.domLeadId) : null) || await DomLead.findOne(sourceFilter);
+        if (!lead) {
+          const autoStatus = ['not_interested', 'wrong_number', 'not_eligible'].includes(callOutcome) ? 'rejected' : 'pending';
+          lead = await DomLead.create({
+            sourceWebsiteLead:  webLead?._id,
+            sourceImportedLead: impLead?._id,
+            assignedTo: impLead?.assignedTo || (req.user.role === 'domagent' ? req.user._id : (webLead?.assignedTo || webLead?.loadedBy || req.user._id)),
+            createdBy: req.user._id,
+            lastUpdatedBy: req.user._id,
+            name: source.name || 'Unnamed',
+            mobile: source.mobile || '',
+            email: source.email || '',
+            city: source.city || '',
+            state: source.state || '',
+            productType: source.productType || source.loanType || '',
+            leadRef: generateLeadRef(source.productType || source.loanType || ''),
+            callOutcome: callOutcome || '',
+            callbackDate: callbackDate || '',
+            notes: notes || '',
+            notEligibleReason: notEligibleReason || '',
+            customCallOutcome: customCallOutcome || '',
+            status: autoStatus,
+            callCount: callOutcome ? 1 : 0,
+            updateCount: 1,
+          });
+          if (webLead) await DomWebsiteLead.findByIdAndUpdate(webLead._id, { status: 'completed', domLeadId: lead._id, completedAt: new Date() });
+          if (impLead) await DomImportedLead.findByIdAndUpdate(impLead._id, { domLeadId: lead._id, workStatus: OUTCOME_TO_WORK_STATUS[callOutcome] || 'in_progress', callOutcome: callOutcome || '', notEligibleReason: notEligibleReason || '', callbackDate: callbackDate || '', workedAt: new Date() });
+          return res.status(200).json({ success: true, data: lead, message: 'Disposition updated successfully.' });
+        }
+      }
+    }
+
+    if (!lead) return res.status(404).json({ success: false, message: 'Lead not found.' });
+
+    // Authorization: domagent can update if assigned to them or linked to their website/imported lead
+    if (req.user.role === 'domagent' && lead.assignedTo?.toString() !== req.user._id.toString()) {
+      let isReassigned = false;
+      if (lead.sourceImportedLead) {
+        const imp = await DomImportedLead.findById(lead.sourceImportedLead).select('assignedTo').lean();
+        if (imp && imp.assignedTo?.toString() === req.user._id.toString()) {
+          isReassigned = true;
+          lead.assignedTo = req.user._id;
+        }
+      }
+      if (lead.sourceWebsiteLead) {
+        const web = await DomWebsiteLead.findById(lead.sourceWebsiteLead).select('loadedBy assignedTo').lean();
+        if (web && (web.loadedBy?.toString() === req.user._id.toString() || web.assignedTo?.toString() === req.user._id.toString())) {
+          isReassigned = true;
+          lead.assignedTo = req.user._id;
+        }
+      }
+      if (!isReassigned) {
+        return res.status(403).json({ success: false, message: 'Not authorized to update this lead.' });
+      }
+    }
+
+    const updates = { lastUpdatedBy: req.user._id };
+    if (lead.assignedTo?.toString() === req.user._id.toString() || req.user.role === 'domagent') {
+      updates.assignedTo = req.user._id;
+    }
+    if (callOutcome !== undefined) updates.callOutcome = callOutcome;
+    if (callbackDate !== undefined) updates.callbackDate = callbackDate;
+    if (notes !== undefined) updates.notes = notes;
+    if (notEligibleReason !== undefined) updates.notEligibleReason = notEligibleReason;
+    if (customCallOutcome !== undefined) updates.customCallOutcome = customCallOutcome;
+
+    // Auto-status logic based on outcome
+    if (updates.callOutcome) {
+      if (['not_interested', 'wrong_number', 'not_eligible'].includes(updates.callOutcome)) {
+        updates.status = 'rejected';
+      } else if (['interested', 'callback', 'not_reachable', 'not_answering', 'other'].includes(updates.callOutcome)) {
+        if (lead.status === 'rejected') updates.status = 'pending';
+      }
+    }
+
+    const updated = await DomLead.findByIdAndUpdate(
+      lead._id,
+      { $set: updates, $inc: { updateCount: 1, ...(updates.callOutcome ? { callCount: 1 } : {}) } },
+      { new: true, runValidators: true }
+    )
+      .populate('assignedTo', 'name email')
+      .populate('sourceWebsiteLead', 'name mobile productType status source')
+      .lean();
+
+    // Sync workStatus back to imported lead if linked
+    if (updated.sourceImportedLead && updates.callOutcome) {
+      const workStatus = OUTCOME_TO_WORK_STATUS[updates.callOutcome] || 'in_progress';
+      await DomImportedLead.findByIdAndUpdate(updated.sourceImportedLead, {
+        workStatus,
+        callOutcome: updates.callOutcome,
+        ...(updates.notEligibleReason !== undefined ? { notEligibleReason: updates.notEligibleReason } : {}),
+        ...(updates.callbackDate !== undefined ? { callbackDate: updates.callbackDate } : {}),
+        workedAt: new Date(),
+      });
+    }
+
+    // Sync to website lead if linked
+    if (updated.sourceWebsiteLead) {
+      await DomWebsiteLead.findByIdAndUpdate(updated.sourceWebsiteLead._id || updated.sourceWebsiteLead, {
+        status: 'completed',
+        domLeadId: updated._id,
+      });
+    }
+
+    return res.status(200).json({ success: true, data: updated, message: 'Disposition updated successfully.' });
+  } catch (err) {
+    console.error('[Leads] Disposition update error:', err.message);
+    return res.status(500).json({ success: false, message: err.message || 'Failed to update disposition.' });
   }
 });
 

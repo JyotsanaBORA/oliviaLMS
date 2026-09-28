@@ -173,6 +173,8 @@ const LeadFormModal = ({ websiteLead, importedLead, existingDomLead, onClose, on
       const existingId = websiteLead.domLead?._id || websiteLead.domLead || websiteLead.domLeadId?._id || websiteLead.domLeadId;
       if (existingId) {
         setDomLeadId(existingId);
+        if (websiteLead.domLead?.leadRef) setLeadRef(websiteLead.domLead.leadRef);
+        if (websiteLead.domLead?.documents) setDocuments(websiteLead.domLead.documents);
       }
       setForm((prev) => ({
         ...prev,
@@ -182,6 +184,10 @@ const LeadFormModal = ({ websiteLead, importedLead, existingDomLead, onClose, on
         pan:            websiteLead.pan          || '',
         employmentType: websiteLead.employment   || '',
         productType:    websiteLead.productType  || '',
+        callOutcome:    websiteLead.domLead?.callOutcome || '',
+        callbackDate:   websiteLead.domLead?.callbackDate || '',
+        notes:          websiteLead.domLead?.notes || '',
+        notEligibleReason: websiteLead.domLead?.notEligibleReason || '',
       }));
     }
   }, [websiteLead, importedLead, existingDomLead]);
@@ -288,6 +294,7 @@ const LeadFormModal = ({ websiteLead, importedLead, existingDomLead, onClose, on
         }
       }
       onSaved && onSaved();
+      onClose && onClose();
     } catch (err) {
       const msg = err.response?.data?.message || 'Save failed.';
       toast.error(msg);
