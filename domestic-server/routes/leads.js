@@ -360,6 +360,16 @@ router.get('/', protect, async (req, res) => {
       const batchLeadIds = await DomImportedLead.distinct('_id', { importBatchId: req.query.batchId });
       filter.sourceImportedLead = { $in: batchLeadIds };
     }
+    // Filter by lead source ('meta' | 'website' | 'pool')
+    if (req.query.source === 'meta') {
+      const metaLeadIds = await DomWebsiteLead.distinct('_id', { source: 'meta' });
+      filter.sourceWebsiteLead = { $in: metaLeadIds };
+    } else if (req.query.source === 'website') {
+      const webLeadIds = await DomWebsiteLead.distinct('_id', { source: { $in: ['website', null] } });
+      filter.sourceWebsiteLead = { $in: webLeadIds };
+    } else if (req.query.source === 'pool') {
+      filter.sourceImportedLead = { $ne: null };
+    }
     // Filter by CIBIL score range
     if (req.query.cibilScoreRange) {
       const validRanges = ['below_600', '600_699', '700_749', '750_800', 'above_800', 'unknown'];
@@ -402,7 +412,7 @@ router.get('/', protect, async (req, res) => {
       DomLead.find(filter)
         .populate('assignedTo', 'name email')
         .populate('createdBy', 'name')
-        .populate('sourceWebsiteLead', 'name mobile productType status')
+        .populate('sourceWebsiteLead', 'name mobile productType status source')
         .populate('sourceImportedLead',
           'name mobile loanType totalOutstandingAmount principalOutstanding ' +
           'noOfInstallmentOverdue cibilScore cibilScoreDate disbursalAmount amountFinanced ' +
@@ -490,6 +500,16 @@ router.get('/export', protect, authorize('dom_admin', 'dom_superadmin'), async (
     if (req.query.batchId) {
       const batchLeadIds = await DomImportedLead.distinct('_id', { importBatchId: req.query.batchId });
       filter.sourceImportedLead = { $in: batchLeadIds };
+    }
+    // Filter by lead source
+    if (req.query.source === 'meta') {
+      const metaLeadIds = await DomWebsiteLead.distinct('_id', { source: 'meta' });
+      filter.sourceWebsiteLead = { $in: metaLeadIds };
+    } else if (req.query.source === 'website') {
+      const webLeadIds = await DomWebsiteLead.distinct('_id', { source: { $in: ['website', null] } });
+      filter.sourceWebsiteLead = { $in: webLeadIds };
+    } else if (req.query.source === 'pool') {
+      filter.sourceImportedLead = { $ne: null };
     }
     const andConds = [];
     const istRange = buildIstDateRange(req.query.dateFrom, req.query.dateTo);
@@ -616,6 +636,15 @@ router.get('/export-zip', protect, authorize('dom_superadmin'), async (req, res)
     if (agentId)    filter.assignedTo = agentId;
     if (status && ['pending', 'completed', 'rejected'].includes(status)) filter.status = status;
     if (productType) filter.productType = productType;
+    if (req.query.source === 'meta') {
+      const metaLeadIds = await DomWebsiteLead.distinct('_id', { source: 'meta' });
+      filter.sourceWebsiteLead = { $in: metaLeadIds };
+    } else if (req.query.source === 'website') {
+      const webLeadIds = await DomWebsiteLead.distinct('_id', { source: { $in: ['website', null] } });
+      filter.sourceWebsiteLead = { $in: webLeadIds };
+    } else if (req.query.source === 'pool') {
+      filter.sourceImportedLead = { $ne: null };
+    }
 
     // Date range
     // Call outcome + search via $and to avoid $or conflict

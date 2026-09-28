@@ -97,6 +97,7 @@ const DomAgentDashboard = () => {
   const [docFilter,          setDocFilter]          = useState('all'); // 'all'|'none'|'partial'|'full'
   const [cibilFilter,        setCibilFilter]        = useState(''); // '' = all CIBIL ranges (Assigned to Work + Worked tabs)
   const [dispositionFilter,  setDispositionFilter]  = useState(''); // '' = all outcomes (Worked tab)
+  const [workedSourceFilter, setWorkedSourceFilter] = useState(''); // '' = all, 'meta', 'website', 'pool' (Worked tab)
   const [followupCibilFilter,setFollowupCibilFilter]= useState(''); // '' = all CIBIL ranges (Follow-ups tab only)
   const [followupDispositionFilter, setFollowupDispositionFilter] = useState(''); // '' = all outcomes (Follow-ups tab)
 
@@ -283,9 +284,14 @@ const DomAgentDashboard = () => {
         ? (l.domLead?.callOutcome || '')
         : (l.callOutcome || l.workStatus || '');
       const dispositionOk = !dispositionFilter || leadDisposition === dispositionFilter;
-      return dateOk && searchOk && docOk && cibilOk && dispositionOk;
+      const sourceOk = !workedSourceFilter || (
+        workedSourceFilter === 'meta' ? (l._src === 'website' && l.source === 'meta') :
+        workedSourceFilter === 'website' ? (l._src === 'website' && l.source !== 'meta') :
+        workedSourceFilter === 'pool' ? l._src === 'pool' : true
+      );
+      return dateOk && searchOk && docOk && cibilOk && dispositionOk && sourceOk;
     });
-  }, [workedLeads, dateFilter, searchQuery, docFilter, cibilFilter, dispositionFilter]);
+  }, [workedLeads, dateFilter, searchQuery, docFilter, cibilFilter, dispositionFilter, workedSourceFilter]);
 
   const filteredFollowups = useMemo(() => {
     const q = searchQuery.toLowerCase();
@@ -664,6 +670,13 @@ const DomAgentDashboard = () => {
                 <option value="above_800">&gt; 800 (Excellent)</option>
                 <option value="unknown">Unknown</option>
               </select>
+              <select value={workedSourceFilter} onChange={e => setWorkedSourceFilter(e.target.value)}
+                className="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-[#065F36]/20 focus:border-[#065F36] font-medium">
+                <option value=""> All Sources</option>
+                <option value="meta"> Meta Leads</option>
+                <option value="website"> Website Leads</option>
+                <option value="pool"> Lead Pool / Batches</option>
+              </select>
               <select value={dispositionFilter} onChange={e => setDispositionFilter(e.target.value)}
                 className="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-[#065F36]/20 focus:border-[#065F36]">
                 <option value=""> All Dispositions</option>
@@ -679,19 +692,19 @@ const DomAgentDashboard = () => {
                 <option value="closed">Closed</option>
               </select>
               <button
-                onClick={() => { setSearchQuery(''); setDateFilter(''); setDocFilter('all'); setCibilFilter(''); setDispositionFilter(''); }}
+                onClick={() => { setSearchQuery(''); setDateFilter(''); setDocFilter('all'); setCibilFilter(''); setDispositionFilter(''); setWorkedSourceFilter(''); }}
                 className={`flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-bold border transition-all ${
-                  (searchQuery || dateFilter || docFilter !== 'all' || cibilFilter || dispositionFilter) ? 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100' : 'bg-gray-50 text-gray-300 border-gray-200 cursor-default'
+                  (searchQuery || dateFilter || docFilter !== 'all' || cibilFilter || dispositionFilter || workedSourceFilter) ? 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100' : 'bg-gray-50 text-gray-300 border-gray-200 cursor-default'
                 }`} title="Clear all filters">
                 <X className="h-3.5 w-3.5" /> Clear
               </button>
-              {(searchQuery || dateFilter || docFilter !== 'all' || cibilFilter || dispositionFilter) && (
+              {(searchQuery || dateFilter || docFilter !== 'all' || cibilFilter || dispositionFilter || workedSourceFilter) && (
                 <span className="text-xs text-gray-400">{filteredWorked.length} of {workedLeads.length} shown</span>
               )}
             </div>
 
             {/* Results count bar */}
-            {(searchQuery || dateFilter || docFilter !== 'all' || cibilFilter || dispositionFilter) && filteredWorked.length > 0 && (
+            {(searchQuery || dateFilter || docFilter !== 'all' || cibilFilter || dispositionFilter || workedSourceFilter) && filteredWorked.length > 0 && (
               <div className="px-5 py-2.5 bg-emerald-50 border-b border-emerald-100 flex items-center gap-2">
                 <Search className="h-3.5 w-3.5 text-emerald-500 flex-shrink-0" />
                 <span className="text-sm font-bold text-emerald-700">{filteredWorked.length} lead{filteredWorked.length !== 1 ? 's' : ''} found</span>

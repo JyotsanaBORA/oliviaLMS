@@ -49,11 +49,13 @@ const cibilScoreToRange = (score) => {
 
 //  Lead Source colour system  applied consistently everywhere
 const SOURCE_META = {
+  meta:     { label: 'Meta Ads', emoji: '', badge: 'bg-blue-100 text-blue-700 border border-blue-300',       dot: 'bg-blue-600',   borderL: 'border-l-4 border-l-blue-600',   rowHover: 'hover:bg-blue-50/40'   },
   website:  { label: 'Website',  emoji: '', badge: 'bg-teal-100 text-teal-700 border border-teal-300',     dot: 'bg-teal-500',   borderL: 'border-l-4 border-l-teal-500',   rowHover: 'hover:bg-teal-50/40'   },
   imported: { label: 'Imported', emoji: '', badge: 'bg-violet-100 text-violet-700 border border-violet-300', dot: 'bg-violet-500', borderL: 'border-l-4 border-l-violet-500', rowHover: 'hover:bg-violet-50/40' },
   manual:   { label: 'Manual',   emoji: '', badge: 'bg-gray-100 text-gray-600 border border-gray-300',       dot: 'bg-gray-400',   borderL: 'border-l-4 border-l-gray-300',   rowHover: 'hover:bg-gray-50/40'   },
 };
 const getSourceMeta = (lead) =>
+  lead?.sourceWebsiteLead?.source === 'meta' ? SOURCE_META.meta :
   lead?.sourceWebsiteLead  ? SOURCE_META.website  :
   lead?.sourceImportedLead ? SOURCE_META.imported :
                              SOURCE_META.manual;
@@ -81,7 +83,9 @@ const OUTCOME_META = {
   not_eligible:   { label: 'Not Eligible',   cls: 'bg-rose-100 text-rose-700' },
   callback:       { label: 'Callback',       cls: 'bg-amber-100 text-amber-700' },
   not_reachable:  { label: 'Not Reachable',  cls: 'bg-orange-100 text-orange-700' },
+  not_answering:  { label: 'Not Answering',  cls: 'bg-yellow-100 text-yellow-800' },
   wrong_number:   { label: 'Wrong Number',   cls: 'bg-gray-100 text-gray-600' },
+  other:          { label: 'Other',          cls: 'bg-purple-100 text-purple-700' },
 };
 
 const StatusBadge = ({ status }) => {
@@ -136,6 +140,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
   const [domProductFilter, setDomProductFilter]  = useState('');
   const [domLeadsLoading,  setDomLeadsLoading]   = useState(false);
   const [domBatchFilter,   setDomBatchFilter]    = useState('');
+  const [domSourceFilter,  setDomSourceFilter]   = useState('');
 
   const [agents,        setAgents]        = useState([]);
   const [agentsLoading, setAgentsLoading] = useState(false);
@@ -249,6 +254,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
   const domAgentRef        = useRef('');
   const domCibilRef        = useRef('');
   const domBatchRef        = useRef('');
+  const domSourceRef       = useRef('');
   const assignedDocFilterRef  = useRef('all');
   const assignedAgentRef     = useRef('');
   const assignedCibilRef     = useRef('');
@@ -307,7 +313,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
     setDomLeadsLoading(true);
     try {
       // When any filter is active, fetch all results so pagination doesn't hide matches
-      const anyFilter = domSearchRef.current.trim() || domStatusRef.current || domProductRef.current || domDateFromRef.current || domDateToRef.current || domDocFilterRef.current !== 'all' || domOutcomeRef.current || domAgentRef.current || domCibilRef.current || domBatchRef.current;
+      const anyFilter = domSearchRef.current.trim() || domStatusRef.current || domProductRef.current || domDateFromRef.current || domDateToRef.current || domDocFilterRef.current !== 'all' || domOutcomeRef.current || domAgentRef.current || domCibilRef.current || domBatchRef.current || domSourceRef.current;
       const limit = anyFilter ? 500 : 30;
       const q = new URLSearchParams({ page, limit });
       if (domSearchRef.current.trim())   q.set('search',           domSearchRef.current.trim());
@@ -319,6 +325,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
       if (domAgentRef.current)           q.set('agentId',          domAgentRef.current);
       if (domCibilRef.current)           q.set('cibilScoreRange',  domCibilRef.current);
       if (domBatchRef.current)           q.set('batchId',          domBatchRef.current);
+      if (domSourceRef.current)          q.set('source',           domSourceRef.current);
       const res = await api.get(`/domestic-api/leads?${q}`);
       setDomLeads(res.data?.data || []);
       setDomLeadsTotal(res.data?.pagination?.total || 0);
@@ -782,6 +789,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
       if (domDocFilterRef.current !== 'all') q.set('docStatus', domDocFilterRef.current);
       if (domAgentRef.current)            q.set('agentId',    domAgentRef.current);
       if (domBatchRef.current)            q.set('batchId',    domBatchRef.current);
+      if (domSourceRef.current)           q.set('source',     domSourceRef.current);
       const token = localStorage.getItem('dom_token');
       const res   = await fetch(`/domestic-api/leads/export?${q}`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -793,7 +801,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
       a.href     = url;
       const agentName = domAgentRef.current ? agents.find(ag => ag._id === domAgentRef.current)?.name?.replace(/\s+/g, '_') : '';
       const batchName = domBatchRef.current ? (poolBatches.find(b => b._id === domBatchRef.current)?.batchName || 'batch').replace(/\s+/g, '_').slice(0, 30) : '';
-      const suffix = batchName ? `_${batchName}` : agentName ? `_${agentName}` : domOutcomeRef.current ? `_${domOutcomeRef.current}` : domStatusRef.current ? `_${domStatusRef.current}` : '';
+      const suffix = batchName ? `_${batchName}` : agentName ? `_${agentName}` : domSourceRef.current ? `_${domSourceRef.current}` : domOutcomeRef.current ? `_${domOutcomeRef.current}` : domStatusRef.current ? `_${domStatusRef.current}` : '';
       a.download = `leads${suffix}-${localDateStr()}.xlsx`;
       document.body.appendChild(a); a.click(); document.body.removeChild(a);
       URL.revokeObjectURL(url);
@@ -814,6 +822,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
       if (domDocFilterRef.current !== 'all') q.set('docStatus', domDocFilterRef.current);
       if (domAgentRef.current)            q.set('agentId',    domAgentRef.current);
       if (domBatchRef.current)            q.set('batchId',    domBatchRef.current);
+      if (domSourceRef.current)           q.set('source',     domSourceRef.current);
       const token = localStorage.getItem('dom_token');
       const res   = await fetch(`/domestic-api/leads/export-zip?${q}`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -1468,6 +1477,14 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                 <option value="completed"> Completed</option>
                 <option value="rejected"> Rejected</option>
               </select>
+              {/* Lead Source filter */}
+              <select value={domSourceFilter} onChange={(e) => { setDomSourceFilter(e.target.value); domSourceRef.current = e.target.value; fetchDomLeads(1); }}
+                className="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white text-gray-700 font-medium">
+                <option value=""> All Sources</option>
+                <option value="meta"> Meta Leads</option>
+                <option value="website"> Website Leads</option>
+                <option value="pool"> Lead Pool / Batches</option>
+              </select>
               {/* Disposition / Call Outcome filter */}
               <select value={domOutcomeFilter} onChange={(e) => { setDomOutcomeFilter(e.target.value); domOutcomeRef.current = e.target.value; fetchDomLeads(1); }}
                 className="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white text-gray-700 font-medium">
@@ -1549,9 +1566,9 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
               </button>
               {/* Clear all filters */}
               <button
-                onClick={() => { setDomSearch(''); domSearchRef.current=''; setDomStatusFilter(''); domStatusRef.current=''; setDomProductFilter(''); domProductRef.current=''; setDomDateFrom(''); domDateFromRef.current=''; setDomDateTo(''); domDateToRef.current=''; setDomOutcomeFilter(''); domOutcomeRef.current=''; setDomDocFilter('all'); domDocFilterRef.current='all'; setDomAgentFilter(''); domAgentRef.current=''; setDomCibilFilter(''); domCibilRef.current=''; setDomBatchFilter(''); domBatchRef.current=''; fetchDomLeads(1); }}
+                onClick={() => { setDomSearch(''); domSearchRef.current=''; setDomStatusFilter(''); domStatusRef.current=''; setDomSourceFilter(''); domSourceRef.current=''; setDomProductFilter(''); domProductRef.current=''; setDomDateFrom(''); domDateFromRef.current=''; setDomDateTo(''); domDateToRef.current=''; setDomOutcomeFilter(''); domOutcomeRef.current=''; setDomDocFilter('all'); domDocFilterRef.current='all'; setDomAgentFilter(''); domAgentRef.current=''; setDomCibilFilter(''); domCibilRef.current=''; setDomBatchFilter(''); domBatchRef.current=''; fetchDomLeads(1); }}
                 className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border transition-all ${
-                  (domSearch || domStatusFilter || domProductFilter || domDateFrom || domDateTo || domOutcomeFilter || domDocFilter !== 'all' || domAgentFilter || domCibilFilter || domBatchFilter)
+                  (domSearch || domStatusFilter || domSourceFilter || domProductFilter || domDateFrom || domDateTo || domOutcomeFilter || domDocFilter !== 'all' || domAgentFilter || domCibilFilter || domBatchFilter)
                     ? 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100'
                     : 'bg-gray-50 text-gray-300 border-gray-200 cursor-default'
                 }`}
@@ -1615,7 +1632,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
             </div>
 
             {/* Results count bar */}
-            {(domSearch || domStatusFilter || domProductFilter || domDateFrom || domDateTo || domOutcomeFilter || domAgentFilter || domDocFilter !== 'all' || domCibilFilter || domBatchFilter) && !domLeadsLoading && (() => {
+            {(domSearch || domStatusFilter || domSourceFilter || domProductFilter || domDateFrom || domDateTo || domOutcomeFilter || domAgentFilter || domDocFilter !== 'all' || domCibilFilter || domBatchFilter) && !domLeadsLoading && (() => {
               const c = domLeads.filter(dl => domDocFilter === 'all' || getDocStatus(dl.documents).status === domDocFilter).length;
               return c > 0 ? (
                 <div className="px-5 py-2.5 bg-[#E8FFF5] border-b border-[#D1FAE5] flex items-center gap-2">
@@ -1668,6 +1685,7 @@ const DomAdminDashboard = ({ initialTab } = {}) => {
                         dl.status === 'pending' && dl.callOutcome === 'interested'    ? 'Docs Pending' :
                         dl.status === 'pending' && dl.callOutcome === 'callback'      ? 'Callback Due' :
                         dl.status === 'pending' && dl.callOutcome === 'not_reachable' ? 'Try Again' :
+                        dl.status === 'pending' && dl.callOutcome === 'not_answering' ? 'Not Answering' :
                         dl.status === 'pending' && !dl.callOutcome                   ? 'Not Called' :
                         null;
                       const src = getSourceMeta(dl);
